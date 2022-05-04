@@ -83,5 +83,3 @@ def nica_mlp(params, s, activation='xtanh', slope=0.1):
     A_final = params[-1]
     z = z@A_final
     return z
-
-

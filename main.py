@@ -12,11 +12,8 @@ import seaborn as sns
 
 from jax import jit, vmap
 #from train import train
-from data_generation import (
-    gen_tprocess_nica_data,
-    gen_1d_locations,
-    gen_2d_locations
-)
+from data_generation import gen_tprocess_nica_data
+from tprocess.sampling import gen_1d_locations, gen_2d_locations
 
 
 def parse():
@@ -32,7 +29,7 @@ def parse():
                         help="number of latent input locations")
     parser.add_argument('-d', type=int, default=1,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=1000,
+    parser.add_argument('--num-data', type=int, default=10000,
                         help="total number of data samples to generate")
     parser.add_argument('-l', type=int, default=2,
                         help="number of nonlinear layers; 0 = linear ICA")
