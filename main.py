@@ -70,13 +70,9 @@ def main():
     elif args.d == 2:
         assert jnp.sqrt(args.t) % 1 == 0
         x = gen_2d_locations(args.t)
-    data_sampler = gen_tprocess_nica_data(x, args.n, args.m, args.l,
-                                          args.num_data)
-    data_sampler(data_key)
+    y, z, s, R, *params = gen_tprocess_nica_data(data_key, x, args.n,
+                                                 args.m, args.l, args.num_data)
 
-    #y, z, s, *params = jit(
-    #    vmap(data_sampler, out_axes=(0, 0, 0, None, None, None))
-    #)(data_keys)
     pdb.set_trace()
 
     # train model
