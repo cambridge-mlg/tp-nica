@@ -12,7 +12,7 @@ from nn import init_nica_params, nica_mlp
 from tprocess.sampling import sample_multiple_tprocesses
 from tprocess.util import zero_mean_fn
 from tprocess.kernels import (
-    gen_rdm_Gamma_params,
+    gen_rdm_gamma_params,
     gen_rdm_SE_kernel_params,
     se_kernel_fn
 )
@@ -37,7 +37,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples, noise_factor=0.15,
     # set-up Gamma prior and GP parameters (used for all samples)
     key, *gamma_keys = jr.split(key, N+1)
     key, *k_keys = jr.split(key, N+1)
-    gamma_params = [gen_rdm_Gamma_params(_) for _ in gamma_keys]
+    gamma_params = [gen_rdm_gamma_params(_) for _ in gamma_keys]
     k_params = [gen_rdm_SE_kernel_params(_, t) for _ in k_keys]
     k_funcs = [se_kernel_fn for _ in range(N)]
     mu_funcs = [zero_mean_fn for _ in range(N)]

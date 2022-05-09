@@ -1,6 +1,7 @@
 import argparse
 import jax
 import jax.numpy as jnp
+import jax.random as jr
 from jax import grad, vmap
 from jax.random import split
 from functools import partial
@@ -73,3 +74,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+    r, rng = rngcall(lambda _: jr.gamma(_, phi_r[0], (nsamples, *phi_r[0].shape), rng)/phi_r[1])
+    kl = gamma_kl(gamma_natparams_fromstandard(phi_r), gamma_natparams_fromstandard(theta_r))
+    return jnp.mean(vmap(lambda _: elbo_s(rng, theta, phi, K, x, y, _, nsamples_s))(r), 0) - kl
