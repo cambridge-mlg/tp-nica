@@ -1,11 +1,11 @@
 import jax
 import jax.numpy as jnp
-from util import transpose, vdot
+from util import mvp, transpose, vdot
 
 def gaussian_standardparams(natparams):
     h, J = natparams
     V = jnp.linalg.inv(-2*J)
-    mu = V@h
+    mu = mvp(V,h)
     return mu, V
 
 def gaussian_logZ(natparams):

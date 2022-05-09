@@ -2,8 +2,9 @@ import argparse
 import jax
 import jax.numpy as jnp
 from jax import grad, vmap
+from jax.random import split
 from functools import partial
-from tprocess.kernels import SE_kernel
+from tprocess.kernels import se_kernel_fn
 from tprocess.sampling import sample_multiple_tprocesses
 from util import *
 from gamma import *
@@ -20,37 +21,26 @@ def squaredexp(params, x, y):
 def elbo_s(rng, theta, phi, logpx, cov, x, y, r, nsamples):
     theta_cov, theta_r, theta_x = theta
     phi_r, (What, yhat) = phi
-    rcov = lambda rfoo, tr, tc, x1, x2: cov(tc, x1, x2)*(tr[0]*2-2)/(rfoo*tr[1]*2) # rescale kernel for given r
+    cov_s = lambda tc, x1, x2: cov(tc, x1, x2)
     tree_first = lambda _: tree_map(lambda _: _[0], _)
-    print(theta_r)
-    print(theta_cov)
-    print(rcov(r[0], tree_first(theta_r), tree_first(theta_cov), x[0], x[2]))
-    print(r[0].shape)
-    print(tree_first(theta_r))
-    print(tree_first(theta_cov))
-    print(x[0].shape)
-    print(x[1].shape)
-    print("**********************")
-    Kxx = vmap(lambda r:
-        vmap(lambda tr, tc: \
-            vmap(lambda x1: 
-                vmap(partial(rcov, r, tr, tc, x1)))(x))(theta_r, theta_cov))(r)
-    print(x.shape)
+    scale = (theta_r[0]*2-2)/(r*theta_r[1]*2)
+    Kxx = vmap(lambda tc: \
+        vmap(lambda x1: 
+            vmap(partial(cov_s, tc, x1))(x))(x)
+        )(theta_cov)*scale[:,None,None]
     # Assume diagonal What for now, so we have
     # What: (N,K)
     # yhat: (N,K)
     # ps_r: ((K,N), (K,N,N))
-    ps_r = (What*yhat).T, -.5*(jnp.linalg.inv(Kxx) + vmap(jnp.diag, jnp.square(What).T))
+    ps_r = (What*yhat).T, -.5*(jnp.linalg.inv(Kxx) + vmap(jnp.diag)(jnp.square(What).T))
     mu_s, Vs = gaussian_standardparams(ps_r)
-    print(Vs.shape)
-    print(ps_r[1].shape)
-    s, rng = rngcall(jax.random.multivariate_normal, rng, mu_s, Vs, (nsamples,*mu_s.shape))
+    s, rng = rngcall(jax.random.multivariate_normal, rng, mu_s, Vs, (nsamples,mu_s.shape[0]))
     # z: (nsamples,K,N)
     # y: (N,D)
     elbo = jnp.sum(gaussian_logZ(ps_r), 0) \
         - jnp.sum(mu_s.T*What*yhat) \
-        - jnp.sum(-.5*What*vmap(jnp.diag, Vs).T) \
-        + jnp.mean(jnp.sum(vmap(vmap(logpx, in_axes=(None,0,0)), in_axes=(None,0,None))(theta_x,s,y), 1), 0)
+        - jnp.sum(-.5*What*vmap(jnp.diag)(Vs.T)) \
+        + jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,0)), (None,0,None))(theta_x,s,y), 1), 0)
     return elbo
 
 # compute elbo estimate, assumes q(r) is gamma
@@ -59,29 +49,25 @@ def elbo(rng, theta, phi, logpx, cov, x, y, nsamples):
     theta_cov, theta_r, theta_x = theta
     phi_r, phi_s = phi
     r, rng = rngcall(lambda _: jax.random.gamma(_, phi_r[0], (nsamples_r, *phi_r[0].shape))/phi_r[1], rng)
-    kl = gamma_kl(gamma_natparams_fromstandard(phi_r), gamma_natparams_fromstandard(theta_r))
+    kl = jnp.sum(gamma_kl(gamma_natparams_fromstandard(phi_r), gamma_natparams_fromstandard(theta_r)), 0)
     return jnp.mean(vmap(lambda _: elbo_s(rng, theta, phi, logpx, cov, x, y, _, nsamples_s))(r), 0) - kl
 
 def main():
     rng = jax.random.PRNGKey(0)
     K, N = 3, 20
     cov = squaredexp
-    logpx = lambda _, s, y: y*jnp.sum(s, 0) - jnp.exp(jnp.sum(s, 0)) - jnp.log(jax.scipy.special.factorial(y))
+    logpx = lambda _, s, y: y*jnp.sum(s, 0) - jnp.exp(jnp.sum(s, 0)) # - jnp.log(jax.scipy.special.factorial(y))
     theta_cov = jnp.ones(K)*1.0, jnp.ones(K)*.05
     theta_r = jnp.ones(K)*2, jnp.ones(K)*2
     theta_x = ()
     phi_r = jnp.ones(K), jnp.ones(K)
-    phi_s, rng = rngcall(lambda _: (jnp.zeros((K,N,100,3)), jax.random.normal(_, ((100,3)))), rng)
+    phi_s, rng = rngcall(lambda _: (jnp.zeros((N,K)), jax.random.normal(_, ((N,K)))), rng)
     theta = theta_cov, theta_r, theta_x
     phi = phi_r, phi_s
     nsamples = (10, 5)
-    x = jnp.linspace(0, 10, 100)
-    print("hello")
-    s, rng = rngcall(sample_multiple_tprocesses, rng, x, [lambda _: _*0 for _ in range(K)], [SE_kernel(theta_cov) for _ in range(K)], list(zip(*theta_r)))
-    print(jnp.exp(jnp.sum(s, 0)).shape)
-    print(rng)
-    y, rng = rngcall(jax.random.poisson, rng, jnp.exp(jnp.sum(s, 0)), (100,))
-    print(y.shape)
+    x = jnp.linspace(0, 10, N)
+    s, rng = rngcall(sample_multiple_tprocesses, rng, x, [lambda _: _*0 for _ in range(K)], [se_kernel_fn for _ in range(K)], [(1.0, .05) for _ in range(K)], list(zip(*theta_r)))
+    y, rng = rngcall(jax.random.poisson, rng, jnp.exp(jnp.sum(s, 0)), (N,))
     print(elbo(rng, theta, phi, logpx, cov, x, y, nsamples))
 
 
