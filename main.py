@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from jax import jit, vmap
-#from train import train
+from train import train
 from data_generation import gen_tprocess_nica_data
 from tprocess.sampling import gen_1d_locations, gen_2d_locations
 
@@ -21,17 +21,17 @@ def parse():
     """
     # synthetic data generation args
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('-n', type=int, default=5,
+    parser.add_argument('-N', type=int, default=5,
                         help="number of ICs")
-    parser.add_argument('-m', type=int, default=5,
+    parser.add_argument('-M', type=int, default=5,
                         help="dimension of each observed data point")
-    parser.add_argument('-t', type=int, default=100,
+    parser.add_argument('-T', type=int, default=100,
                         help="number of latent input locations")
-    parser.add_argument('-d', type=int, default=1,
+    parser.add_argument('-D', type=int, default=1,
                         help="dimension of latent input locations")
     parser.add_argument('--num-data', type=int, default=10000,
                         help="total number of data samples to generate")
-    parser.add_argument('-l', type=int, default=2,
+    parser.add_argument('-L', type=int, default=2,
                         help="number of nonlinear layers; 0 = linear ICA")
     # inference, training and optimization args
     parser.add_argument('--inference-iters', type=int, default=5,
@@ -65,18 +65,16 @@ def main():
     est_key = jr.PRNGKey(args.est_seed)
 
     # generate synthetic data
-    if args.d == 1:
-        x = gen_1d_locations(args.t)
-    elif args.d == 2:
-        assert jnp.sqrt(args.t) % 1 == 0
-        x = gen_2d_locations(args.t)
-    y, z, s, R, *params = gen_tprocess_nica_data(data_key, x, args.n,
-                                                 args.m, args.l, args.num_data)
-
-    pdb.set_trace()
+    if args.D == 1:
+        t = gen_1d_locations(args.T)
+    elif args.D == 2:
+        assert jnp.sqrt(args.T) % 1 == 0
+        t = gen_2d_locations(args.T)
+    x, z, s, *params = gen_tprocess_nica_data(data_key, t, args.N,
+                                              args.M, args.L, args.num_data)
 
     # train model
-    #train(y, z, s, params, args, est_key)
+    train(x, z, s, t, params, args, est_key)
 
 
 if __name__=="__main__":
