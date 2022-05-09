@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from .util import transpose, vdot
+from util import transpose, vdot
 
 def gaussian_standardparams(natparams):
     h, J = natparams
