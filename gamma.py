@@ -7,7 +7,7 @@ def gamma_natparams_fromstandard(x):
 
 def gamma_logZ(natparams):
     n1, n2 = natparams
-    return jax.scipy.special.gammaln(n1+1) + (n1+1)*jnp.log(-n2)
+    return jax.scipy.special.gammaln(n1+1) - (n1+1)*jnp.log(-n2)
 
 def gamma_dot(x1, x2):
     return x1[0]*x2[0] + x1[1]*x2[1]
