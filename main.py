@@ -87,11 +87,11 @@ def main():
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
 
-    if args.mean_function == "zero" and args.kernel == "se":
-        x, z, s, *params = gen_tprocess_nica_data(data_key, t, args.N, args.M,
-                                                  args.L, args.num_data)
+    x, z, s, r, *params = gen_tprocess_nica_data(data_key, t, args.N, args.M,
+                                                 args.L, args.num_data, mu_fn,
+                                                 k_fn)
     # train model
-    train(x, z, s, t, params, args, est_key)
+    train(x, z, s, t, mu_fn, k_fn, params, args, est_key)
 
 
 if __name__=="__main__":

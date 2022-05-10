@@ -59,7 +59,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
                                                        keepdims=True)
     x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
     Q = noise_factor*jnp.eye(M)
-    return x, z, s, Q, mixer_params, k_params, gamma_params
+    return x, z, s, r, Q, mixer_params, k_params, gamma_params
 
 
 if __name__ == "__main__":

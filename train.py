@@ -23,7 +23,7 @@ from utils import rdm_upper_cholesky_of_precision
 from inference import elbo
 
 
-def train(x, z, s, t, params, args, est_key):
+def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, est_key):
     # unpack useful args
     N = args.N
     M = args.M
