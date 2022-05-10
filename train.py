@@ -57,6 +57,13 @@ def train(x, z, s, t, params, args, est_key):
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
 
+
+    def training_step(phi, rng):
+        vlb, g = value_and_grad(elbo, 2)(rng, theta, phi, logpx, cov, t, x, nsamples)
+        return tree_add(phi, tree_scale(g, lr)), vlb
+
+
+
     # train over minibatches
     train_data = x.copy()
     key, shuffle_key = jr.split(key)
@@ -66,6 +73,7 @@ def train(x, z, s, t, params, args, est_key):
         shuff_data = jr.permutation(shuffkey, train_data)
         # iterate over all minibatches
         for it in range(num_minibs):
+            key, it_key = jr.split(key)
             x_it = shuff_data[it*minib_size:(it+1)*minib_size]
             pdb.set_trace()
 

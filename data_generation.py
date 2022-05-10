@@ -27,11 +27,11 @@ def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params,
     N = gamma_params[0].shape[0]
     key, *s_key = jr.split(key, N+1)
     # mix the ICs
-    s = vmap(
+    s, r = vmap(
         lambda _a, _b, _c: sample_tprocess(_a, t, gp_mu_fn, gp_k_fn, _b, _c)
     )(jnp.vstack(s_key), gp_k_params, gamma_params)
     z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
-    return z, s
+    return z, s, r
 
 
 def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
@@ -49,7 +49,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
 
     # sample ICs and mix them
     key, *sample_keys = jr.split(key, num_samples+1)
-    z, s = vmap(
+    z, s, r = vmap(
         lambda _: sample_tpnica(_, t, mu_func, kernel_func, k_params,
                                 gamma_params, mixer_params)
     )(jnp.vstack(sample_keys))

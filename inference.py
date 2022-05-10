@@ -2,13 +2,14 @@ import argparse
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import pdb
 from jax import value_and_grad, vmap
 from jax.lax import scan
 from jax.random import split
 from functools import partial
 from math import factorial
 from tprocess.kernels import se_kernel_fn
-from tprocess.sampling import sample_multiple_tprocesses
+from tprocess.sampling import sample_tprocess
 from util import *
 from gamma import *
 from gaussian import *
@@ -26,7 +27,7 @@ def elbo_s(rng, theta, phi, logpx, cov, t, x, r, nsamples):
     (What, yhat), phi_r = phi
     scale = (theta_r[0]*2-2)/(r*theta_r[1]*2)
     Ktt = vmap(lambda tc: \
-            vmap(lambda t1: 
+            vmap(lambda t1:
                 vmap(lambda t2:
                     cov(t1, t2, tc)
                 )(t)
@@ -57,7 +58,7 @@ def elbo(rng, theta, phi, logpx, cov, t, x, nsamples):
     kl = jnp.sum(gamma_kl(gamma_natparams_fromstandard(phi_r), gamma_natparams_fromstandard(theta_r)), 0)
     return jnp.mean(vmap(lambda _: elbo_s(rng, theta, phi, logpx, cov, t, x, _, nsamples_s))(r), 0) - kl
 
-
+# compute elbo over multiple training examples
 def main():
     rng = jax.random.PRNGKey(0)
     N, T = 3, 20
@@ -67,13 +68,14 @@ def main():
     theta_r = jnp.ones(N)*2, jnp.ones(N)*2
     theta_x = () # likelihood parameters
     phi_r = jnp.ones(N)*2, jnp.ones(N)*2
-    phi_s, rng = rngcall(lambda _: (jnp.zeros((N,T)), jax.random.normal(_, ((N,T)))), rng)
+    phi_s, rng = rngcall(lambda _: (jnp.zeros((N,T)), jr.normal(_, ((N,T)))), rng)
     theta = theta_cov, theta_r, theta_x
     phi = phi_s, phi_r
     nsamples = (10, 5) # (nrsamples, nssamples)
     t = jnp.linspace(0, 10, T)
-    (s, r), rng = rngcall(sample_multiple_tprocesses, rng, t, [lambda _: _*0 for _ in range(N)], [cov for _ in range(N)], [(1.0, .05) for _ in range(N)], list(zip(*theta_r)))
-    x, rng = rngcall(jax.random.poisson, rng, jnp.exp(jnp.sum(s, 0)), (1,T))
+    s, r = vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: _*0, cov, b, c))(
+        split(rng, N), theta_cov, theta_r)
+    x, rng = rngcall(jax.random.poisson, rng, jnp.exp(jnp.sum(s, 0)), (1, T))
     lr = 1e-4
     print(f"ground truth r: {r}")
     def step(phi, rng):
