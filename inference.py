@@ -14,18 +14,12 @@ from util import *
 from gamma import *
 from gaussian import *
 
-def euclid_dist(x, y):
-    return jnp.linalg.norm(x-y)
-
-def squaredexp(params, x, y):
-    sigma, lscale = params
-    return sigma**2 * jnp.exp(-0.5*euclid_dist(x, y)**2 / lscale**2)
-
-# compute estimate of elbo terms that depend on r
-def elbo_s(rng, theta, phi, logpx, cov, t, x, r, nsamples):
-    theta_cov, theta_r, theta_t = theta
+# compute estimate of elbo terms that depend on rinv
+def elbo_s(rng, theta, phi, logpx, cov, t, x, rinv, nsamples):
+    theta_cov, theta_r, theta_x = theta
     (What, yhat), phi_r = phi
-    scale = (theta_r[0]*2-2)/(r*theta_r[1]*2)
+    nu, rho = theta_r 
+    scale = (nu-2)/(rinv*rho)
     Ktt = vmap(lambda tc: \
             vmap(lambda t1:
                 vmap(lambda t2:
@@ -37,55 +31,64 @@ def elbo_s(rng, theta, phi, logpx, cov, t, x, r, nsamples):
     # What: (N,T)
     # yhat: (N,T)
     # ps_r: ((N,T), (N,T,T))
-    ps_r = (What*yhat), -.5*(jnp.linalg.inv(Ktt) + vmap(jnp.diag)(jnp.square(What)))
-    mu_s, Vs = gaussian_standardparams(ps_r)
+    qs_r = (What*yhat), -.5*(jnp.linalg.inv(Ktt) + vmap(jnp.diag)(jnp.square(What)))
+    mu_s, Vs = gaussian_standardparams(qs_r)
     s, rng = rngcall(jax.random.multivariate_normal, rng, mu_s, Vs, (nsamples,mu_s.shape[0]))
     # s: (nsamples,N,T)
     # y: (M,T)
-    elbo = jnp.sum(gaussian_logZ(ps_r), 0) \
+    print(gaussian_logZ(qs_r).shape)
+    print((mu_s*What*yhat).shape)
+    print((-.5*jnp.square(What)*(vmap(jnp.diag)(Vs) + jnp.square(mu_s))).shape)
+    print((vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x)).shape)
+    elbo = jnp.sum(gaussian_logZ(qs_r), 0) \
         - jnp.sum(mu_s*What*yhat) \
-        - jnp.sum(-.5*What.T*vmap(jnp.diag)(Vs.T)) \
-        + jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_t,s,x), 1), 0)
+        - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(Vs) + jnp.square(mu_s))) \
+        + jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x), 1), 0)
     return elbo
 
+def gamma_natparams_fromweird(x):
+    return 2*x[0]-1, -2*x[1]
 
 # compute elbo estimate, assumes q(r) is gamma
-def elbo(rng, theta, phi, logpx, cov, t, x, nsamples):
-    nsamples_r, nsamples_s = nsamples
-    theta_cov, theta_r, theta_t = theta
+def elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
+    nsamples_s, nsamples_r = nsamples
+    theta_cov, theta_r, theta_x = theta
     phi_s, phi_r = phi
-    r, rng = rngcall(lambda _: jax.random.gamma(_, phi_r[0], (nsamples_r, *phi_r[0].shape))/phi_r[1], rng)
-    kl = jnp.sum(gamma_kl(gamma_natparams_fromstandard(phi_r), gamma_natparams_fromstandard(theta_r)), 0)
-    return jnp.mean(vmap(lambda _: elbo_s(rng, theta, phi, logpx, cov, t, x, _, nsamples_s))(r), 0) - kl
+    nu, rho = phi_r
+    rinv, rng = rngcall(lambda _: jax.random.gamma(_, nu/2, (nsamples_r, *phi_r[0].shape))/(rho/2), rng)
+    kl = jnp.sum(gamma_kl(gamma_natparams_fromweird(phi_r), gamma_natparams_fromweird(theta_r)), 0)
+    return jnp.mean(vmap(lambda _: elbo_s(rng, theta, phi, logpx, cov, t, x, _, nsamples_s))(rinv), 0) - kl, kl
 
 # compute elbo over multiple training examples
 def main():
     rng = jax.random.PRNGKey(0)
-    N, T = 3, 20
+    N, T = 1, 50
     cov = se_kernel_fn
     logpx = lambda _, s, x: jax.scipy.stats.poisson.logpmf(x.reshape(()), jnp.exp(jnp.sum(s, 0)))
-    theta_cov = jnp.ones(N)*1.0, jnp.ones(N)*.05
-    theta_r = jnp.ones(N)*2, jnp.ones(N)*2
+    theta_cov = jnp.ones(N)*1.0, jnp.ones(N)*1.0
+    theta_r = jnp.ones(N)*5, jnp.ones(N)*3
     theta_x = () # likelihood parameters
-    phi_r = jnp.ones(N)*2, jnp.ones(N)*2
+    phi_r = jnp.ones(N)*20, jnp.ones(N)*3
     phi_s, rng = rngcall(lambda _: (jnp.zeros((N,T)), jr.normal(_, ((N,T)))), rng)
     theta = theta_cov, theta_r, theta_x
     phi = phi_s, phi_r
-    nsamples = (10, 5) # (nrsamples, nssamples)
-    t = jnp.linspace(0, 10, T)
-    s, r = vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: _*0, cov, b, c))(
+    nsamples = (5, 10) # (nssamples, nrsamples)
+    t = jnp.linspace(0, 100, T)
+    s, rinv = vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: _*0, cov, b, c))(
         split(rng, N), theta_cov, theta_r)
+    print(s)
     x, rng = rngcall(jax.random.poisson, rng, jnp.exp(jnp.sum(s, 0)), (1, T))
     lr = 1e-4
-    print(f"ground truth r: {r}")
+    print(f"ground truth rinv: {rinv}")
     def step(phi, rng):
-        vlb, g = value_and_grad(elbo, 2)(rng, theta, phi, logpx, cov, t, x, nsamples)
+        (vlb, kl), g = value_and_grad(elbo, 2, has_aux=True)(rng, theta, phi, logpx, cov, x, t, nsamples)
         return tree_add(phi, tree_scale(g, lr)), vlb
     nepochs = 10000
     for i in range(1, nepochs):
         rng, key = split(rng)
-        phi, vlb = scan(step, phi, split(key, 100))
-        print(f"{i}: elbo={vlb.mean()}, E[r]={gamma_meanparams(gamma_natparams_fromstandard(phi[1]))[0]}")
+        phi, vlb = scan(step, phi, split(key, 1000))
+        phi_natparams = gamma_natparams_fromweird(phi[1])
+        print(f"{i}: elbo={vlb.mean()}, E[rinv]={gamma_mean(phi_natparams)}, V[rinv]={gamma_var(phi_natparams)}")
 
 if __name__ == "__main__":
     main()

@@ -2,9 +2,6 @@ import jax
 import jax.numpy as jnp
 from util import transpose, vdot, tree_sub
 
-def gamma_natparams_fromstandard(x):
-    return x[0]-1, -x[1]
-
 def gamma_logZ(natparams):
     n1, n2 = natparams
     return jax.scipy.special.gammaln(n1+1) - (n1+1)*jnp.log(-n2)
@@ -18,3 +15,11 @@ def gamma_meanparams(natparams):
 
 def gamma_kl(n1, n2):
     return gamma_dot(tree_sub(n1, n2), gamma_meanparams(n1)) + gamma_logZ(n2) - gamma_logZ(n1)
+
+def gamma_mean(natparams):
+    n1, n2 = natparams
+    return -(n1+1)/n2
+
+def gamma_var(natparams):
+    n1, n2 = natparams
+    return (n1+1)/(n2**2)
