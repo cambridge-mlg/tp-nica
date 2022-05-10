@@ -9,11 +9,11 @@ import pdb
 
 from jax import jit, vmap
 from nn import init_nica_params, nica_mlp
-from tprocess.sampling import sample_multiple_tprocesses
+from tprocess.sampling import sample_tprocess
 from tprocess.util import zero_mean_fn
 from tprocess.kernels import (
-    gen_rdm_gamma_params,
-    gen_rdm_SE_kernel_params,
+    rdm_gamma_params,
+    rdm_SE_kernel_params,
     se_kernel_fn
 )
 
@@ -21,26 +21,28 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def sample_tpnica(key, t, gp_mu_fn_list, gp_k_fn_list, gp_k_params_list,
-                  gamma_params_list, mixer_params):
+def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params,
+                  gamma_params, mixer_params):
     # sample each IC as a t-process
-    key, s_key = jr.split(key)
-    s = sample_multiple_tprocesses(s_key, t, gp_mu_fn_list, gp_k_fn_list,
-                                   gp_k_params_list, gamma_params_list)
+    N = gamma_params[0].shape[0]
+    key, *s_key = jr.split(key, N+1)
     # mix the ICs
+    s = vmap(
+        lambda _a, _b, _c: sample_tprocess(_a, t, gp_mu_fn, gp_k_fn, _b, _c)
+    )(jnp.vstack(s_key), gp_k_params, gamma_params)
     z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
     return z, s
 
 
-def gen_tprocess_nica_data(key, t, N, M, L, num_samples, noise_factor=0.15,
-                           repeat_layers=False):
+def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
+                           mu_func=zero_mean_fn, kernel_func=se_kernel_fn,
+                           noise_factor=0.15, repeat_layers=False):
     # set-up Gamma prior and GP parameters (used for all samples)
     key, *gamma_keys = jr.split(key, N+1)
     key, *k_keys = jr.split(key, N+1)
-    gamma_params = [gen_rdm_gamma_params(_) for _ in gamma_keys]
-    k_params = [gen_rdm_SE_kernel_params(_, t) for _ in k_keys]
-    k_funcs = [se_kernel_fn for _ in range(N)]
-    mu_funcs = [zero_mean_fn for _ in range(N)]
+    gamma_params = vmap(rdm_gamma_params)(jnp.vstack(gamma_keys))
+    k_params = vmap(lambda _: rdm_SE_kernel_params(_, t))(jnp.vstack(k_keys))
+
     # initialize mixing function parameters
     key, mlp_key = jr.split(key, 2)
     mixer_params = init_nica_params(N, M, L, mlp_key, repeat_layers)
@@ -48,7 +50,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples, noise_factor=0.15,
     # sample ICs and mix them
     key, *sample_keys = jr.split(key, num_samples+1)
     z, s = vmap(
-        lambda _: sample_tpnica(_, t, mu_funcs, k_funcs, k_params,
+        lambda _: sample_tpnica(_, t, mu_func, kernel_func, k_params,
                                 gamma_params, mixer_params)
     )(jnp.vstack(sample_keys))
 
@@ -59,7 +61,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples, noise_factor=0.15,
     Q = noise_factor*jnp.eye(M)
     return x, z, s, Q, mixer_params, k_params, gamma_params
 
- 
+
 if __name__ == "__main__":
     N = 5
     M = 5

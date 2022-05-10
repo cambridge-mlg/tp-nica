@@ -70,8 +70,8 @@ def main():
     elif args.D == 2:
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
-    x, z, s, *params = gen_tprocess_nica_data(data_key, t, args.N,
-                                              args.M, args.L, args.num_data)
+    x, z, s, *params = gen_tprocess_nica_data(data_key, t, args.N, args.M,
+                                              args.L, args.num_data)
 
     # train model
     train(x, z, s, t, params, args, est_key)

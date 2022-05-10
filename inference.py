@@ -16,6 +16,10 @@ from gaussian import *
 def euclid_dist(x, y):
     return jnp.linalg.norm(x-y)
 
+def squaredexp(params, x, y):
+    sigma, lscale = params
+    return sigma**2 * jnp.exp(-0.5*euclid_dist(x, y)**2 / lscale**2)
+
 # compute estimate of elbo terms that depend on r
 def elbo_s(rng, theta, phi, logpx, cov, t, x, r, nsamples):
     theta_cov, theta_r, theta_t = theta
@@ -43,6 +47,7 @@ def elbo_s(rng, theta, phi, logpx, cov, t, x, r, nsamples):
         + jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_t,s,x), 1), 0)
     return elbo
 
+
 # compute elbo estimate, assumes q(r) is gamma
 def elbo(rng, theta, phi, logpx, cov, t, x, nsamples):
     nsamples_r, nsamples_s = nsamples
@@ -51,6 +56,7 @@ def elbo(rng, theta, phi, logpx, cov, t, x, nsamples):
     r, rng = rngcall(lambda _: jax.random.gamma(_, phi_r[0], (nsamples_r, *phi_r[0].shape))/phi_r[1], rng)
     kl = jnp.sum(gamma_kl(gamma_natparams_fromstandard(phi_r), gamma_natparams_fromstandard(theta_r)), 0)
     return jnp.mean(vmap(lambda _: elbo_s(rng, theta, phi, logpx, cov, t, x, _, nsamples_s))(r), 0) - kl
+
 
 def main():
     rng = jax.random.PRNGKey(0)

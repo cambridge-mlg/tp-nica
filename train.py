@@ -16,8 +16,8 @@ from jax import vmap, jit, lax
 #from optax import chain, piecewise_constant_schedule, scale_by_schedule
 from nn import init_nica_params
 from tprocess.kernels import (
-    gen_rdm_gamma_params,
-    gen_rdm_SE_kernel_params
+    rdm_gamma_params,
+    rdm_SE_kernel_params
 )
 from utils import rdm_upper_cholesky_of_precision
 
@@ -37,8 +37,8 @@ def train(x, z, s, t, params, args, est_key):
     key, *k_keys = jr.split(key, N+1)
     key, Q_key = jr.split(key)
     key, mlp_key = jr.split(key)
-    theta_r = [gen_rdm_gamma_params(_, max_val=20) for _ in gamma_keys]
-    theta_k = [gen_rdm_SE_kernel_params(_, t) for _ in k_keys]
+    theta_r = vmap(lambda _: rdm_gamma_params(_, 20))(jnp.vstack(gamma_keys))
+    theta_k = vmap(lambda _: rdm_SE_kernel_params(_, t))(jnp.vstack(k_keys))
     theta_Q = jnp.eye(M)*jr.uniform(Q_key, shape=(M,), minval=0.1, maxval=2.)
     theta_x = init_nica_params(N, M, L, mlp_key, repeat_layers=False)
     theta = (theta_x, theta_Q, theta_k, theta_r)
@@ -49,10 +49,9 @@ def train(x, z, s, t, params, args, est_key):
     V = vmap(lambda _: rdm_upper_cholesky_of_precision(_, N),
              out_axes=-1)(jnp.vstack(v_keys))
     phi_s = (jnp.zeros_like(x), jnp.repeat(V[None, :], n_data, 0))
-    phi_r = vmap(gen_rdm_gamma_params)(jnp.vstack(phi_r_keys))
+    phi_r = vmap(rdm_gamma_params)(jnp.vstack(phi_r_keys))
     phi_r = tree_map(lambda _: _.reshape(n_data, N, -1), phi_r)
     phi = (phi_s, phi_r)
-    pdb.set_trace()
 
     # set up training
     num_full_minibs, remainder = divmod(n_data, minib_size)
