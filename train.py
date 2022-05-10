@@ -59,9 +59,9 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, est_key):
     num_minibs = num_full_minibs + bool(remainder)
 
     # define elbo over minibatch
-    def avg_neg_elbo(rng, theta, phi, logpx, cov, t, x, nsamples):
+    def avg_neg_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
         elbo = vmap(
-            lambda a, b, c: elbo(a, theta, b, logpx, cov, t, c, nsamples)
+            lambda a, b, c: elbo(a, theta, b, logpx, cov, c, t, nsamples)
         )(jr.split(rng, x.shape[0]), phi, x)
         return -elbo.mean()
 
