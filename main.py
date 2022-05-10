@@ -10,10 +10,11 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from jax import jit, vmap
 from train import train
 from data_generation import gen_tprocess_nica_data
 from tprocess.sampling import gen_1d_locations, gen_2d_locations
+from tprocess.kernels import se_kernel_fn
+from tprocess.util import zero_mean_fn
 
 
 def parse():
@@ -33,6 +34,10 @@ def parse():
                         help="total number of data samples to generate")
     parser.add_argument('-L', type=int, default=2,
                         help="number of nonlinear layers; 0 = linear ICA")
+    parser.add_argument('--mean-function', type=str, default="zero",
+                        help="zero (zero mean assumed),")
+    parser.add_argument('--kernel', type=str, default="se",
+                        help="se (squared exponential),")
     # inference, training and optimization args
     parser.add_argument('--inference-iters', type=int, default=5,
                         help="num. of inference iterations")
@@ -64,15 +69,27 @@ def main():
     data_key = jr.PRNGKey(args.data_seed)
     est_key = jr.PRNGKey(args.est_seed)
 
+    # set mean function
+    if args.mean_function == "zero":
+        mu_fn = zero_mean_fn
+    else:
+        raise NotImplementedError
+    # and kernel
+    if args.kernel == "se":
+        k_fn = se_kernel_fn
+    else:
+        raise NotImplementedError
+
     # generate synthetic data
     if args.D == 1:
         t = gen_1d_locations(args.T)
     elif args.D == 2:
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
-    x, z, s, *params = gen_tprocess_nica_data(data_key, t, args.N, args.M,
-                                              args.L, args.num_data)
 
+    if args.mean_function == "zero" and args.kernel == "se":
+        x, z, s, *params = gen_tprocess_nica_data(data_key, t, args.N, args.M,
+                                                  args.L, args.num_data)
     # train model
     train(x, z, s, t, params, args, est_key)
 

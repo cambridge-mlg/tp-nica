@@ -14,12 +14,13 @@ import itertools
 from jax import vmap, jit, lax
 #from jax.lax import cond
 #from optax import chain, piecewise_constant_schedule, scale_by_schedule
-from nn import init_nica_params
 from tprocess.kernels import (
     rdm_gamma_params,
     rdm_SE_kernel_params
 )
+from nn import init_nica_params
 from utils import rdm_upper_cholesky_of_precision
+from inference import elbo
 
 
 def train(x, z, s, t, params, args, est_key):
@@ -57,11 +58,7 @@ def train(x, z, s, t, params, args, est_key):
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
 
-
-    def training_step(phi, rng):
-        vlb, g = value_and_grad(elbo, 2)(rng, theta, phi, logpx, cov, t, x, nsamples)
-        return tree_add(phi, tree_scale(g, lr)), vlb
-
+    # define elbo over minibatch
 
 
     # train over minibatches
@@ -76,11 +73,6 @@ def train(x, z, s, t, params, args, est_key):
             key, it_key = jr.split(key)
             x_it = shuff_data[it*minib_size:(it+1)*minib_size]
             pdb.set_trace()
-
-
-
-
-
 
 
     return 0
