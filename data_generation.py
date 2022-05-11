@@ -45,7 +45,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
 
     # initialize mixing function parameters
     key, mlp_key = jr.split(key, 2)
-    mixer_params = init_nica_params(N, M, L, mlp_key, repeat_layers)
+    mixer_params = init_nica_params(mlp_key, N, M, L, repeat_layers)
 
     # sample ICs and mix them
     key, *sample_keys = jr.split(key, num_samples+1)

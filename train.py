@@ -20,10 +20,11 @@ from tprocess.kernels import (
 )
 from nn import init_nica_params
 from utils import rdm_upper_cholesky_of_precision
+from util import rngcall
 from inference import avg_neg_elbo
 
 
-def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, est_key):
+def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     # unpack useful args
     N = args.N
     M = args.M
@@ -34,24 +35,33 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, est_key):
     num_epochs = args.num_epochs
 
     # initialize generative model params (theta)
-    key, *gamma_keys = jr.split(est_key, N+1)
-    key, *k_keys = jr.split(key, N+1)
-    key, Q_key = jr.split(key)
-    key, mlp_key = jr.split(key)
-    theta_r = vmap(lambda _: rdm_gamma_params(_, 20))(jnp.vstack(gamma_keys))
-    theta_k = vmap(lambda _: rdm_SE_kernel_params(_, t))(jnp.vstack(k_keys))
-    theta_Q = jnp.eye(M)*jr.uniform(Q_key, shape=(M,), minval=0.1, maxval=2.)
-    theta_x = init_nica_params(N, M, L, mlp_key, repeat_layers=False)
-    theta = (theta_x, theta_Q, theta_k, theta_r)
+    theta_r, key = rngcall(
+        lambda _k: vmap(lambda _: jr.uniform(_, minval=2, maxval=20)
+                       )(jr.split(_k, N)), key
+    )
+    theta_k, key = rngcall(
+        lambda _k: vmap(lambda _: rdm_SE_kernel_params(_, t)
+                       )(jr.split(_k, N)), key
+    )
+    theta_Q, key = rngcall(lambda _: jnp.eye(M)*jr.uniform(_, shape=(M,),
+                minval=0.1, maxval=2.), key)
+    theta_mix, key = rngcall(lambda _: init_nica_params(
+        _, N, M, L, repeat_layers=False), key)
+    theta_x = (theta_mix, theta_Q)
+    theta = (theta_x, theta_k, theta_r)
+
+    pdb.set_trace()
 
     # initialize variational parameters (phi)
-    key, *v_keys = jr.split(key, T+1)
+    key, *w_keys = jr.split(key, T+1)
     key, *phi_r_keys = jr.split(key, n_data*N+1)
-    V = vmap(lambda _: rdm_upper_cholesky_of_precision(_, N),
-             out_axes=-1)(jnp.vstack(v_keys))
-    phi_s = (jnp.zeros_like(x), jnp.repeat(V[None, :], n_data, 0))
+    W = vmap(lambda _: rdm_upper_cholesky_of_precision(_, N),
+             out_axes=-1)(jnp.vstack(w_keys))
+    if args.diag_approx:
+        W = vmap(lambda _: jnp.diag(_), in_axes=-1, out_axes=-1)(W)
+    phi_s = (jnp.zeros_like(x), jnp.repeat(W[None, :], n_data, 0))
     phi_r = vmap(rdm_gamma_params)(jnp.vstack(phi_r_keys))
-    phi_r = tree_map(lambda _: _.reshape(n_data, N, -1), phi_r)
+    phi_r = tree_map(lambda _: _.reshape(n_data, N), phi_r)
     phi = (phi_s, phi_r)
 
     # set up training

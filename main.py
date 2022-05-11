@@ -39,6 +39,8 @@ def parse():
     parser.add_argument('--kernel', type=str, default="se",
                         help="se (squared exponential),")
     # inference, training and optimization args
+    parser.add_argument('--diag-approx', action='store_true', default=True,
+                        help="likelihood factor with diagonal Gaussian")
     parser.add_argument('--inference-iters', type=int, default=5,
                         help="num. of inference iterations")
     parser.add_argument('--num-samples', type=int, default=1,

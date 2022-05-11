@@ -54,7 +54,7 @@ def unif_nica_layer(N, M, key, iter_4_cond=1e4):
     return A[target_idx]
 
 
-def init_nica_params(N, M, nonlin_layers, key, repeat_layers):
+def init_nica_params(key, N, M, nonlin_layers, repeat_layers):
     '''BEWARE: Assumes factorized distribution
         and equal width in all hidden layers'''
     layer_sizes = [N] + [M]*nonlin_layers + [M]

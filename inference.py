@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import pdb
-from jax import value_and_grad, vmap
+from jax import value_and_grad, vmap, jit
 from jax.lax import scan
 from jax.random import split
 from functools import partial
@@ -57,6 +57,7 @@ def elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
     return jnp.mean(vlb_r, 0) - kl, s
 
 
+@jit
 def avg_neg_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
     """
     Calculate average negative elbo over training samples
@@ -70,7 +71,7 @@ def avg_neg_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
 # compute elbo over multiple training examples
 def main():
     rng = jax.random.PRNGKey(0)
-    N, T = 1, 10
+    N, T = 5, 10
     cov = se_kernel_fn
     noisesd = .05
     logpx = lambda _, s, x: jax.scipy.stats.norm.logpdf(x.reshape(()), jnp.sum(s, 0), noisesd)
