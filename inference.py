@@ -31,7 +31,7 @@ def elbo_s(rng, theta, phi_s, logpx, cov, x, t, rinv, nsamples):
     elbo = jnp.sum(gaussian_logZ2(qs_r), 0) \
         - jnp.sum(mu_s*What*yhat) \
         - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(Vs) + jnp.square(mu_s))) \
-        + jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x), 1), 0)
+        + jnp.mean(jnp.sum(vmap(vmap(logpx, (None, 1, 1)), (None, 0, None))(theta_x,s,x), 1), 0)
     return elbo
 
 

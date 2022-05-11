@@ -17,7 +17,7 @@ from nn import init_nica_params
 from utils import rdm_upper_cholesky_of_precision
 from util import rngcall
 from inference import avg_neg_elbo
-from nn import nica_mlp
+from nn import nica_mlp, nica_logpx
 
 
 def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
@@ -61,10 +61,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     phi = (phi_s, phi_r)
 
     # initialize likelihood function
-    def logpx(x, s, theta_x):
-        theta_mix, theta_Q = theta_x
-        mu = nica_mlp(theta_mix, s)
-        return jax.scipy.multivariate_normal.logpdf(x, mu, theta_Q)
+    logpx = lambda _: nica_logpx(x, s, _)
 
 
     # set up training

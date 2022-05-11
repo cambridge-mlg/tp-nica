@@ -4,6 +4,7 @@ config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
 import jax.random as jrandom
+import jax.scipy as jsp
 from jax import vmap
 
 
@@ -83,3 +84,17 @@ def nica_mlp(params, s, activation='xtanh', slope=0.1):
     A_final = params[-1]
     z = z@A_final
     return z
+
+
+def nica_logpx(x, s, theta_x):
+    theta_mix, theta_Q = theta_x
+    mu = nica_mlp(theta_mix, s)
+    return jsp.stats.multivariate_normal.logpdf(x, mu, theta_Q)
+
+
+
+
+
+
+
+
