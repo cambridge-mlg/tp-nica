@@ -1,12 +1,19 @@
 import jax
 import jax.numpy as jnp
-from util import mvp, transpose, vdot
+from util import mvp, transpose, vdot, outer
 
 def gaussian_standardparams(natparams):
     h, J = natparams
     V = jnp.linalg.inv(-2*J)
     mu = mvp(V,h)
     return mu, V
+
+def gaussian_meanparams(natparams):
+    h, J = natparams
+    J = .5*(J + transpose(J))
+    V = jnp.linalg.inv(-2*J)
+    mu = mvp(V, h)
+    return mu, V + outer(mu, mu)
 
 def gaussian_logZ(natparams):
     h, J = natparams

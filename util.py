@@ -7,6 +7,7 @@ from jax.tree_util import tree_map, tree_multimap
 vdot = lambda x, y: jnp.sum(x*y, -1)
 transpose = lambda _: jnp.swapaxes(_, -1, -2)
 mvp = lambda X, v: jnp.matmul(X, v[...,None]).squeeze(-1)
+outer = lambda x, y: x[...,None]*y[...,None,:]
 
 # call rng function and return value with new rng
 def rngcall(f, rng, *args, **kwargs):

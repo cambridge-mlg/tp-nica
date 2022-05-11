@@ -9,6 +9,9 @@ def gamma_logZ(natparams):
 def gamma_dot(x1, x2):
     return x1[0]*x2[0] + x1[1]*x2[1]
 
+def gamma_stats(x):
+    return jnp.log(x), x
+
 def gamma_meanparams(natparams):
     n1, n2 = natparams
     return jax.scipy.special.digamma(n1+1) - jnp.log(-n2), -(n1+1)/n2
