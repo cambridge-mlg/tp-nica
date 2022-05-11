@@ -15,15 +15,15 @@ def rngcall(f, rng, *args, **kwargs):
 
 
 def tree_add(tree1, tree2):
-    return tree_multimap(operator.add, tree1, tree2)
+    return tree_map(operator.add, tree1, tree2)
 
 
 def tree_sub(tree1, tree2):
-    return tree_multimap(operator.sub, tree1, tree2)
+    return tree_map(operator.sub, tree1, tree2)
 
 
 def tree_mul(tree1, tree2):
-    return tree_multimap(operator.mul, tree1, tree2)
+    return tree_map(operator.mul, tree1, tree2)
 
 
 def tree_scale(tree, c):

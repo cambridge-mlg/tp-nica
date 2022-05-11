@@ -20,7 +20,7 @@ from tprocess.kernels import (
 )
 from nn import init_nica_params
 from utils import rdm_upper_cholesky_of_precision
-from inference import elbo
+from inference import avg_neg_elbo
 
 
 def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, est_key):

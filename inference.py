@@ -15,8 +15,8 @@ from gamma import *
 from gaussian import *
 
 # compute estimate of elbo terms that depend on rinv
-def elbo_s(rng, theta, phi, logpx, cov, t, x, rinv, nsamples):
-    theta_cov, theta_r, theta_x = theta
+def elbo_s(rng, theta, phi, logpx, cov, x, t, rinv, nsamples):
+    theta_x, theta_cov, theta_r = theta
     (What, yhat), phi_r = phi
     nu, rho = theta_r 
     scale = (nu-2)/(rinv*rho)
@@ -48,13 +48,24 @@ def gamma_natparams_fromweird(x):
 # compute elbo estimate, assumes q(r) is gamma
 def elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
     nsamples_s, nsamples_r = nsamples
-    theta_cov, theta_r, theta_x = theta
+    theta_x, theta_cov, theta_r = theta
     phi_s, phi_r = phi
     nu, rho = phi_r
     rinv, rng = rngcall(lambda _: jax.random.gamma(_, nu/2, (nsamples_r, *phi_r[0].shape))/(rho/2), rng)
     kl = jnp.sum(gamma_kl(gamma_natparams_fromweird(phi_r), gamma_natparams_fromweird(theta_r)), 0)
-    vlb_r, s = vmap(lambda _: elbo_s(rng, theta, phi, logpx, cov, t, x, _, nsamples_s))(rinv)
+    vlb_r, s = vmap(lambda _: elbo_s(rng, theta, phi, logpx, cov, x, t, _, nsamples_s))(rinv)
     return jnp.mean(vlb_r, 0) - kl, s
+
+
+def avg_neg_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
+    """
+    Calculate average negative elbo over training samples
+    """
+    elbo, s = vmap(
+        lambda a, b, c: elbo(a, theta, b, logpx, cov, c, t, nsamples)
+    )(jr.split(rng, x.shape[0]), phi, x)
+    return -elbo.mean(), s
+
 
 # compute elbo over multiple training examples
 def main():
@@ -68,7 +79,7 @@ def main():
     theta_x = () # likelihood parameters
     phi_r = jnp.ones(N)*20, jnp.ones(N)*3
     phi_s, rng = rngcall(lambda _: (jnp.zeros((N,T)), jr.normal(_, ((N,T)))), rng)
-    theta = theta_cov, theta_r, theta_x
+    theta = theta_x, theta_cov, theta_r
     phi = phi_s, phi_r
     nsamples = (5, 10) # (nssamples, nrsamples)
     t = jnp.linspace(0, 100, T)
