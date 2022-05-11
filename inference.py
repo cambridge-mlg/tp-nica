@@ -8,23 +8,24 @@ from jax.lax import scan
 from jax.random import split
 from functools import partial
 from math import factorial
-from tprocess.kernels import se_kernel_fn
+from tprocess.kernels import se_kernel_fn, compute_K
 from tprocess.sampling import sample_tprocess
 from util import *
 from gamma import *
 from gaussian import *
 
 # compute estimate of elbo terms that depend on rinv
-def elbo_s(rng, theta, phi, logpx, cov, x, t, rinv, nsamples):
+def elbo_s(rng, theta, phi_s, logpx, cov, x, t, rinv, nsamples):
     theta_x, theta_cov = theta[:2]
-    What, yhat = phi[0]
-    Ktt = vmap(lambda tc: \
-            vmap(lambda t1:
-                vmap(lambda t2:
-                    cov(t1, t2, tc)
-                )(t)
-            )(t)
-        )(theta_cov)/rinv[:,None,None]
+    What, yhat = phi_s
+    Ktt = compute_K(t, cov, theta_cov).transpose(2,0,1)/rinv[:,None,None]
+    # vmap(lambda tc: \
+    #         vmap(lambda t1:
+    #             vmap(lambda t2:
+    #                 cov(t1, t2, tc)
+    #             )(t)
+    #         )(t)
+    #     )(theta_cov)/rinv[:,None,None]
     # Assume diagonal What for now, so we have
     # What: (N,T)
     # yhat: (N,T)
@@ -38,21 +39,20 @@ def elbo_s(rng, theta, phi, logpx, cov, x, t, rinv, nsamples):
         - jnp.sum(mu_s*What*yhat) \
         - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(Vs) + jnp.square(mu_s))) \
         + jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x), 1), 0)
-    return elbo, s
-
+    return elbo
 
 # compute elbo estimate, assumes q(r) is gamma
 def elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
     nsamples_s, nsamples_r = nsamples
     theta_r = theta[2]
-    phi_r = phi[1]
-    rinv, rng = rngcall(gamma_sample, rng, phi_r, (nsamples_r, *phi_r[0].shape))
+    phi_s, phi_r = phi
+    rinv, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_r), (nsamples_r, *phi_r[0].shape))
     kl = jnp.sum(
         gamma_kl(
             gamma_natparams_fromstandard(phi_r),
             gamma_natparams_fromstandard((theta_r/2, theta_r/2))), 0)
-    vlb_r, s = vmap(lambda _: elbo_s(rng, theta, phi, logpx, cov, x, t, _, nsamples_s))(rinv)
-    return jnp.mean(vlb_r, 0) - kl, None
+    vlb_r = vmap(lambda _: elbo_s(rng, theta, phi_s, logpx, cov, x, t, _, nsamples_s))(rinv)
+    return jnp.mean(vlb_r, 0) - kl
 
 
 @jit
@@ -69,14 +69,14 @@ def avg_neg_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
 # compute elbo over multiple training examples
 def main():
     rng = jax.random.PRNGKey(0)
-    N, T = 5, 10
+    N, T = 1, 20
     cov = se_kernel_fn
     noisesd = .2
     logpx = lambda _, s, x: jax.scipy.stats.norm.logpdf(x.reshape(()), jnp.sum(s, 0), noisesd)
     theta_cov = jnp.ones(N)*1.0, jnp.ones(N)*1.0
     theta_r = jnp.ones(N)*4.0
     theta_x = () # likelihood parameters
-    phi_r = jnp.ones(N)*10, jnp.ones(N)
+    phi_r = jnp.ones(N)*5, jnp.ones(N)*5
     phi_s, rng = rngcall(lambda _: (jnp.zeros((N,T)), jr.normal(_, ((N,T)))*.05), rng)
     theta = theta_x, theta_cov, theta_r
     phi = phi_s, phi_r
@@ -90,13 +90,14 @@ def main():
     lr = 1e-4
     print(f"ground truth rinv: {rinv}")
     def step(phi, rng):
-        vlb, g = value_and_grad(elbo, 2, has_aux=True)(rng, theta, phi, logpx, cov, x, t, nsamples)
+        vlb, g = value_and_grad(elbo, 2)(rng, theta, phi, logpx, cov, x, t, nsamples)
         return tree_add(phi, tree_scale(g, lr)), vlb
     nepochs = 100000
     for i in range(1, nepochs):
         rng, key = split(rng)
         phi, vlb = scan(step, phi, split(key, 1000))
-        print(f"{i}: elbo={vlb.mean()}, E[rinv]={gamma_mean(phi[1])}, V[rinv]={gamma_var(phi[1])}")
+        phi_r_natparams = gamma_natparams_fromstandard(phi[1])
+        print(f"{i}: elbo={vlb.mean()}, E[rinv]={gamma_mean(phi_r_natparams)}, V[rinv]={gamma_var(phi_r_natparams)}")
 
 if __name__ == "__main__":
     # print("foo")
