@@ -36,15 +36,11 @@ def elbo_s(rng, theta, phi, logpx, cov, t, x, rinv, nsamples):
     s, rng = rngcall(jax.random.multivariate_normal, rng, mu_s, Vs, (nsamples,mu_s.shape[0]))
     # s: (nsamples,N,T)
     # y: (M,T)
-    print(gaussian_logZ(qs_r).shape)
-    print((mu_s*What*yhat).shape)
-    print((-.5*jnp.square(What)*(vmap(jnp.diag)(Vs) + jnp.square(mu_s))).shape)
-    print((vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x)).shape)
-    elbo = jnp.sum(gaussian_logZ(qs_r), 0) \
+    elbo = jnp.sum(gaussian_logZ2(qs_r), 0) \
         - jnp.sum(mu_s*What*yhat) \
         - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(Vs) + jnp.square(mu_s))) \
         + jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x), 1), 0)
-    return elbo
+    return elbo, s
 
 def gamma_natparams_fromweird(x):
     return 2*x[0]-1, -2*x[1]
@@ -57,7 +53,8 @@ def elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
     nu, rho = phi_r
     rinv, rng = rngcall(lambda _: jax.random.gamma(_, nu/2, (nsamples_r, *phi_r[0].shape))/(rho/2), rng)
     kl = jnp.sum(gamma_kl(gamma_natparams_fromweird(phi_r), gamma_natparams_fromweird(theta_r)), 0)
-    return jnp.mean(vmap(lambda _: elbo_s(rng, theta, phi, logpx, cov, t, x, _, nsamples_s))(rinv), 0) - kl, kl
+    vlb_r, s = vmap(lambda _: elbo_s(rng, theta, phi, logpx, cov, t, x, _, nsamples_s))(rinv)
+    return jnp.mean(vlb_r, 0) - kl, s
 
 # compute elbo over multiple training examples
 def main():
@@ -74,21 +71,26 @@ def main():
     phi = phi_s, phi_r
     nsamples = (5, 10) # (nssamples, nrsamples)
     t = jnp.linspace(0, 100, T)
-    s, rinv = vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: _*0, cov, b, c))(
-        split(rng, N), theta_cov, theta_r)
-    print(s)
+    (s, rinv), rng = rngcall(lambda k: \
+        vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: _*0, cov, b, c))(
+            split(k, N), theta_cov, theta_r),
+        rng)
     x, rng = rngcall(jax.random.poisson, rng, jnp.exp(jnp.sum(s, 0)), (1, T))
     lr = 1e-4
     print(f"ground truth rinv: {rinv}")
     def step(phi, rng):
-        (vlb, kl), g = value_and_grad(elbo, 2, has_aux=True)(rng, theta, phi, logpx, cov, x, t, nsamples)
-        return tree_add(phi, tree_scale(g, lr)), vlb
-    nepochs = 10000
+        (vlb, s), g = value_and_grad(elbo, 2, has_aux=True)(rng, theta, phi, logpx, cov, x, t, nsamples)
+        return tree_add(phi, tree_scale(g, lr)), s
+    nepochs = 1000
+    print(s[0])
     for i in range(1, nepochs):
         rng, key = split(rng)
-        phi, vlb = scan(step, phi, split(key, 1000))
+        phi, s_samples = scan(step, phi, split(key, 1000))
         phi_natparams = gamma_natparams_fromweird(phi[1])
-        print(f"{i}: elbo={vlb.mean()}, E[rinv]={gamma_mean(phi_natparams)}, V[rinv]={gamma_var(phi_natparams)}")
+        print(f"{i}: {jnp.corrcoef(s_samples.mean(axis=(0,1,2,3)), s[0])[0,1]}, E[rinv]={gamma_mean(phi_natparams)}, V[rinv]={gamma_var(phi_natparams)}")
+        # print(f"{i}: elbo={vlb.mean()}, E[rinv]={gamma_mean(phi_natparams)}, V[rinv]={gamma_var(phi_natparams)}")
+    print(s_samples.mean(axis=(0,1,2,3)))
+    print(s[0])
 
 if __name__ == "__main__":
     main()
