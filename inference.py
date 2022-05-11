@@ -19,13 +19,6 @@ def elbo_s(rng, theta, phi_s, logpx, cov, x, t, rinv, nsamples):
     theta_x, theta_cov = theta[:2]
     What, yhat = phi_s
     Ktt = compute_K(t, cov, theta_cov).transpose(2,0,1)/rinv[:,None,None]
-    # vmap(lambda tc: \
-    #         vmap(lambda t1:
-    #             vmap(lambda t2:
-    #                 cov(t1, t2, tc)
-    #             )(t)
-    #         )(t)
-    #     )(theta_cov)/rinv[:,None,None]
     # Assume diagonal What for now, so we have
     # What: (N,T)
     # yhat: (N,T)
@@ -40,6 +33,7 @@ def elbo_s(rng, theta, phi_s, logpx, cov, x, t, rinv, nsamples):
         - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(Vs) + jnp.square(mu_s))) \
         + jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x), 1), 0)
     return elbo
+
 
 # compute elbo estimate, assumes q(r) is gamma
 def elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
