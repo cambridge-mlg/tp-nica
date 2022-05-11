@@ -50,8 +50,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta_x = (theta_mix, theta_Q)
     theta = (theta_x, theta_k, theta_r)
 
-    pdb.set_trace()
-
     # initialize variational parameters (phi)
     key, *w_keys = jr.split(key, T+1)
     key, *phi_r_keys = jr.split(key, n_data*N+1)

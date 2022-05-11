@@ -18,7 +18,7 @@ from gaussian import *
 def elbo_s(rng, theta, phi, logpx, cov, x, t, rinv, nsamples):
     theta_x, theta_cov, theta_r = theta
     (What, yhat), phi_r = phi
-    nu, rho = theta_r 
+    nu, rho = theta_r
     scale = (nu-2)/(rinv*rho)
     Ktt = vmap(lambda tc: \
             vmap(lambda t1:
@@ -51,6 +51,7 @@ def elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
     theta_x, theta_cov, theta_r = theta
     phi_s, phi_r = phi
     nu, rho = phi_r
+    pdb.set_trace()
     rinv, rng = rngcall(lambda _: jax.random.gamma(_, nu/2, (nsamples_r, *phi_r[0].shape))/(rho/2), rng)
     kl = jnp.sum(gamma_kl(gamma_natparams_fromweird(phi_r), gamma_natparams_fromweird(theta_r)), 0)
     vlb_r, s = vmap(lambda _: elbo_s(rng, theta, phi, logpx, cov, x, t, _, nsamples_s))(rinv)
