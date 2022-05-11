@@ -59,9 +59,10 @@ def elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
 # compute elbo over multiple training examples
 def main():
     rng = jax.random.PRNGKey(0)
-    N, T = 1, 50
+    N, T = 1, 10
     cov = se_kernel_fn
-    logpx = lambda _, s, x: jax.scipy.stats.poisson.logpmf(x.reshape(()), jnp.exp(jnp.sum(s, 0)))
+    noisesd = .05
+    logpx = lambda _, s, x: jax.scipy.stats.norm.logpdf(x.reshape(()), jnp.sum(s, 0), noisesd)
     theta_cov = jnp.ones(N)*1.0, jnp.ones(N)*1.0
     theta_r = jnp.ones(N)*5, jnp.ones(N)*3
     theta_x = () # likelihood parameters
@@ -75,7 +76,7 @@ def main():
         vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: _*0, cov, b, c))(
             split(k, N), theta_cov, theta_r),
         rng)
-    x, rng = rngcall(jax.random.poisson, rng, jnp.exp(jnp.sum(s, 0)), (1, T))
+    x, rng = rngcall(lambda k: jax.random.normal(k, (1, T))*noisesd + jnp.sum(s, 0), rng)
     lr = 1e-4
     print(f"ground truth rinv: {rinv}")
     def step(phi, rng):
@@ -92,5 +93,20 @@ def main():
     print(s_samples.mean(axis=(0,1,2,3)))
     print(s[0])
 
+
 if __name__ == "__main__":
+    # print("foo")
+    # phi1 = jnp.array(4.0), jnp.array(7.0)
+    # phi2 = jnp.array(20.0), jnp.array(15.0)
+    # def loss(key, phi1, phi2):
+    #     a, b = phi1[0]/2, phi1[1]/2
+    #     x = jax.random.gamma(key, a, (100,))/b
+    #     return jnp.mean(gamma_logprob(gamma_natparams_fromweird(phi1), x) - gamma_logprob(gamma_natparams_fromweird(phi2), x))
+    # rng = jax.random.PRNGKey(0)
+    # for _ in range(100000):
+    #     rng, key = split(rng)
+    #     kl, g = value_and_grad(loss, argnums=1)(key, phi1, phi2)
+    #     phi1 = tree_sub(phi1, tree_scale(g, 1e-4))
+    #     if _ % 100 == 0:
+    #         print(f"{_}: {kl}. {gamma_kl(gamma_natparams_fromweird(phi1), gamma_natparams_fromweird(phi2))}")
     main()
