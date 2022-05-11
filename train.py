@@ -17,6 +17,7 @@ from nn import init_nica_params
 from utils import rdm_upper_cholesky_of_precision
 from util import rngcall
 from inference import avg_neg_elbo
+from nn import nica_mlp
 
 
 def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
@@ -40,7 +41,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                        )(jr.split(_k, N)), key
     )
     theta_Q, key = rngcall(lambda _: jnp.eye(M)*jr.uniform(_, shape=(M,),
-                minval=0.1, maxval=2.), key)
+                minval=0.01, maxval=0.2), key)
     theta_mix, key = rngcall(lambda _: init_nica_params(
         _, N, M, L, repeat_layers=False), key)
     theta_x = (theta_mix, theta_Q)
@@ -60,8 +61,10 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     phi = (phi_s, phi_r)
 
     # initialize likelihood function
-    def logpx(x, mixer_params, cov):
-        mu = 
+    def logpx(x, s, theta_x):
+        theta_mix, theta_Q = theta_x
+        mu = nica_mlp(theta_mix, s)
+        return jax.scipy.multivariate_normal.logpdf(x, mu, theta_Q)
 
 
     # set up training
