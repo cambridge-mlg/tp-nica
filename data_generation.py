@@ -46,7 +46,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
     key, mlp_key = jr.split(key, 2)
     mixer_params = init_nica_params(mlp_key, N, M, L, repeat_layers)
 
-    # sample ICs and mix them
+    # sample ICs and their mixtures
     key, *sample_keys = jr.split(key, num_samples+1)
     z, s, r = vmap(
         lambda _: sample_tpnica(_, t, mu_func, kernel_func, k_params,

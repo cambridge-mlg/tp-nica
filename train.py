@@ -1,5 +1,4 @@
-from jax._src.numpy.lax_numpy import zeros_like
-from jax._src.tree_util import tree_map
+from jax.tree_util import tree_map
 from jax.config import config
 
 config.update("jax_enable_x64", True)
@@ -9,15 +8,11 @@ import jax.random as jr
 #import optax
 #
 import pdb
-import itertools
 #
 from jax import vmap, jit, lax
 #from jax.lax import cond
 #from optax import chain, piecewise_constant_schedule, scale_by_schedule
-from tprocess.kernels import (
-    rdm_gamma_params,
-    rdm_SE_kernel_params
-)
+from tprocess.kernels import rdm_SE_kernel_params, rdm_df, se_kernel_fn
 from nn import init_nica_params
 from utils import rdm_upper_cholesky_of_precision
 from util import rngcall
@@ -33,10 +28,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     n_data = args.num_data
     minib_size = args.minib_size
     num_epochs = args.num_epochs
+    nsamples = (args.num_r_samples, args.num_s_samples)
 
     # initialize generative model params (theta)
     theta_r, key = rngcall(
-        lambda _k: vmap(lambda _: jr.uniform(_, minval=2, maxval=20)
+        lambda _k: vmap(lambda _: rdm_df(_, maxval=20)
                        )(jr.split(_k, N)), key
     )
     theta_k, key = rngcall(
@@ -51,27 +47,26 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta = (theta_x, theta_k, theta_r)
 
     # initialize variational parameters (phi)
-    key, *w_keys = jr.split(key, T+1)
-    key, *phi_r_keys = jr.split(key, n_data*N+1)
-    W = vmap(lambda _: rdm_upper_cholesky_of_precision(_, N),
-             out_axes=-1)(jnp.vstack(w_keys))
+    W, key = rngcall(lambda _k: vmap(
+        lambda _: rdm_upper_cholesky_of_precision(_, N), out_axes=-1)(
+            jr.split(_k, T)), key
+    )
     if args.diag_approx:
         W = vmap(lambda _: jnp.diag(_), in_axes=-1, out_axes=-1)(W)
     phi_s = (jnp.zeros_like(x), jnp.repeat(W[None, :], n_data, 0))
-    phi_r = vmap(rdm_gamma_params)(jnp.vstack(phi_r_keys))
+    phi_nu, key = rngcall(lambda _: vmap(rdm_df)(jr.split(_, n_data*N)), key)
+    phi_r = (phi_nu, phi_nu)
     phi_r = tree_map(lambda _: _.reshape(n_data, N), phi_r)
     phi = (phi_s, phi_r)
+
+    # initialize likelihood function
+    def logpx(x, mixer_params, cov):
+        mu = 
+
 
     # set up training
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
-
-    # define elbo over minibatch
-    def avg_neg_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
-        elbo = vmap(
-            lambda a, b, c: elbo(a, theta, b, logpx, cov, c, t, nsamples)
-        )(jr.split(rng, x.shape[0]), phi, x)
-        return -elbo.mean()
 
     # train over minibatches
     train_data = x.copy()
@@ -87,12 +82,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             pdb.set_trace()
 
     return 0
-
-
-
-
-
-
 
 
 

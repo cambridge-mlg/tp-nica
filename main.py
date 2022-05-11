@@ -43,8 +43,10 @@ def parse():
                         help="likelihood factor with diagonal Gaussian")
     parser.add_argument('--inference-iters', type=int, default=5,
                         help="num. of inference iterations")
-    parser.add_argument('--num-samples', type=int, default=1,
-                        help="num. of samples for elbo")
+    parser.add_argument('--num-s-samples', type=int, default=5,
+                        help="num. of samples from q(s|r) in elbo")
+    parser.add_argument('--num-r-samples', type=int, default=5,
+                        help="num. of samples from q(r) in elbo")
     parser.add_argument('--learning-rate', type=float, default=1e-2,
                         help="learning rate for training")
     parser.add_argument('--minib-size', type=float, default=32,

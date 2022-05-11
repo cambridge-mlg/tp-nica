@@ -59,7 +59,6 @@ def avg_neg_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
     )(jr.split(rng, x.shape[0]), phi, x)
     return -elbo.mean(), s
 
-
 # compute elbo over multiple training examples
 def main():
     rng = jax.random.PRNGKey(0)
