@@ -99,7 +99,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             nvlb, s, params, opt_state = training_step(
                 tr_key, opt_state, params, logpx, tp_kernel_fn, x, t,
                 nsamples)
-
     return 0
 
 

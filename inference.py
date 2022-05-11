@@ -31,8 +31,9 @@ def elbo_s(rng, theta, phi_s, logpx, cov, x, t, rinv, nsamples):
     elbo = jnp.sum(gaussian_logZ2(qs_r), 0) \
         - jnp.sum(mu_s*What*yhat) \
         - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(Vs) + jnp.square(mu_s))) \
-        + jnp.mean(jnp.sum(vmap(vmap(logpx, (None, 1, 1)), (None, 0, None))(theta_x,s,x), 1), 0)
-    return elbo
+        + jnp.mean(jnp.sum(vmap(vmap(logpx, (1, 1, None)),
+                                (None, 0, None))(x, s, theta_x), 1), 0)
+    return elbo, s
 
 
 # compute elbo estimate, assumes q(r) is gamma
@@ -45,11 +46,10 @@ def elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
         gamma_kl(
             gamma_natparams_fromstandard(phi_r),
             gamma_natparams_fromstandard((theta_r/2, theta_r/2))), 0)
-    vlb_r = vmap(lambda _: elbo_s(rng, theta, phi_s, logpx, cov, x, t, _, nsamples_s))(rinv)
-    return jnp.mean(vlb_r, 0) - kl
+    vlb_r, s = vmap(lambda _: elbo_s(rng, theta, phi_s, logpx, cov, x, t, _, nsamples_s))(rinv)
+    return jnp.mean(vlb_r, 0) - kl, s
 
 
-@jit
 def avg_neg_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
     """
     Calculate average negative elbo over training samples
