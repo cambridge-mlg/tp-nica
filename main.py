@@ -47,7 +47,7 @@ def parse():
                         help="num. of samples from q(s|r) in elbo")
     parser.add_argument('--num-r-samples', type=int, default=5,
                         help="num. of samples from q(r) in elbo")
-    parser.add_argument('--learning-rate', type=float, default=1e-2,
+    parser.add_argument('--learning-rate', type=float, default=3e-4,
                         help="learning rate for training")
     parser.add_argument('--minib-size', type=float, default=32,
                         help="minibatch size")

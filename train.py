@@ -1,5 +1,6 @@
 from jax.tree_util import tree_map
 from jax.config import config
+import optax
 
 config.update("jax_enable_x64", True)
 
@@ -9,15 +10,14 @@ import jax.random as jr
 #
 import pdb
 #
-from jax import vmap, jit, lax
-#from jax.lax import cond
-#from optax import chain, piecewise_constant_schedule, scale_by_schedule
-from tprocess.kernels import rdm_SE_kernel_params, rdm_df, se_kernel_fn
-from nn import init_nica_params
+from jax import vmap, jit, lax, value_and_grad
+from optax import chain, piecewise_constant_schedule, scale_by_schedule
+
+from tprocess.kernels import rdm_SE_kernel_params, rdm_df
+from nn import init_nica_params, nica_logpx
 from utils import rdm_upper_cholesky_of_precision
 from util import rngcall
 from inference import avg_neg_elbo
-from nn import nica_mlp, nica_logpx
 
 
 def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
@@ -30,6 +30,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     minib_size = args.minib_size
     num_epochs = args.num_epochs
     nsamples = (args.num_r_samples, args.num_s_samples)
+    lr = args.learning_rate
 
     # initialize generative model params (theta)
     theta_r, key = rngcall(
@@ -59,14 +60,30 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     phi_r = (phi_nu, phi_nu)
     phi_r = tree_map(lambda _: _.reshape(n_data, N), phi_r)
     phi = (phi_s, phi_r)
+    params = (theta, phi)
 
     # initialize likelihood function
     logpx = lambda _: nica_logpx(x, s, _)
 
-
-    # set up training
+    # set up training params
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
+    optimizer = optax.adam(lr)
+    opt_state = optimizer.init(params)
+
+
+    def training_step(key, opt_state, params, logpx, kernel_fn, x, t, nsamples):
+        theta, phi = params
+        (nvlb, s), g = value_and_grad(
+            avg_neg_elbo, argnums=(1, 2), has_aux=True)(
+                key, theta, phi, logpx, kernel_fn, x, t, nsamples
+            )
+
+        # perform gradient updates
+        updates, opt_state = optimizer.update(g, opt_state, params)
+        params = optax.apply_updates(params, updates)
+        return nvlb, s, params, opt_state
+
 
     # train over minibatches
     train_data = x.copy()
@@ -77,9 +94,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         shuff_data = jr.permutation(shuffkey, train_data)
         # iterate over all minibatches
         for it in range(num_minibs):
-            key, it_key = jr.split(key)
+            key, tr_key = jr.split(key)
             x_it = shuff_data[it*minib_size:(it+1)*minib_size]
-            pdb.set_trace()
+            nvlb, s, params, opt_state = training_step(
+                tr_key, opt_state, params, logpx, tp_kernel_fn, x, t,
+                nsamples)
 
     return 0
 
