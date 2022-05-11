@@ -86,7 +86,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             x_it = shuff_data[it*minib_size:(it+1)*minib_size]
             pdb.set_trace()
 
-
     return 0
 
 

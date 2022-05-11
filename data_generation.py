@@ -12,7 +12,7 @@ from nn import init_nica_params, nica_mlp
 from tprocess.sampling import sample_tprocess
 from tprocess.util import zero_mean_fn
 from tprocess.kernels import (
-    rdm_gamma_params,
+    rdm_df,
     rdm_SE_kernel_params,
     se_kernel_fn
 )
@@ -21,15 +21,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params,
-                  gamma_params, mixer_params):
+def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
     # sample each IC as a t-process
-    N = gamma_params[0].shape[0]
+    N = df.shape[0]
     key, *s_key = jr.split(key, N+1)
-    # mix the ICs
     s, r = vmap(
         lambda _a, _b, _c: sample_tprocess(_a, t, gp_mu_fn, gp_k_fn, _b, _c)
-    )(jnp.vstack(s_key), gp_k_params, gamma_params)
+    )(jnp.vstack(s_key), gp_k_params, df)
+    # mix the ICs
     z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
     return z, s, r
 
@@ -40,7 +39,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
     # set-up Gamma prior and GP parameters (used for all samples)
     key, *gamma_keys = jr.split(key, N+1)
     key, *k_keys = jr.split(key, N+1)
-    gamma_params = vmap(rdm_gamma_params)(jnp.vstack(gamma_keys))
+    dfs = vmap(rdm_df)(jnp.vstack(gamma_keys))
     k_params = vmap(lambda _: rdm_SE_kernel_params(_, t))(jnp.vstack(k_keys))
 
     # initialize mixing function parameters
@@ -51,7 +50,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
     key, *sample_keys = jr.split(key, num_samples+1)
     z, s, r = vmap(
         lambda _: sample_tpnica(_, t, mu_func, kernel_func, k_params,
-                                gamma_params, mixer_params)
+                                dfs, mixer_params)
     )(jnp.vstack(sample_keys))
 
     # standardize each dim independently so can add apropriate output noise
@@ -59,7 +58,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
                                                        keepdims=True)
     x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
     Q = noise_factor*jnp.eye(M)
-    return x, z, s, r, Q, mixer_params, k_params, gamma_params
+    return x, z, s, r, Q, mixer_params, k_params, dfs
 
 
 if __name__ == "__main__":
