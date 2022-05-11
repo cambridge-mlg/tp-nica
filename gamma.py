@@ -31,3 +31,15 @@ def gamma_mean(natparams):
 def gamma_var(natparams):
     n1, n2 = natparams
     return (n1+1)/(n2**2)
+
+def gamma_natparams_fromstandard(standardparams):
+    a, b = standardparams
+    return a-1, -b
+
+def gamma_standardparams(natparams):
+    n1, n2 = natparams
+    return n1+1, -n2
+
+def gamma_sample(rng, natparams, shape):
+    a, b = gamma_standardparams(natparams)
+    return jax.random.gamma(rng, a, shape)/b
