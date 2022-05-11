@@ -26,11 +26,11 @@ def parse():
                         help="number of ICs")
     parser.add_argument('-M', type=int, default=5,
                         help="dimension of each observed data point")
-    parser.add_argument('-T', type=int, default=100,
+    parser.add_argument('-T', type=int, default=20,
                         help="number of latent input locations")
     parser.add_argument('-D', type=int, default=1,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=10000,
+    parser.add_argument('--num-data', type=int, default=10,
                         help="total number of data samples to generate")
     parser.add_argument('-L', type=int, default=2,
                         help="number of nonlinear layers; 0 = linear ICA")
@@ -49,7 +49,7 @@ def parse():
                         help="num. of samples from q(r) in elbo")
     parser.add_argument('--learning-rate', type=float, default=3e-4,
                         help="learning rate for training")
-    parser.add_argument('--minib-size', type=float, default=32,
+    parser.add_argument('--minib-size', type=float, default=2,
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=float, default=100,
                         help="number of training epochs")

@@ -10,8 +10,7 @@ import jax.random as jr
 #
 import pdb
 #
-from jax import vmap, jit, lax, value_and_grad
-from optax import chain, piecewise_constant_schedule, scale_by_schedule
+from jax import vmap, jit, value_and_grad
 
 from tprocess.kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
@@ -62,9 +61,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     phi = (phi_s, phi_r)
     params = (theta, phi)
 
-    # initialize likelihood function
-    logpx = lambda _: nica_logpx(x, s, _)
-
     # set up training params
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
@@ -72,18 +68,21 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     opt_state = optimizer.init(params)
 
 
-    def training_step(key, opt_state, params, logpx, kernel_fn, x, t, nsamples):
-        theta, phi = params
-        (nvlb, s), g = value_and_grad(
-            avg_neg_elbo, argnums=(1, 2), has_aux=True)(
-                key, theta, phi, logpx, kernel_fn, x, t, nsamples
-            )
+    def make_training_step(logpx, kernel_fn, t, nsamples):
+        def training_step(key, opt_state, params, x):
+            theta, phi = params
+            (nvlb, s), g = value_and_grad(
+                avg_neg_elbo, argnums=(1, 2), has_aux=True)(
+                    key, theta, phi, logpx, kernel_fn, x, t, nsamples
+                )
 
-        # perform gradient updates
-        updates, opt_state = optimizer.update(g, opt_state, params)
-        params = optax.apply_updates(params, updates)
-        return nvlb, s, params, opt_state
+            # perform gradient updates
+            updates, opt_state = optimizer.update(g, opt_state, params)
+            params = optax.apply_updates(params, updates)
+            return nvlb, s, params, opt_state
+        return jit(training_step)
 
+    training_step = make_training_step(nica_logpx, tp_kernel_fn, t, nsamples)
 
     # train over minibatches
     train_data = x.copy()
@@ -97,8 +96,17 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             key, tr_key = jr.split(key)
             x_it = shuff_data[it*minib_size:(it+1)*minib_size]
             nvlb, s, params, opt_state = training_step(
-                tr_key, opt_state, params, logpx, tp_kernel_fn, x, t,
-                nsamples)
+                tr_key, opt_state, params, x_it)
+
+            print("*Epoch: [{0}/{1}]\t"
+                  "Minibatch: [{2}/{3}]\t"
+                  "ELBO: {4}".format(epoch, num_epochs, it, num_minibs, -nvlb))
+
+
+
+
+
+
     return 0
 
 

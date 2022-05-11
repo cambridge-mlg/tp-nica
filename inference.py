@@ -54,10 +54,10 @@ def avg_neg_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
     """
     Calculate average negative elbo over training samples
     """
-    elbo, s = vmap(
+    vlb, s = vmap(
         lambda a, b, c: elbo(a, theta, b, logpx, cov, c, t, nsamples)
     )(jr.split(rng, x.shape[0]), phi, x)
-    return -elbo.mean(), s
+    return -vlb.mean(), s
 
 
 # compute elbo over multiple training examples
