@@ -56,7 +56,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     phi_s = (jnp.zeros_like(x), jnp.repeat(W[None, :], n_data, 0))
     phi_df, key = rngcall(lambda _: vmap(rdm_df)(jr.split(_, n_data*N)), key)
     phi_df = phi_df.reshape(n_data, N)
-    phi = (phi_s, phi_df)
+    phi_tau = (phi_df, phi_df)
+    phi = (phi_s, phi_tau)
 
     # set up training params
     num_full_minibs, remainder = divmod(n_data, minib_size)
@@ -71,16 +72,31 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     def make_training_step(logpx, kernel_fn, t, nsamples):
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
-            (nvlb, s), g = value_and_grad(
-                avg_neg_elbo, argnums=(1, 2), has_aux=True)(
+            nvlb, g = value_and_grad(avg_neg_elbo, argnums=(1, 2))(
                     key, theta, phi_n, logpx, kernel_fn, x, t, nsamples
-                )
-            pdb.set_trace()
+            )
+            theta_g, phi_n_g = g
 
             # perform gradient updates
-            #updates, opt_state = optimizer.update(g, opt_state, params)
-            #params = optax.apply_updates(params, updates)
-            return 0 #nvlb, s, params, opt_state
+            theta_updates, theta_opt_state = optimizer.update(
+                theta_g, theta_opt_state, theta)
+            new_theta = optax.apply_updates(theta, theta_updates)
+
+            new_phi = []
+            for i in range(x.shape[0]):
+                # update variational params for given observation
+                phi_i = tree_get_idx(phi_n, i)
+                phi_i_g = tree_get_idx(phi_n_g, i)
+                phi_i_opt_state = phi_n_opt_states[i]
+                phi_i_updates, phi_i_opt_state = optimizer.update(
+                    phi_i_g, phi_i_opt_state, phi_i
+                )
+                # update optimizer state as well
+                phi_n_opt_states[i] = phi_i_opt_state
+                phi_i = optax.apply_updates(phi_i, phi_i_updates)
+                new_phi.append(phi_i)
+            phi_n = tree_map(lambda *_: jnp.stack(_), *new_phi)
+            return nvlb, theta, phi_n, theta_opt_state, phi_n_opt_states
         return training_step
 
 
@@ -95,23 +111,24 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         # iterate over all minibatches
         for it in range(num_minibs):
             x_it = shuff_data[it*minib_size:(it+1)*minib_size]
+            # select variational parameters of the observations in minibatch
             idx_set_it = shuffle_idx[it*minib_size:(it+1)*minib_size]
             phi_it = tree_get_idx(phi, idx_set_it)
             phi_opt_states_it = [phi_opt_states[i] for i in idx_set_it]
 
-            (nvlb, s, params_it, opt_states_it), key = rngcall(
+            # training step
+            (nvlb, theta, phi_it, theta_opt_state, phi_opt_states_it), key = rngcall(
                 training_step, key, theta, phi_it, theta_opt_state,
                 phi_opt_states_it, x_it)
+
+            # update the full variational parameter pytree at right indices
+            phi = tree_map(lambda a, b: a.at[idx_set_it].set(b), phi, phi_it)
+            for n, j in enumerate(idx_set_it):
+                phi_opt_states[j] = phi_opt_states_it[n]
 
             print("*Epoch: [{0}/{1}]\t"
                   "Minibatch: [{2}/{3}]\t"
                   "ELBO: {4}".format(epoch, num_epochs, it, num_minibs, -nvlb))
-
-
-
-
-
-
     return 0
 
 

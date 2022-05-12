@@ -33,7 +33,8 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
     elbo = jnp.sum(gaussian_logZ2(qs_tau), 0) \
         - jnp.sum(mu_s*What*yhat) \
         - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(gaussian_meanparams(qs_tau)[1]))) \
-        + jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x), 1), 0) \
+        + jnp.mean(jnp.sum(vmap(vmap(logpx, (1, 1, None)),
+                                (None, 0, None))(x, s, theta_x), 1), 0) \
         + jnp.sum(.5*jnp.linalg.slogdet(Kinv/(2*jnp.pi))[1], 0)
     return elbo
 
@@ -104,10 +105,10 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov, x, t, nsamples):
     """
     Calculate average negative elbo over training samples
     """
-    vlb, s = vmap(
-        lambda a, b, c: elbo(a, theta, b, logpx, cov, c, t, nsamples)
+    vlb = vmap(
+        lambda a, b, c: structured_elbo(a, theta, b, logpx, cov, c, t, nsamples)
     )(jr.split(rng, x.shape[0]), phi_n, x)
-    return -vlb.mean(), s
+    return -vlb.mean()
 
 
 def elbo_main():
@@ -176,7 +177,7 @@ def cvi_main():
     print(f"ground truth tau: {tau}")
 
     def step(c, rng):
-        phi, lam = c    
+        phi, lam = c
         phi, lam = cvi_step(rng, theta, phi, lam, logpx, cov, x, t, nsamples=10)[0]
         vlb = meanfield_elbo(rng, theta, phi, logpx, cov, x, t, 10)
         return (phi, lam), vlb
