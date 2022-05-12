@@ -100,13 +100,13 @@ def cvi_step(rng, theta, phi, lam, logpx, cov, x, t, nsamples):
     return (phi, lam), s
 
 
-def avg_neg_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
+def avg_neg_elbo(rng, theta, phi_n, logpx, cov, x, t, nsamples):
     """
     Calculate average negative elbo over training samples
     """
     vlb, s = vmap(
         lambda a, b, c: elbo(a, theta, b, logpx, cov, c, t, nsamples)
-    )(jr.split(rng, x.shape[0]), phi, x)
+    )(jr.split(rng, x.shape[0]), phi_n, x)
     return -vlb.mean(), s
 
 

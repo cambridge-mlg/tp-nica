@@ -1,7 +1,7 @@
 import operator
 import jax
 import jax.numpy as jnp
-from jax.tree_util import tree_map, tree_multimap
+from jax.tree_util import tree_map
 
 # batch utils
 vdot = lambda x, y: jnp.sum(x*y, -1)
@@ -29,6 +29,16 @@ def tree_mul(tree1, tree2):
 
 def tree_scale(tree, c):
     return tree_map(lambda _: c*_, tree)
+
+
+def tree_get_idx(tree, idx):
+    """Get idx row from each leaf of pytree"""
+    return tree_map(lambda a: a[idx], tree)
+
+
+def tree_get_range(tree, start_idx, stop_idx):
+    """Get range of rows from each leaf of pytree"""
+    return tree_map(lambda a: a[start_idx:stop_idx], tree)
 
 
 # TP/GP mean functions

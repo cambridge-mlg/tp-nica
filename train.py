@@ -15,7 +15,7 @@ from jax import vmap, jit, value_and_grad
 from tprocess.kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
 from utils import rdm_upper_cholesky_of_precision
-from util import rngcall
+from util import rngcall, tree_get_idx, tree_get_range
 from inference import avg_neg_elbo
 
 
@@ -32,9 +32,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     lr = args.learning_rate
 
     # initialize generative model params (theta)
-    theta_r, key = rngcall(
-        lambda _k: vmap(lambda _: rdm_df(_, maxval=20)
-                       )(jr.split(_k, N)), key
+    theta_df, key = rngcall(
+        lambda _k: vmap(lambda _: rdm_df(_, maxval=20))(jr.split(_k, N)), key
     )
     theta_k, key = rngcall(
         lambda _k: vmap(lambda _: rdm_SE_kernel_params(_, t)
@@ -45,7 +44,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta_mix, key = rngcall(lambda _: init_nica_params(
         _, N, M, L, repeat_layers=False), key)
     theta_x = (theta_mix, theta_Q)
-    theta = (theta_x, theta_k, theta_r)
+    theta = (theta_x, theta_k, theta_df)
 
     # initialize variational parameters (phi)
     W, key = rngcall(lambda _k: vmap(
@@ -55,48 +54,54 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     if args.diag_approx:
         W = vmap(lambda _: jnp.diag(_), in_axes=-1, out_axes=-1)(W)
     phi_s = (jnp.zeros_like(x), jnp.repeat(W[None, :], n_data, 0))
-    phi_nu, key = rngcall(lambda _: vmap(rdm_df)(jr.split(_, n_data*N)), key)
-    phi_r = (phi_nu, phi_nu)
-    phi_r = tree_map(lambda _: _.reshape(n_data, N), phi_r)
-    phi = (phi_s, phi_r)
-    params = (theta, phi)
+    phi_df, key = rngcall(lambda _: vmap(rdm_df)(jr.split(_, n_data*N)), key)
+    phi_df = phi_df.reshape(n_data, N)
+    phi = (phi_s, phi_df)
 
     # set up training params
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
-    optimizer = optax.adam(lr)
-    opt_state = optimizer.init(params)
 
+    # make separate opt state for each training sample (due to minibatching)
+    optimizer = optax.adam(lr)
+    phi_opt_states = [optimizer.init(tree_get_idx(phi, i))
+                      for i in range(n_data)]
+    theta_opt_state = optimizer.init(theta)
 
     def make_training_step(logpx, kernel_fn, t, nsamples):
-        def training_step(key, opt_state, params, x):
-            theta, phi = params
+        def training_step(key, theta, phi_n, theta_opt_state,
+                          phi_n_opt_states, x):
             (nvlb, s), g = value_and_grad(
                 avg_neg_elbo, argnums=(1, 2), has_aux=True)(
-                    key, theta, phi, logpx, kernel_fn, x, t, nsamples
+                    key, theta, phi_n, logpx, kernel_fn, x, t, nsamples
                 )
+            pdb.set_trace()
 
             # perform gradient updates
-            updates, opt_state = optimizer.update(g, opt_state, params)
-            params = optax.apply_updates(params, updates)
-            return nvlb, s, params, opt_state
-        return jit(training_step)
+            #updates, opt_state = optimizer.update(g, opt_state, params)
+            #params = optax.apply_updates(params, updates)
+            return 0 #nvlb, s, params, opt_state
+        return training_step
+
 
     training_step = make_training_step(nica_logpx, tp_kernel_fn, t, nsamples)
 
     # train over minibatches
     train_data = x.copy()
-    key, shuffle_key = jr.split(key)
     # train for multiple epochs
     for epoch in range(num_epochs):
-        shuffle_key, shuffkey = jr.split(shuffle_key)
-        shuff_data = jr.permutation(shuffkey, train_data)
+        shuffle_idx, key = rngcall(jr.permutation, key, n_data)
+        shuff_data = train_data[shuffle_idx]
         # iterate over all minibatches
         for it in range(num_minibs):
-            key, tr_key = jr.split(key)
             x_it = shuff_data[it*minib_size:(it+1)*minib_size]
-            nvlb, s, params, opt_state = training_step(
-                tr_key, opt_state, params, x_it)
+            idx_set_it = shuffle_idx[it*minib_size:(it+1)*minib_size]
+            phi_it = tree_get_idx(phi, idx_set_it)
+            phi_opt_states_it = [phi_opt_states[i] for i in idx_set_it]
+
+            (nvlb, s, params_it, opt_states_it), key = rngcall(
+                training_step, key, theta, phi_it, theta_opt_state,
+                phi_opt_states_it, x_it)
 
             print("*Epoch: [{0}/{1}]\t"
                   "Minibatch: [{2}/{3}]\t"
