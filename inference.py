@@ -100,7 +100,7 @@ def cvi_step(rng, theta, phi, lam, logpx, cov, x, t, nsamples):
     phi = phi_s, phi_tau
     return (phi, lam), s
 
-
+#@partial(jit, static_argnums=(3, 4, 7))
 def avg_neg_elbo(rng, theta, phi_n, logpx, cov, x, t, nsamples):
     """
     Calculate average negative elbo over training samples

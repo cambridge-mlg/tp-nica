@@ -51,7 +51,7 @@ def parse():
                         help="learning rate for training")
     parser.add_argument('--minib-size', type=float, default=2,
                         help="minibatch size")
-    parser.add_argument('--num-epochs', type=float, default=100,
+    parser.add_argument('--num-epochs', type=float, default=1000,
                         help="number of training epochs")
     # set seeds
     parser.add_argument('--data-seed', type=int, default=0,

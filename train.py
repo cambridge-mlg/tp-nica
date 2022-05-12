@@ -73,14 +73,14 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
             nvlb, g = value_and_grad(avg_neg_elbo, argnums=(1, 2))(
-                    key, theta, phi_n, logpx, kernel_fn, x, t, nsamples
-            )
+                              key, theta, phi_n, logpx,
+                              kernel_fn, x, t, nsamples)
             theta_g, phi_n_g = g
 
             # perform gradient updates
             theta_updates, theta_opt_state = optimizer.update(
                 theta_g, theta_opt_state, theta)
-            new_theta = optax.apply_updates(theta, theta_updates)
+            theta = optax.apply_updates(theta, theta_updates)
 
             new_phi = []
             for i in range(x.shape[0]):
@@ -100,7 +100,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         return training_step
 
 
-    training_step = make_training_step(nica_logpx, tp_kernel_fn, t, nsamples)
+    training_step = make_training_step(nica_logpx, tp_kernel_fn, t,
+                                       nsamples)
 
     # train over minibatches
     train_data = x.copy()
