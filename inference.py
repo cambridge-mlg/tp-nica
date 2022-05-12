@@ -15,7 +15,7 @@ from gamma import *
 from gaussian import *
 
 # compute estimate of elbo terms that depend on tau
-def elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
+def structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
     What, yhat = phi_s
     Kinv = jnp.linalg.inv(compute_K(t, cov, theta_cov).transpose(2,0,1))*tau[:,None,None]
@@ -39,7 +39,7 @@ def elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
 
 
 # compute elbo estimate, assumes q(r) is gamma
-def elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
+def structured_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
     nsamples_s, nsamples_tau = nsamples
     theta_tau = theta[2]
     phi_s, phi_tau = phi
@@ -48,8 +48,56 @@ def elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
         gamma_kl(
             gamma_natparams_fromstandard(phi_tau),
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0)
-    vlb_s = vmap(lambda _: elbo_s(rng, theta, phi_s, logpx, cov, x, t, _, nsamples_s))(tau)
+    vlb_s = vmap(lambda _: structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, _, nsamples_s))(tau)
     return jnp.mean(vlb_s, 0) - kl
+
+
+def meanfield_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
+    T = x.shape[1]
+    theta_x, theta_cov, theta_tau = theta
+    phi_s, phi_tau = phi
+    K = compute_K(t, cov, theta_cov).transpose(2,0,1)
+    Kinv = jnp.linalg.inv(K)
+    s = gaussian_sample(rng, phi_s, (nsamples,))
+    elbo = jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x), 1), 0) \
+        - jnp.sum(gamma_kl(phi_tau,theta_tau), 0) \
+        - .5*jnp.linalg.slogdet(2*jnp.pi*K)[1] \
+        + .5*T*gamma_meanparams(phi_tau)[0] \
+        - .5*gamma_meanparams(phi_tau)[1]*jnp.sum(Kinv*gaussian_meanparams(phi_s)[1], (1,2)) \
+        + gaussian_entropy(phi_s)
+    return elbo
+
+
+def cvi_up(theta, phi_s, cov, t):
+    N, T = phi_s[0].shape
+    theta_cov, theta_tau = theta[1:]
+    Ktt = compute_K(t, cov, theta_cov).transpose(2,0,1)
+    return tree_add(theta_tau, (.5*T, -.5*jnp.sum(gaussian_meanparams(phi_s)[1]*jnp.linalg.inv(Ktt), (1,2))))
+
+
+def cvi_down(rng, theta, phi_tau, lam, logpx, cov, x, t, lr, nsamples):
+    theta_x, theta_cov, theta_tau = theta
+    Kinv = jnp.linalg.inv(compute_K(t, cov, theta_cov).transpose(2,0,1))
+    Etau = gamma_meanparams(phi_tau)[1]
+    phi_s = lam[0], -.5*Kinv*Etau + vmap(jnp.diag)(lam[1])
+    s = gaussian_sample(rng, phi_s, (nsamples,))
+    def msg(s, x):
+        gf1 = grad(lambda _: logpx(theta_x, _, x))
+        gf2 = grad(lambda _: gf1(_).reshape(()))
+        g1 = gf1(s)
+        g2 = gf2(s)
+        return g1 - g2*s, .5*g2
+    m = tree_map(partial(jnp.mean, axis=0), vmap(lambda s: vmap(msg, (-1,-1), (-1,-1))(s, x), 0)(s))
+    lam = tree_add(tree_scale(lam, 1-lr), tree_scale(m, lr))
+    phi_s = lam[0], -.5*Kinv*Etau + vmap(jnp.diag)(lam[1])
+    return phi_s, lam, s
+
+
+def cvi_step(rng, theta, phi, lam, logpx, cov, x, t, nsamples):
+    phi_tau = cvi_up(theta, phi[0], cov, t)
+    phi_s, lam, s = cvi_down(rng, theta, phi_tau, lam, logpx, cov, x, t, 1e-2, nsamples)
+    phi = phi_s, phi_tau
+    return (phi, lam), s
 
 
 def avg_neg_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
@@ -87,7 +135,7 @@ def elbo_main():
     lr = 1e-4
     print(f"ground truth tau: {tau}")
     def step(phi, rng):
-        vlb, g = value_and_grad(elbo, 2)(rng, theta, phi, logpx, cov, x, t, nsamples)
+        vlb, g = value_and_grad(structured_elbo, 2)(rng, theta, phi, logpx, cov, x, t, nsamples)
         return tree_add(phi, tree_scale(g, lr)), vlb
     nepochs = 100000
     for i in range(1, nepochs):
@@ -130,61 +178,16 @@ def cvi_main():
     def step(c, rng):
         phi, lam = c    
         phi, lam = cvi_step(rng, theta, phi, lam, logpx, cov, x, t, nsamples=10)[0]
-        vlb = cvi_elbo(rng, theta, phi, logpx, cov, x, t, 10)
+        vlb = meanfield_elbo(rng, theta, phi, logpx, cov, x, t, 10)
         return (phi, lam), vlb
 
     nepochs = 100000
     for i in range(1, nepochs):
         rng, key = split(rng)
         (phi, lam), vlb = scan(step, (phi, lam), split(key, 1000))
-        print(f"{i}: E[tau]={gamma_mean(phi[1])}, V[tau]={gamma_var(phi[1])}, {gamma_standardparams(phi[1])}")
-        print(vlb.mean())
+        print(f"{i}: elbo={vlb.mean()}, E[tau]={gamma_mean(phi[1])}, V[tau]={gamma_var(phi[1])}")
 
-def cvi_up(theta, phi_s, cov, t):
-    N, T = phi_s[0].shape
-    theta_cov, theta_tau = theta[1:]
-    Ktt = compute_K(t, cov, theta_cov).transpose(2,0,1)
-    return tree_add(theta_tau, (.5*T, -.5*jnp.sum(gaussian_meanparams(phi_s)[1]*jnp.linalg.inv(Ktt), (1,2))))
-
-def cvi_down(rng, theta, phi_tau, lam, logpx, cov, x, t, lr, nsamples):
-    theta_x, theta_cov, theta_tau = theta
-    Kinv = jnp.linalg.inv(compute_K(t, cov, theta_cov).transpose(2,0,1))
-    Etau = gamma_meanparams(phi_tau)[1]
-    phi_s = lam[0], -.5*Kinv*Etau + vmap(jnp.diag)(lam[1])
-    s = gaussian_sample(rng, phi_s, (nsamples,))
-    def msg(s, x):
-        gf1 = grad(lambda _: logpx(theta_x, _, x))
-        gf2 = grad(lambda _: gf1(_).reshape(()))
-        g1 = gf1(s)
-        g2 = gf2(s)
-        return g1 - g2*s, .5*g2
-    m = tree_map(partial(jnp.mean, axis=0), vmap(lambda s: vmap(msg, (-1,-1), (-1,-1))(s, x), 0)(s))
-    lam = tree_add(tree_scale(lam, 1-lr), tree_scale(m, lr))
-    phi_s = lam[0], -.5*Kinv*Etau + vmap(jnp.diag)(lam[1])
-    return phi_s, lam, s
-
-def cvi_step(rng, theta, phi, lam, logpx, cov, x, t, nsamples):
-    phi_tau = cvi_up(theta, phi[0], cov, t)
-    phi_s, lam, s = cvi_down(rng, theta, phi_tau, lam, logpx, cov, x, t, 1e-2, nsamples)
-    phi = phi_s, phi_tau
-    return (phi, lam), s
-
-
-def cvi_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
-    T = x.shape[1]
-    theta_x, theta_cov, theta_tau = theta
-    phi_s, phi_tau = phi
-    K = compute_K(t, cov, theta_cov).transpose(2,0,1)
-    Kinv = jnp.linalg.inv(K)
-    s = gaussian_sample(rng, phi_s, (nsamples,))
-    elbo = jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x), 1), 0) \
-        - jnp.sum(gamma_kl(phi_tau,theta_tau), 0) \
-        - .5*jnp.linalg.slogdet(2*jnp.pi*K)[1] \
-        + .5*T*gamma_meanparams(phi_tau)[0] \
-        - .5*gamma_meanparams(phi_tau)[1]*jnp.sum(Kinv*gaussian_meanparams(phi_s)[1], (1,2)) \
-        + gaussian_entropy(phi_s)
-    return elbo
 
 if __name__ == "__main__":
-    # cvi_main()
-    elbo_main()
+    cvi_main()
+    # elbo_main()
