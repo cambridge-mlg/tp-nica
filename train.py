@@ -1,16 +1,16 @@
-from jax.tree_util import tree_map
 from jax.config import config
-import optax
 
 config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
 import jax.random as jr
-#import optax
-#
+import optax
+
 import pdb
-#
+
 from jax import vmap, jit, value_and_grad
+from jax.tree_util import tree_map
+from functools import partial
 
 from tprocess.kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
@@ -62,14 +62,13 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     # set up training params
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
-
-    # make separate opt state for each training sample (due to minibatching)
     optimizer = optax.adam(lr)
-    phi_opt_states = [optimizer.init(tree_get_idx(phi, i))
-                      for i in range(n_data)]
+    phi_opt_states = vmap(optimizer.init)(phi)
     theta_opt_state = optimizer.init(theta)
 
+
     def make_training_step(logpx, kernel_fn, t, nsamples):
+        @jit
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
             nvlb, g = value_and_grad(avg_neg_elbo, argnums=(1, 2))(
@@ -81,21 +80,9 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             theta_updates, theta_opt_state = optimizer.update(
                 theta_g, theta_opt_state, theta)
             theta = optax.apply_updates(theta, theta_updates)
-
-            new_phi = []
-            for i in range(x.shape[0]):
-                # update variational params for given observation
-                phi_i = tree_get_idx(phi_n, i)
-                phi_i_g = tree_get_idx(phi_n_g, i)
-                phi_i_opt_state = phi_n_opt_states[i]
-                phi_i_updates, phi_i_opt_state = optimizer.update(
-                    phi_i_g, phi_i_opt_state, phi_i
-                )
-                # update optimizer state as well
-                phi_n_opt_states[i] = phi_i_opt_state
-                phi_i = optax.apply_updates(phi_i, phi_i_updates)
-                new_phi.append(phi_i)
-            phi_n = tree_map(lambda *_: jnp.stack(_), *new_phi)
+            phi_n_updates, phi_n_opt_states = vmap(optimizer.update)(
+                phi_n_g, phi_n_opt_states, phi_n)
+            phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
             return nvlb, theta, phi_n, theta_opt_state, phi_n_opt_states
         return training_step
 
@@ -115,7 +102,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             # select variational parameters of the observations in minibatch
             idx_set_it = shuffle_idx[it*minib_size:(it+1)*minib_size]
             phi_it = tree_get_idx(phi, idx_set_it)
-            phi_opt_states_it = [phi_opt_states[i] for i in idx_set_it]
+            phi_opt_states_it = tree_get_idx(phi_opt_states, idx_set_it)
 
             # training step
             (nvlb, theta, phi_it, theta_opt_state, phi_opt_states_it), key = rngcall(
@@ -124,8 +111,9 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
             # update the full variational parameter pytree at right indices
             phi = tree_map(lambda a, b: a.at[idx_set_it].set(b), phi, phi_it)
-            for n, j in enumerate(idx_set_it):
-                phi_opt_states[j] = phi_opt_states_it[n]
+            phi_opt_states = tree_map(lambda a, b: a.at[idx_set_it].set(b),
+                                      phi_opt_states, phi_opt_states_it)
+
 
             print("*Epoch: [{0}/{1}]\t"
                   "Minibatch: [{2}/{3}]\t"
