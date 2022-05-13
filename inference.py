@@ -14,28 +14,35 @@ from util import *
 from gamma import *
 from gaussian import *
 
-# compute estimate of elbo terms that depend on tau
+# compute estimate of elbo terms that depend on s
 def structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
-    What, yhat = phi_s
-    Kinv = jnp.linalg.inv(compute_K(t, cov, theta_cov).transpose(2,0,1))*tau[:,None,None]
-    # Assume diagonal What for now, so we have
-    # What: (N,T)
-    # yhat: (N,T)
-    # ps_tau: ((N,T), (N,T,T))
-    qs_tau = (What*yhat), -.5*(Kinv + vmap(jnp.diag)(jnp.square(What)))
-    mu_s, Vs = gaussian_standardparams(qs_tau)
-    s = gaussian_sample(rng, qs_tau, (nsamples,))
-#    s, rng = rngcall(jax.random.multivariate_normal, rng, mu_s, Vs, (nsamples,mu_s.shape[0]))
-    # s: (nsamples,N,T)
-    # x: (M,T)
-    T = x.shape[1]
-    elbo = jnp.sum(gaussian_logZ2(qs_tau), 0) \
-        - jnp.sum(mu_s*What*yhat) \
-        - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(gaussian_meanparams(qs_tau)[1]))) \
-        + jnp.mean(jnp.sum(vmap(vmap(logpx, (1, 1, None)),
-                                (None, 0, None))(x, s, theta_x), 1), 0) \
-        + jnp.sum(.5*jnp.linalg.slogdet(Kinv/(2*jnp.pi))[1], 0)
+    What, yhat, tu = phi_s
+    Kuu = compute_K(tu, cov, theta_cov).transpose(2,0,1)/tau[:,None,None] + 1e-6 * jnp.eye(len(tu))
+    kss = vmap(lambda tc:
+            vmap(lambda t: cov(t, t, tc))(t)
+        )(theta_cov)/tau[:,None,None]
+    Ksu = vmap(lambda tc:
+            vmap(lambda t1:
+                vmap(lambda t2: cov(t1, t2, tc))(tu)
+            )(t)
+        )(theta_cov)/tau[:,None,None]
+    Kyy = What[:,:,None]*Kuu*What[:,None,:] + jnp.eye(What.shape[-1])
+    Kyyinv = jnp.linalg.inv(Kyy)
+    Ksy = Ksu*What[:,None,:]
+
+    v_s = kss - jnp.sum(mmp(Ksy,Kyyinv)*Ksy, -1)
+    mu_s = mvp(Ksy, mvp(Kyyinv, yhat))
+
+    qu_tau = (What*yhat), -.5*(jnp.linalg.inv(Kuu) + vmap(jnp.diag)(jnp.square(What)))
+    qu_tau_meanparams = gaussian_meanparams(qu_tau)
+
+    s = jax.random.normal(rng, (nsamples, *mu_s.shape))*jnp.sqrt(v_s) + mu_s
+    elbo = jnp.sum(gaussian_logZ(qu_tau), 0) \
+        - jnp.sum(qu_tau_meanparams[0]*What*yhat) \
+        - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(qu_tau_meanparams[1]))) \
+        + jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x), 1), 0) \
+        - jnp.sum(.5*jnp.linalg.slogdet(2*jnp.pi*Kuu)[1], 0)
     return elbo
 
 
@@ -43,7 +50,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
 def structured_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
     nsamples_s, nsamples_tau = nsamples
     theta_tau = theta[2]
-    phi_s, phi_tau = phi
+    phi_s, phi_tau = phi[:2]
     tau, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau), (nsamples_tau, *phi_tau[0].shape))
     kl = jnp.sum(
         gamma_kl(
@@ -120,20 +127,22 @@ def elbo_main():
     theta_cov = jnp.ones(N)*1.0, jnp.ones(N)*1.0
     theta_tau = jnp.ones(N)*4.0
     theta_x = () # likelihood parameters
-    t = jnp.linspace(0, 100, T)
+    t = jnp.linspace(0, 10, T)[:,None]
 
     (s, tau), rng = rngcall(lambda k: \
-        vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: _*0, cov, b, c))(
+        vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: .0, cov, b, c))(
             split(k, N), theta_cov, theta_tau),
         rng)
 
+    npseudopoints = T//2
+    tu, rng = rngcall(lambda k: jax.random.uniform(k, shape=(npseudopoints,), minval=jnp.min(t), maxval=jnp.max(t))[:,None], rng)
     phi_tau = jnp.ones(N)*5, jnp.ones(N)*5
-    phi_s, rng = rngcall(lambda _: (jnp.zeros((N,T)), jr.normal(_, ((N,T)))*.05), rng)
+    phi_s, rng = rngcall(lambda _: (jnp.zeros((N,len(tu))), jr.normal(_, ((N,len(tu))))*.05, tu), rng)
     theta = theta_x, theta_cov, theta_tau
     phi = phi_s, phi_tau
     nsamples = (5, 10) # (nssamples, nrsamples)
     x, rng = rngcall(lambda k: jax.random.normal(k, (1, T))*noisesd + jnp.sum(s, 0), rng)
-    lr = 1e-4
+    lr = 1e-3
     print(f"ground truth tau: {tau}")
     def step(phi, rng):
         vlb, g = value_and_grad(structured_elbo, 2)(rng, theta, phi, logpx, cov, x, t, nsamples)
@@ -141,9 +150,9 @@ def elbo_main():
     nepochs = 100000
     for i in range(1, nepochs):
         rng, key = split(rng)
-        phi, vlb = scan(step, phi, split(key, 1000))
+        phi, vlb = scan(step, phi, split(key, 10000))
         phi_tau_natparams = gamma_natparams_fromstandard(phi[1])
-        print(f"{i}: elbo={vlb.mean()}, E[tau]={gamma_mean(phi_tau_natparams)}, V[tau]={gamma_var(phi_tau_natparams)}")
+        print(f"{i}: elbo={vlb.mean(0)}, E[tau]={gamma_mean(phi_tau_natparams)}, V[tau]={gamma_var(phi_tau_natparams)}")
 
 
 def cvi_main():
@@ -159,7 +168,7 @@ def cvi_main():
     t = jnp.linspace(0, 100, T)
 
     (s, tau), rng = rngcall(lambda k: \
-        vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: _*0, cov, b, c))(
+        vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: .0, cov, b, c))(
             split(k, N), theta_cov, tau),
         rng)
 
@@ -190,5 +199,5 @@ def cvi_main():
 
 
 if __name__ == "__main__":
-    cvi_main()
-    # elbo_main()
+    # cvi_main()
+    elbo_main()
