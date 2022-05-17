@@ -120,7 +120,7 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov, x, t, nsamples):
 
 def elbo_main():
     rng = jax.random.PRNGKey(0)
-    N, T = 1, 20
+    N, T = 5, 20
     cov = se_kernel_fn
     noisesd = .5
     logpx = lambda _, s, x: jax.scipy.stats.norm.logpdf(x.reshape(()), jnp.sum(s, 0), noisesd)
@@ -128,7 +128,6 @@ def elbo_main():
     theta_tau = jnp.ones(N)*4.0
     theta_x = () # likelihood parameters
     t = jnp.linspace(0, 10, T)[:,None]
-
     (s, tau), rng = rngcall(lambda k: \
         vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: .0, cov, b, c))(
             split(k, N), theta_cov, theta_tau),
@@ -145,8 +144,8 @@ def elbo_main():
     x, rng = rngcall(lambda k: jax.random.normal(k, (1, T))*noisesd + jnp.sum(s, 0), rng)
     lr = 1e-3
     print(f"ground truth tau: {tau}")
-    pdb.set_trace()
     def step(phi, rng):
+        pdb.set_trace()
         vlb, g = value_and_grad(structured_elbo, 2)(rng, theta, phi, logpx, cov, x, t, nsamples)
         return tree_add(phi, tree_scale(g, lr)), vlb
     nepochs = 100000

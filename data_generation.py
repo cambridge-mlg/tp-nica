@@ -10,7 +10,6 @@ import pdb
 from jax import jit, vmap
 from nn import init_nica_params, nica_mlp
 from tprocess.sampling import sample_tprocess
-from tprocess.util import zero_mean_fn
 from tprocess.kernels import (
     rdm_df,
     rdm_SE_kernel_params,
@@ -34,8 +33,8 @@ def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
 
 
 def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
-                           mu_func=zero_mean_fn, kernel_func=se_kernel_fn,
-                           noise_factor=0.15, repeat_layers=False):
+                           mu_func, kernel_func, noise_factor=0.15,
+                           repeat_layers=False):
     # set-up Gamma prior and GP parameters (used for all samples)
     key, *gamma_keys = jr.split(key, N+1)
     key, *k_keys = jr.split(key, N+1)

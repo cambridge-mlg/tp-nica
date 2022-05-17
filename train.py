@@ -26,13 +26,14 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     L = args.L
     T = args.T
     n_data = args.num_data
+    n_pseudo = args.num_pseudo
     minib_size = args.minib_size
     num_epochs = args.num_epochs
     nsamples = (args.num_r_samples, args.num_s_samples)
     lr = args.learning_rate
 
     # initialize generative model params (theta)
-    theta_df, key = rngcall(
+    theta_tau, key = rngcall(
         lambda _k: vmap(lambda _: rdm_df(_, maxval=20))(jr.split(_k, N)), key
     )
     theta_k, key = rngcall(
@@ -44,16 +45,19 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta_mix, key = rngcall(lambda _: init_nica_params(
         _, N, M, L, repeat_layers=False), key)
     theta_x = (theta_mix, theta_Q)
-    theta = (theta_x, theta_k, theta_df)
+    theta = (theta_x, theta_k, theta_tau)
 
-    # initialize variational parameters (phi)
+    # initialize variational parameters (phi) with pseudo-points (tu)
+    tu, key = rngcall(lambda k: jr.uniform(k, shape=(n_pseudo, 1),
+                                           minval=jnp.min(t), maxval=T), key)
     W, key = rngcall(lambda _k: vmap(
         lambda _: rdm_upper_cholesky_of_precision(_, N), out_axes=-1)(
-            jr.split(_k, T)), key
+            jr.split(_k, len(tu))), key
     )
     if args.diag_approx:
         W = vmap(lambda _: jnp.diag(_), in_axes=-1, out_axes=-1)(W)
-    phi_s = (jnp.zeros_like(x), jnp.repeat(W[None, :], n_data, 0))
+    phi_s = (jnp.zeros(shape=(n_data, N, len(tu))),
+             jnp.repeat(W[None, :], n_data, 0), tu)
     phi_df, key = rngcall(lambda _: vmap(rdm_df)(jr.split(_, n_data*N)), key)
     phi_df = phi_df.reshape(n_data, N)
     phi_tau = (phi_df, phi_df)
@@ -68,7 +72,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
 
     def make_training_step(logpx, kernel_fn, t, nsamples):
-        @jit
+  #      @jit
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
             nvlb, g = value_and_grad(avg_neg_elbo, argnums=(1, 2))(
@@ -105,7 +109,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             phi_opt_states_it = tree_get_idx(phi_opt_states, idx_set_it)
 
             # training step
-            pdb.set_trace()
             (nvlb, theta, phi_it, theta_opt_state, phi_opt_states_it), key = rngcall(
                 training_step, key, theta, phi_it, theta_opt_state,
                 phi_opt_states_it, x_it)
