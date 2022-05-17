@@ -140,10 +140,12 @@ def elbo_main():
     phi_s, rng = rngcall(lambda _: (jnp.zeros((N,len(tu))), jr.normal(_, ((N,len(tu))))*.05, tu), rng)
     theta = theta_x, theta_cov, theta_tau
     phi = phi_s, phi_tau
+    pdb.set_trace()
     nsamples = (5, 10) # (nssamples, nrsamples)
     x, rng = rngcall(lambda k: jax.random.normal(k, (1, T))*noisesd + jnp.sum(s, 0), rng)
     lr = 1e-3
     print(f"ground truth tau: {tau}")
+    pdb.set_trace()
     def step(phi, rng):
         vlb, g = value_and_grad(structured_elbo, 2)(rng, theta, phi, logpx, cov, x, t, nsamples)
         return tree_add(phi, tree_scale(g, lr)), vlb

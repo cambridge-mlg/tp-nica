@@ -75,7 +75,7 @@ def main():
 
     # set mean function
     if args.mean_function == "zero":
-        mu_fn = zero_mean_fn
+        mu_fn = lambda _: 0.
     else:
         raise NotImplementedError
     # and kernel

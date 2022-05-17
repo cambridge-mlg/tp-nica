@@ -105,6 +105,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             phi_opt_states_it = tree_get_idx(phi_opt_states, idx_set_it)
 
             # training step
+            pdb.set_trace()
             (nvlb, theta, phi_it, theta_opt_state, phi_opt_states_it), key = rngcall(
                 training_step, key, theta, phi_it, theta_opt_state,
                 phi_opt_states_it, x_it)
