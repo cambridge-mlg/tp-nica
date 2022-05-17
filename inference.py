@@ -18,7 +18,7 @@ from gaussian import *
 def structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
     What, yhat, tu = phi_s
-    Kuu = compute_K(tu, cov, theta_cov).transpose(2,0,1)/tau[:,None,None] + 1e-6 * jnp.eye(len(tu))
+    Kuu = compute_K(tu, cov, theta_cov).transpose(2, 0, 1)/tau[:, None, None] + 1e-6 * jnp.eye(len(tu))
     kss = vmap(lambda tc:
             vmap(lambda t: cov(t, t, tc))(t)
         )(theta_cov)/tau[:,None,None]
@@ -41,7 +41,8 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
     elbo = jnp.sum(gaussian_logZ(qu_tau), 0) \
         - jnp.sum(qu_tau_meanparams[0]*What*yhat) \
         - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(qu_tau_meanparams[1]))) \
-        + jnp.mean(jnp.sum(vmap(vmap(logpx, (None,1,1)), (None,0,None))(theta_x,s,x), 1), 0) \
+        + jnp.mean(jnp.sum(vmap(vmap(logpx, (1, 1, None)),
+                                (None, 0, None))(x, s, theta_x), 1), 0) \
         - jnp.sum(.5*jnp.linalg.slogdet(2*jnp.pi*Kuu)[1], 0)
     return elbo
 
@@ -139,13 +140,11 @@ def elbo_main():
     phi_s, rng = rngcall(lambda _: (jnp.zeros((N,len(tu))), jr.normal(_, ((N,len(tu))))*.05, tu), rng)
     theta = theta_x, theta_cov, theta_tau
     phi = phi_s, phi_tau
-    pdb.set_trace()
     nsamples = (5, 10) # (nssamples, nrsamples)
     x, rng = rngcall(lambda k: jax.random.normal(k, (1, T))*noisesd + jnp.sum(s, 0), rng)
     lr = 1e-3
     print(f"ground truth tau: {tau}")
     def step(phi, rng):
-        pdb.set_trace()
         vlb, g = value_and_grad(structured_elbo, 2)(rng, theta, phi, logpx, cov, x, t, nsamples)
         return tree_add(phi, tree_scale(g, lr)), vlb
     nepochs = 100000
