@@ -57,13 +57,12 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     )
     if args.diag_approx:
         W = vmap(lambda _: jnp.diag(_), in_axes=-1, out_axes=-1)(W)
-    phi_s = (jnp.zeros(shape=(n_data, N, len(tu))),
-             jnp.repeat(W[None, :], n_data, 0), tu)
+    phi_s = (jnp.repeat(W[None, :], n_data, 0),
+             jnp.zeros(shape=(n_data, N, len(tu))), tu)
     phi_df, key = rngcall(lambda _: vmap(rdm_df)(jr.split(_, n_data*N)), key)
     phi_df = phi_df.reshape(n_data, N)
     phi_tau = (phi_df, phi_df)
     phi = (phi_s, phi_tau)
-    pdb.set_trace()
 
     # set up training params
     num_full_minibs, remainder = divmod(n_data, minib_size)

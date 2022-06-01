@@ -16,14 +16,16 @@ from util import *
 from gamma import *
 from gaussian import *
 
+
 # compute estimate of elbo terms that depend on s
 def structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
     What, yhat, tu = phi_s
-    Kuu = compute_K(tu, cov, theta_cov).transpose(2, 0, 1)/tau[:, None, None] + 1e-6 * jnp.eye(len(tu))
+    Kuu = compute_K(tu, cov, theta_cov).transpose(2, 0, 1)/tau[:, None, None]\
+        + 1e-6 * jnp.eye(len(tu))
     kss = vmap(lambda tc:
             vmap(lambda t: cov(t, t, tc))(t)
-        )(theta_cov)/tau[:,None,None]
+        )(theta_cov)/tau[:, None]
     Ksu = vmap(lambda tc:
             vmap(lambda t1:
                 vmap(lambda t2: cov(t1, t2, tc))(tu)
@@ -50,17 +52,55 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
     return elbo
 
 
+def structured_elbo_s2(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
+    theta_x, theta_cov = theta[:2]
+    What, yhat, tu = phi_s
+    Kuu = compute_K(tu, cov_fn, theta_cov).transpose(2, 0, 1)/tau[:, None, None]\
+        + 1e-6*jnp.eye(len(tu))
+    kss = vmap(
+        lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
+        )(theta_cov) / tau[:, None]
+    Ksu = vmap(lambda tc:
+            vmap(lambda t1:
+                vmap(lambda t2: cov_fn(t1, t2, tc))(tu)
+            )(t)
+        )(theta_cov)/tau[:, None, None]
+    pdb.set_trace()
+
+    Kyy = What[:, :, None]*Kuu*What[: , None, :] + jnp.eye(What.shape[-1])
+    Kyyinv = jnp.linalg.inv(Kyy)
+    Ksy = Ksu*What[:, None, :]
+
+    v_s = kss - jnp.sum(mmp(Ksy,Kyyinv)*Ksy, -1)
+    id_print(v_s)
+    mu_s = mvp(Ksy, mvp(Kyyinv, yhat))
+
+    qu_tau = (What*yhat), -.5*(jnp.linalg.inv(Kuu) + vmap(jnp.diag)(jnp.square(What)))
+    qu_tau_meanparams = gaussian_meanparams(qu_tau)
+
+    s = jax.random.normal(rng, (nsamples, *mu_s.shape))*jnp.sqrt(v_s) + mu_s
+    elbo = jnp.sum(gaussian_logZ(qu_tau), 0) \
+        - jnp.sum(qu_tau_meanparams[0]*What*yhat) \
+        - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(qu_tau_meanparams[1]))) \
+        + jnp.mean(jnp.sum(vmap(vmap(logpx, (1, 1, None)),
+                                (None, 0, None))(x, s, theta_x), 1), 0) \
+        - jnp.sum(.5*jnp.linalg.slogdet(2*jnp.pi*Kuu)[1], 0)
+    return elbo
+
+
 # compute elbo estimate, assumes q(r) is gamma
-def structured_elbo(rng, theta, phi, logpx, cov, x, t, nsamples):
+def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     nsamples_s, nsamples_tau = nsamples
     theta_tau = theta[2]
     phi_s, phi_tau = phi[:2]
-    tau, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau), (nsamples_tau, *phi_tau[0].shape))
+    tau, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau),
+                       (nsamples_tau, *phi_tau[0].shape))
     kl = jnp.sum(
         gamma_kl(
             gamma_natparams_fromstandard(phi_tau),
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0)
-    vlb_s = vmap(lambda _: structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, _, nsamples_s))(tau)
+    vlb_s = vmap(lambda _: structured_elbo_s2(rng, theta, phi_s, logpx, cov_fn,
+                                              x, t, _, nsamples_s))(tau)
     return jnp.mean(vlb_s, 0) - kl
 
 
@@ -87,9 +127,9 @@ def cvi_up(theta, phi_s, cov, t):
     return tree_add(theta_tau, (.5*T, -.5*jnp.sum(gaussian_meanparams(phi_s)[1]*jnp.linalg.inv(Ktt), (1,2))))
 
 
-def cvi_down(rng, theta, phi_tau, lam, logpx, cov, x, t, lr, nsamples):
+def cvi_down(rng, theta, phi_tau, lam, logpx, cov_fn, x, t, lr, nsamples):
     theta_x, theta_cov, theta_tau = theta
-    Kinv = jnp.linalg.inv(compute_K(t, cov, theta_cov).transpose(2,0,1))
+    Kinv = jnp.linalg.inv(compute_K(t, cov_fn, theta_cov).transpose(2,0,1))
     Etau = gamma_meanparams(phi_tau)[1]
     phi_s = lam[0], -.5*Kinv*Etau + vmap(jnp.diag)(lam[1])
     s = gaussian_sample(rng, phi_s, (nsamples,))
@@ -111,13 +151,13 @@ def cvi_step(rng, theta, phi, lam, logpx, cov, x, t, nsamples):
     phi = phi_s, phi_tau
     return (phi, lam), s
 
-#@partial(jit, static_argnums=(3, 4, 7))
-def avg_neg_elbo(rng, theta, phi_n, logpx, cov, x, t, nsamples):
+
+def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t, nsamples):
     """
     Calculate average negative elbo over training samples
     """
     vlb = vmap(
-        lambda a, b, c: structured_elbo(a, theta, b, logpx, cov, c, t, nsamples)
+        lambda a, b, c: structured_elbo(a, theta, b, logpx, cov_fn, c, t, nsamples)
     )(jr.split(rng, x.shape[0]), phi_n, x)
     return -vlb.mean()
 
