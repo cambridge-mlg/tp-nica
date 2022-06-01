@@ -6,6 +6,8 @@ import pdb
 from jax import grad, value_and_grad, vmap, jit
 from jax.lax import scan
 from jax.random import split
+from jax.experimental.host_callback import id_print
+
 from functools import partial
 from math import factorial
 from tprocess.kernels import se_kernel_fn, compute_K
@@ -32,6 +34,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
     Ksy = Ksu*What[:,None,:]
 
     v_s = kss - jnp.sum(mmp(Ksy,Kyyinv)*Ksy, -1)
+    id_print(v_s)
     mu_s = mvp(Ksy, mvp(Kyyinv, yhat))
 
     qu_tau = (What*yhat), -.5*(jnp.linalg.inv(Kuu) + vmap(jnp.diag)(jnp.square(What)))

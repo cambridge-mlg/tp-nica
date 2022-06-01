@@ -49,7 +49,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
     # initialize variational parameters (phi) with pseudo-points (tu)
     tu, key = rngcall(lambda k: jr.uniform(k, shape=(n_data, n_pseudo, 1),
-                                           minval=jnp.min(t), maxval=T), key)
+                                           minval=jnp.min(t),
+                                           maxval=jnp.max(t)), key)
     W, key = rngcall(lambda _k: vmap(
         lambda _: rdm_upper_cholesky_of_precision(_, N), out_axes=-1)(
             jr.split(_k, len(tu))), key
@@ -62,6 +63,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     phi_df = phi_df.reshape(n_data, N)
     phi_tau = (phi_df, phi_df)
     phi = (phi_s, phi_tau)
+    pdb.set_trace()
 
     # set up training params
     num_full_minibs, remainder = divmod(n_data, minib_size)
@@ -72,7 +74,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
 
     def make_training_step(logpx, kernel_fn, t, nsamples):
-        @jit
+        #@jit
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
             nvlb, g = value_and_grad(avg_neg_elbo, argnums=(1, 2))(

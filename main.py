@@ -4,6 +4,7 @@ import sys
 
 from jax.config import config
 config.update("jax_enable_x64", True)
+config.update("jax_debug_nans", True)
 
 import jax.random as jr
 import jax.numpy as jnp
@@ -41,8 +42,8 @@ def parse():
     parser.add_argument('--kernel', type=str, default="se",
                         help="se (squared exponential),")
     # inference, training and optimization args
-    parser.add_argument('--diag-approx', action='store_true', default=True,
-                        help="likelihood factor with diagonal Gaussian")
+    parser.add_argument('--diag-approx', action='store_true', default=False,
+                        help="approx. likelih. factor with diagonal Gaussian")
     parser.add_argument('--inference-iters', type=int, default=5,
                         help="num. of inference iterations")
     parser.add_argument('--num-s-samples', type=int, default=5,

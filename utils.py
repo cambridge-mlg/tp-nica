@@ -30,7 +30,7 @@ def gaussian_sample_from_mu_prec(mu, prec, key):
 def rdm_upper_cholesky_of_precision(key, dim):
     P = jr.orthogonal(key, dim)
     key, _ = jr.split(key)
-    Q = jnp.linalg.inv(jnp.diag(jr.uniform(key, shape=(dim,))))
+    Q = jnp.diag(1/jr.uniform(key, shape=(dim,)))
     precision_mat = jnp.dot(P.T, jnp.dot(Q, P))
     L = jnp.linalg.cholesky(precision_mat)
     return L.T
