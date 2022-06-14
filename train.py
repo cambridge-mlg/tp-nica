@@ -29,7 +29,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     n_pseudo = args.num_pseudo
     minib_size = args.minib_size
     num_epochs = args.num_epochs
-    nsamples = (args.num_r_samples, args.num_s_samples)
+    nsamples = (args.num_s_samples, args.num_tau_samples)
     lr = args.learning_rate
 
     # initialize generative model params (theta)

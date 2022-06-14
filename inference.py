@@ -2,16 +2,18 @@ import argparse
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import jax.scipy as js
+import numpy as np
 import pdb
 from jax import grad, value_and_grad, vmap, jit
 from jax.lax import scan
 from jax.random import split
-from jax.experimental.host_callback import id_print
 
 from functools import partial
 from math import factorial
 from tprocess.kernels import se_kernel_fn, compute_K
 from tprocess.sampling import sample_tprocess
+from utils import reorder_covmat, jax_print
 from util import *
 from gamma import *
 from gaussian import *
@@ -36,7 +38,6 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
     Ksy = Ksu*What[:,None,:]
 
     v_s = kss - jnp.sum(mmp(Ksy,Kyyinv)*Ksy, -1)
-    id_print(v_s)
     mu_s = mvp(Ksy, mvp(Kyyinv, yhat))
 
     qu_tau = (What*yhat), -.5*(jnp.linalg.inv(Kuu) + vmap(jnp.diag)(jnp.square(What)))
@@ -57,15 +58,30 @@ def structured_elbo_s2(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     What, yhat, tu = phi_s
     Kuu = compute_K(tu, cov_fn, theta_cov).transpose(2, 0, 1)/tau[:, None, None]\
         + 1e-6*jnp.eye(len(tu))
-    kss = vmap(
-        lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
-        )(theta_cov) / tau[:, None]
+    N, L = Kuu.shape[0], tu.shape[0]
     Ksu = vmap(lambda tc:
             vmap(lambda t1:
                 vmap(lambda t2: cov_fn(t1, t2, tc))(tu)
             )(t)
         )(theta_cov)/tau[:, None, None]
+    kss = vmap(
+        lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
+        )(theta_cov) / tau[:, None]
+    # construct large block diagonal cov matrices
+    Kuu_full = js.linalg.block_diag(*Kuu)
+    Ksu_full = js.linalg.block_diag(*Ksu)
+    # re-order the matrices to have same time points next to each other
+    Kuu_reord = reorder_covmat(Kuu_full, N)
+
+    jax_print(Kuu[0].round(2))
+    jax_print(Kuu[-1].round(2))
+    jax_print(Kuu_full.round(2))
+    jax_print(Kuu_reord.round(2))
+
+
     pdb.set_trace()
+
+
 
     Kyy = What[:, :, None]*Kuu*What[: , None, :] + jnp.eye(What.shape[-1])
     Kyyinv = jnp.linalg.inv(Kyy)

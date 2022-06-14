@@ -23,13 +23,13 @@ def parse():
     """
     # synthetic data generation args
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('-N', type=int, default=5,
+    parser.add_argument('-N', type=int, default=3,
                         help="number of ICs")
-    parser.add_argument('-M', type=int, default=5,
+    parser.add_argument('-M', type=int, default=3,
                         help="dimension of each observed data point")
-    parser.add_argument('-T', type=int, default=20,
+    parser.add_argument('-T', type=int, default=10,
                         help="number of latent input locations")
-    parser.add_argument('--num-pseudo', type=int, default=10,
+    parser.add_argument('--num-pseudo', type=int, default=5,
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=1,
                         help="dimension of latent input locations")
@@ -47,12 +47,12 @@ def parse():
     parser.add_argument('--inference-iters', type=int, default=5,
                         help="num. of inference iterations")
     parser.add_argument('--num-s-samples', type=int, default=5,
-                        help="num. of samples from q(s|r) in elbo")
-    parser.add_argument('--num-r-samples', type=int, default=5,
-                        help="num. of samples from q(r) in elbo")
+                        help="num. of samples from q(s|tau) in elbo")
+    parser.add_argument('--num-tau-samples', type=int, default=1,
+                        help="num. of samples from q(tau) in elbo")
     parser.add_argument('--learning-rate', type=float, default=3e-4,
                         help="learning rate for training")
-    parser.add_argument('--minib-size', type=float, default=2,
+    parser.add_argument('--minib-size', type=float, default=1,
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=float, default=1000,
                         help="number of training epochs")

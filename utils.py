@@ -5,8 +5,10 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
 
-import scipy as sp
+import numpy as np
 import pdb
+
+from jax.experimental.host_callback import id_tap
 
 # inv(L*L.T)*Y
 def invcholp(L, Y):
@@ -34,6 +36,31 @@ def rdm_upper_cholesky_of_precision(key, dim):
     precision_mat = jnp.dot(P.T, jnp.dot(Q, P))
     L = jnp.linalg.cholesky(precision_mat)
     return L.T
+
+
+def reorder_covmat(cov, N, symmetric=True):
+    T_l, T_r = tuple(jnp.int64(_/N) for _ in cov.shape)
+    P = jnp.zeros(cov.shape)
+    for t in range(T_l):
+        for n in range(N):
+            P = P.at[t*N+n, n*T_l+t].set(1.)
+    if symmetric:
+        P2 = P
+    elif not symmetric:
+        P2 = jnp.zeros(cov.shape)
+        for t in range(T_r):
+            for n in range(N):
+                P2 = P2.at[t*N+n, n*T_r+t].set(1.)
+    return jnp.dot(P, jnp.dot(cov, P2.T))
+
+
+def array_print(arg, transforms):
+    np.set_printoptions(linewidth=np.inf)
+    print(np.array2string(arg))
+
+
+def jax_print(x):
+    id_tap(tap_func=array_print, arg=x)
 
 
 if __name__=="__main__":
