@@ -72,11 +72,12 @@ def structured_elbo_s2(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     Ksu_full = js.linalg.block_diag(*Ksu)
     # re-order the matrices to have same time points next to each other
     Kuu_reord = reorder_covmat(Kuu_full, N)
+    Ksu_reord = reorder_covmat(Ksu_full, N, square=False)
 
-    jax_print(Kuu[0].round(2))
-    jax_print(Kuu[-1].round(2))
-    jax_print(Kuu_full.round(2))
-    jax_print(Kuu_reord.round(2))
+    jax_print(Ksu[0].round(2))
+    jax_print(Ksu[-1].round(2))
+    jax_print(Ksu_full.round(2))
+    jax_print(Ksu_reord.round(2))
 
 
     pdb.set_trace()

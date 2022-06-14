@@ -38,24 +38,24 @@ def rdm_upper_cholesky_of_precision(key, dim):
     return L.T
 
 
-def reorder_covmat(cov, N, symmetric=True):
+def reorder_covmat(cov, N, square=True):
     T_l, T_r = tuple(jnp.int64(_/N) for _ in cov.shape)
-    P = jnp.zeros(cov.shape)
+    P = jnp.zeros((cov.shape[0], cov.shape[0]))
     for t in range(T_l):
         for n in range(N):
             P = P.at[t*N+n, n*T_l+t].set(1.)
-    if symmetric:
+    if square:
         P2 = P
-    elif not symmetric:
-        P2 = jnp.zeros(cov.shape)
+    elif not square:
+        P2 = jnp.zeros((cov.shape[1], cov.shape[1]))
         for t in range(T_r):
             for n in range(N):
                 P2 = P2.at[t*N+n, n*T_r+t].set(1.)
     return jnp.dot(P, jnp.dot(cov, P2.T))
 
 
+np.set_printoptions(linewidth=np.inf)
 def array_print(arg, transforms):
-    np.set_printoptions(linewidth=np.inf)
     print(np.array2string(arg))
 
 
