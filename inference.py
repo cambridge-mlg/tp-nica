@@ -56,9 +56,9 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov, x, t, tau, nsamples):
 def structured_elbo_s2(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
     What, yhat, tu = phi_s
+    N, n_pseudo = yhat.shape
     Kuu = compute_K(tu, cov_fn, theta_cov).transpose(2, 0, 1)/tau[:, None, None]\
         + 1e-6*jnp.eye(len(tu))
-    N, L = Kuu.shape[0], tu.shape[0]
     Ksu = vmap(lambda tc:
             vmap(lambda t1:
                 vmap(lambda t2: cov_fn(t1, t2, tc))(tu)
@@ -74,13 +74,11 @@ def structured_elbo_s2(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     Kuu_reord = reorder_covmat(Kuu_full, N)
     Ksu_reord = reorder_covmat(Ksu_full, N, square=False)
 
-    jax_print(Ksu[0].round(2))
-    jax_print(Ksu[-1].round(2))
-    jax_print(Ksu_full.round(2))
-    jax_print(Ksu_reord.round(2))
+    # 
+    WTy = jnp.einsum('ijk,ik->jk', What, yhat)
 
 
-    pdb.set_trace()
+    
 
 
 

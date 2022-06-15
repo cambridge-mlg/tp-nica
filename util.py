@@ -1,7 +1,11 @@
 import operator
 import jax
 import jax.numpy as jnp
+from jax.lax import scan
+from jax.random import split
 from jax.tree_util import tree_map
+
+from time import perf_counter
 
 # batch utils
 vdot = lambda x, y: jnp.sum(x*y, -1)
@@ -49,3 +53,16 @@ def zero_mean_fn(x):
 
 def cos_1d_mean_fn(x):
     return jnp.cos(x)
+
+
+
+def profile(theta, state, step, nsteps, nsamples):
+    rng = jax.random.PRNGKey(0)
+    durations = []
+    f = jax.jit(lambda k: scan(lambda s, k: step(k, theta, s), state,
+                               split(k, nsteps))[1][0]).lower(rng).compile()
+    for i in range(nsamples):
+        tstart = perf_counter()
+        f(rng).block_until_ready()
+        durations.append((perf_counter()-tstart))
+    return jnp.median(jnp.array(durations)).item()/nsteps

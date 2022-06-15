@@ -48,17 +48,18 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta = (theta_x, theta_k, theta_tau)
 
     # initialize variational parameters (phi) with pseudo-points (tu)
+    pdb.set_trace()
     tu, key = rngcall(lambda k: jr.uniform(k, shape=(n_data, n_pseudo, 1),
                                            minval=jnp.min(t),
                                            maxval=jnp.max(t)), key)
     W, key = rngcall(lambda _k: vmap(
         lambda _: rdm_upper_cholesky_of_precision(_, N), out_axes=-1)(
-            jr.split(_k, len(tu))), key
+            jr.split(_k, n_pseudo)), key
     )
     if args.diag_approx:
         W = vmap(lambda _: jnp.diag(_), in_axes=-1, out_axes=-1)(W)
     phi_s = (jnp.repeat(W[None, :], n_data, 0),
-             jnp.zeros(shape=(n_data, N, len(tu))), tu)
+             jnp.ones(shape=(n_data, N, n_pseudo)), tu)
     phi_df, key = rngcall(lambda _: vmap(rdm_df)(jr.split(_, n_data*N)), key)
     phi_df = phi_df.reshape(n_data, N)
     phi_tau = (phi_df, phi_df)
