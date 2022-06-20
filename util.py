@@ -60,7 +60,7 @@ def profile(theta, state, step, nsteps, nsamples):
     rng = jax.random.PRNGKey(0)
     durations = []
     f = jax.jit(lambda k: scan(lambda s, k: step(k, theta, s), state,
-                               split(k, nsteps))[1][0]).lower(rng).compile()
+                               split(k, nsteps))[1]).lower(rng).compile()
     for i in range(nsamples):
         tstart = perf_counter()
         f(rng).block_until_ready()

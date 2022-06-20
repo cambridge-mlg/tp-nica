@@ -10,23 +10,27 @@ import pdb
 
 from jax.experimental.host_callback import id_tap
 
+
+
+
+
 # inv(L*L.T)*Y
-def invcholp(L, Y):
-    D = js.linalg.solve_triangular(L, Y, lower=True)
-    B = js.linalg.solve_triangular(L.T, D, lower=False)
-    return B
+#def invcholp(L, Y):
+#    D = js.linalg.solve_triangular(L, Y, lower=True)
+#    B = js.linalg.solve_triangular(L.T, D, lower=False)
+#    return B
+#
+#
+## inv(X)*Y
+#def invmp(X, Y):
+#    return invcholp(jnp.linalg.cholesky(X), Y)
 
 
-# inv(X)*Y
-def invmp(X, Y):
-    return invcholp(jnp.linalg.cholesky(X), Y)
-
-
-def gaussian_sample_from_mu_prec(mu, prec, key):
-    # reparametrization trick but sampling using precision matrix instead
-    L = jnp.linalg.cholesky(prec)
-    z = jr.normal(key, mu.shape)
-    return mu+js.linalg.solve_triangular(L.T, z, lower=False)
+#def gaussian_sample_from_mu_prec(mu, prec, key):
+#    # reparametrization trick but sampling using precision matrix instead
+#    L = jnp.linalg.cholesky(prec)
+#    z = jr.normal(key, mu.shape)
+#    return mu+js.linalg.solve_triangular(L.T, z, lower=False)
 
 
 def rdm_upper_cholesky_of_precision(key, dim):
@@ -61,6 +65,11 @@ def array_print(arg, transforms):
 
 def jax_print(x):
     id_tap(tap_func=array_print, arg=x)
+
+
+def cho_inv(x):
+    return js.linalg.cho_solve(js.linalg.cho_factor(x), jnp.eye(x.shape[0]))
+
 
 
 if __name__=="__main__":
