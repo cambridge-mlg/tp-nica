@@ -18,9 +18,9 @@ from tprocess.kernels import compute_K, se_kernel_fn, rdm_SE_kernel_params
 from tprocess.sampling import gen_1d_locations
 
 key = jr.PRNGKey(0)
-N = 20
-n_pseudo = 20
-T = 100
+N = 3
+n_pseudo = 5
+T = 10
 
 #W, key = rngcall(lambda _k: vmap(
 #    lambda _: rdm_upper_cholesky_of_precision(_, N), out_axes=-1)(
