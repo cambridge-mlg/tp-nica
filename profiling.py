@@ -13,61 +13,21 @@ from jax import vmap, jit, value_and_grad
 from jax.tree_util import tree_map
 from util import profile, rngcall, mvp
 from utils import rdm_upper_cholesky_of_precision, jax_print, reorder_covmat
-from utils import cho_inv
+from utils import cho_inv, cho_invmp, lu_inv, lu_invmp
 from tprocess.kernels import compute_K, se_kernel_fn, rdm_SE_kernel_params
 from tprocess.sampling import gen_1d_locations
 
 key = jr.PRNGKey(0)
-N = 3
-n_pseudo = 5
-T = 10
+N = 4
+n_pseudo = 50
+T = 100
 
-#W, key = rngcall(lambda _k: vmap(
-#    lambda _: rdm_upper_cholesky_of_precision(_, N), out_axes=-1)(
-#        jr.split(_k, n_pseudo)), key
-#)
-#y = jnp.ones(shape=(N, n_pseudo))
-#theta = W, y
-#
-#
-#def v1(key, theta, s):
-#    What, yhat = theta
-#    _ = key
-#    WhatT = jnp.swapaxes(What, -1, 0)
-#    s = s + 1e-16
-#    return s, mvp(WhatT, yhat.T).T+s
-#
-#
-#v1_out = v1(key, theta, jnp.zeros(1))[1]
-#
-#
-#def v2(key, theta, s):
-#    What, yhat = theta
-#    _ = key
-#    out = vmap(lambda _W, _y: mvp(_W.T, _y),
-#               in_axes=(-1, -1), out_axes=-1)(What, yhat)
-#    s = s + 1e-16
-#    return s, out+s
-#
-#
-#v2_out = v2(key, theta, jnp.zeros(1))[1]
-#
-#
-#def v3(key, theta, s):
-#    What, yhat = theta
-#    _ = key
-#    out = jnp.einsum('ijk,ik->jk', What, yhat)
-#    s = s + 1e-16
-#    return s, out+s
-#
-#v3_out = v3(key, theta, jnp.zeros(1))[1]
-#
-#
-#v1_time = profile(theta, jnp.zeros(1), v1, 1e5, 4)
-#v2_time = profile(theta, jnp.zeros(1), v2, 1e5, 4)
-#v3_time = profile(theta, jnp.zeros(1), v3, 1e5, 4)
-#print(v1_time, v2_time, v3_time)
-
+W, key = rngcall(lambda _k: vmap(
+    lambda _: rdm_upper_cholesky_of_precision(_, N), out_axes=-1)(
+        jr.split(_k, n_pseudo)), key
+)
+y = jnp.ones(shape=(N, n_pseudo))
+theta = W, y
 
 # profiling matrix inversion
 t = gen_1d_locations(T)
@@ -77,30 +37,51 @@ theta_k, key = rngcall(
    lambda _k: vmap(lambda _: rdm_SE_kernel_params(_, t)
                   )(jr.split(_k, N)), key)
 Kuu = compute_K(tu, se_kernel_fn, theta_k).transpose(2, 0, 1) + 1e-6*jnp.eye(len(tu))
+Ksu = vmap(lambda tc:
+        vmap(lambda t1:
+            vmap(lambda t2: se_kernel_fn(t1, t2, tc))(tu)
+        )(t)
+    )(theta_k)
+
 Kuu_full = js.linalg.block_diag(*Kuu)
+Ksu_full = js.linalg.block_diag(*Ksu)
 Kuu_reord = reorder_covmat(Kuu_full, N)
-theta = Kuu_reord
+Ksu_reord = reorder_covmat(Ksu_full, N, square=False)
+
+WTy = jnp.einsum('ijk,ik->jk', W, y).T.reshape(-1, 1)
+L = js.linalg.block_diag(*jnp.moveaxis(
+  jnp.einsum('ijk, ilk->jlk', W, W), -1, 0))
+
+# profiling
+theta = (Kuu_reord, L, WTy)
 
 
-def v4(key, theta, s):
-    K = theta
+def v6(key, theta, s):
+    Kuu, L, WTy = theta
     _ = key
     s = s + 1e-16
-    return s, jnp.linalg.inv(K)+s
+    Kuu_inv = cho_inv(Kuu)
+    return s, Kuu_inv @ cho_invmp(Kuu_inv+L, WTy)
 
 
-v4_time = profile(theta, jnp.ones(1), v4, 1e4, 3)
-
-
-def v5(key, theta, s):
-    K = theta
+def v7(key, theta, s):
+    Kuu, L, WTy = theta
     _ = key
     s = s + 1e-16
-    return s, cho_inv(K)+s
+    Kuu_inv = jnp.linalg.inv(Kuu)
+    return s, Kuu_inv @ jnp.linalg.inv(Kuu_inv+L) @ WTy
 
 
-v5_time = profile(theta, jnp.ones(1), v5, 1e4, 3)
+def v8(key, theta, s):
+    Kuu, L, WTy = theta
+    _ = key
+    s = s + 1e-16
+    return s, lu_invmp(jnp.eye(L.shape[0])+L@Kuu, WTy)
 
-print("linalg.inv: ", v4_time, "cho_inv: ", v5_time)
 
+v5_time = profile(theta, jnp.ones(1), v6, 1e4, 3)
+v6_time = profile(theta, jnp.ones(1), v7, 1e4, 3)
+v7_time = profile(theta, jnp.ones(1), v8, 1e4, 3)
+
+print(v5_time, v6_time, v7_time)
 pdb.set_trace()

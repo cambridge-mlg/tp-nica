@@ -76,6 +76,11 @@ def structured_elbo_s2(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
     # 
     WTy = jnp.einsum('ijk,ik->jk', What, yhat)
+    L = js.linalg.block_diag(*jnp.moveaxis(
+      jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
+    lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+L@Kuu)
+    KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
+
 
 
     

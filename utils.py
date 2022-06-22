@@ -1,3 +1,4 @@
+from jax._src.scipy.linalg import lu_factor
 from jax.config import config
 config.update("jax_enable_x64", True)
 
@@ -67,8 +68,20 @@ def jax_print(x):
     id_tap(tap_func=array_print, arg=x)
 
 
+def cho_invmp(x, y):
+    return js.linalg.cho_solve(js.linalg.cho_factor(x), y)
+
+
 def cho_inv(x):
-    return js.linalg.cho_solve(js.linalg.cho_factor(x), jnp.eye(x.shape[0]))
+    return cho_invmp(x, jnp.eye(x.shape[0]))
+
+
+def lu_invmp(x, y):
+    return js.linalg.lu_solve(js.linalg.lu_factor(x), y)
+
+
+def lu_inv(x):
+    return js.linalg.lu_solve(js.linalg.lu_factor(x), jnp.eye(x.shape[0]))
 
 
 
