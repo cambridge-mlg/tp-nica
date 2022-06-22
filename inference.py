@@ -74,13 +74,14 @@ def structured_elbo_s2(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     Kuu_reord = reorder_covmat(Kuu_full, N)
     Ksu_reord = reorder_covmat(Ksu_full, N, square=False)
 
-    # 
+    # compute parameters for \tilde{q(s|tau)}
     WTy = jnp.einsum('ijk,ik->jk', What, yhat)
     L = js.linalg.block_diag(*jnp.moveaxis(
       jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
     lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+L@Kuu)
-    KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
-
+    mu_s = Ksu_reord @ js.linalg.lu_solve(lu_fact, WTy)
+    sigma_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
+          in_axes=(0, -1))(Ksu_reord.reshape(T, N, -1), kss)
 
 
     

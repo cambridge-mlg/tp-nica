@@ -18,9 +18,9 @@ from tprocess.kernels import compute_K, se_kernel_fn, rdm_SE_kernel_params
 from tprocess.sampling import gen_1d_locations
 
 key = jr.PRNGKey(0)
-N = 4
-n_pseudo = 50
-T = 100
+N = 3
+n_pseudo = 5
+T = 10
 
 W, key = rngcall(lambda _k: vmap(
     lambda _: rdm_upper_cholesky_of_precision(_, N), out_axes=-1)(
@@ -42,6 +42,9 @@ Ksu = vmap(lambda tc:
             vmap(lambda t2: se_kernel_fn(t1, t2, tc))(tu)
         )(t)
     )(theta_k)
+kss = vmap(
+    lambda tc: vmap(lambda t: se_kernel_fn(t, t, tc))(t)
+    )(theta_k)
 
 Kuu_full = js.linalg.block_diag(*Kuu)
 Ksu_full = js.linalg.block_diag(*Ksu)
@@ -51,37 +54,31 @@ Ksu_reord = reorder_covmat(Ksu_full, N, square=False)
 WTy = jnp.einsum('ijk,ik->jk', W, y).T.reshape(-1, 1)
 L = js.linalg.block_diag(*jnp.moveaxis(
   jnp.einsum('ijk, ilk->jlk', W, W), -1, 0))
+lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+L@Kuu_reord)
+mu_s = Ksu_reord @ js.linalg.lu_solve(lu_fact, WTy)
+
+
+# 
+Kuu_inv = jnp.linalg.inv(Kuu_reord)
+J_inv = jnp.linalg.inv(Kuu_inv+L)
+v1 = jnp.diag(kss.T.reshape(-1,))-Ksu_reord @ Kuu_inv @ Ksu_reord.T + Ksu_reord @ Kuu_inv \
+        @ J_inv @ Kuu_inv @ Ksu_reord.T
+
+v2 = -Ksu_reord @ js.linalg.lu_solve(lu_fact, L) @ Ksu_reord.T
+v3 = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
+          in_axes=(0, -1))(Ksu_reord.reshape(T, N, -1), kss)
 
 # profiling
-theta = (Kuu_reord, L, WTy)
+#theta = (Kuu_reord, L, WTy)
+#
+#
+#def v8(key, theta, s):
+#    Kuu, L, WTy = theta
+#    _ = key
+#    s = s + 1e-16
+#    return s, lu_invmp(jnp.eye(L.shape[0])+L@Kuu, WTy)
 
 
-def v6(key, theta, s):
-    Kuu, L, WTy = theta
-    _ = key
-    s = s + 1e-16
-    Kuu_inv = cho_inv(Kuu)
-    return s, Kuu_inv @ cho_invmp(Kuu_inv+L, WTy)
+#v7_time = profile(theta, jnp.ones(1), v8, 1e4, 3)
 
-
-def v7(key, theta, s):
-    Kuu, L, WTy = theta
-    _ = key
-    s = s + 1e-16
-    Kuu_inv = jnp.linalg.inv(Kuu)
-    return s, Kuu_inv @ jnp.linalg.inv(Kuu_inv+L) @ WTy
-
-
-def v8(key, theta, s):
-    Kuu, L, WTy = theta
-    _ = key
-    s = s + 1e-16
-    return s, lu_invmp(jnp.eye(L.shape[0])+L@Kuu, WTy)
-
-
-v5_time = profile(theta, jnp.ones(1), v6, 1e4, 3)
-v6_time = profile(theta, jnp.ones(1), v7, 1e4, 3)
-v7_time = profile(theta, jnp.ones(1), v8, 1e4, 3)
-
-print(v5_time, v6_time, v7_time)
 pdb.set_trace()
