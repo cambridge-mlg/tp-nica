@@ -56,17 +56,10 @@ L = js.linalg.block_diag(*jnp.moveaxis(
   jnp.einsum('ijk, ilk->jlk', W, W), -1, 0))
 lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+L@Kuu_reord)
 mu_s = Ksu_reord @ js.linalg.lu_solve(lu_fact, WTy)
-
-
-# 
-Kuu_inv = jnp.linalg.inv(Kuu_reord)
-J_inv = jnp.linalg.inv(Kuu_inv+L)
-v1 = jnp.diag(kss.T.reshape(-1,))-Ksu_reord @ Kuu_inv @ Ksu_reord.T + Ksu_reord @ Kuu_inv \
-        @ J_inv @ Kuu_inv @ Ksu_reord.T
-
-v2 = -Ksu_reord @ js.linalg.lu_solve(lu_fact, L) @ Ksu_reord.T
-v3 = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
+cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
           in_axes=(0, -1))(Ksu_reord.reshape(T, N, -1), kss)
+s, key = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
+                                                  cov_s, shape=(2, T)), key)
 
 # profiling
 #theta = (Kuu_reord, L, WTy)

@@ -90,11 +90,3 @@ def nica_logpx(x, s, theta_x):
     theta_mix, theta_Q = theta_x
     mu = nica_mlp(theta_mix, s)
     return jsp.stats.multivariate_normal.logpdf(x, mu, theta_Q)
-
-
-
-
-
-
-
-

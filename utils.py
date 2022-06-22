@@ -84,7 +84,5 @@ def lu_inv(x):
     return js.linalg.lu_solve(js.linalg.lu_factor(x), jnp.eye(x.shape[0]))
 
 
-
-
 if __name__=="__main__":
     pdb.set_trace()

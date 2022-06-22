@@ -1,5 +1,6 @@
 import argparse
 import jax
+from jax._src.numpy.linalg import slogdet
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
@@ -57,6 +58,7 @@ def structured_elbo_s2(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
+    T = t.shape[0]
     Kuu = compute_K(tu, cov_fn, theta_cov).transpose(2, 0, 1)/tau[:, None, None]\
         + 1e-6*jnp.eye(len(tu))
     Ksu = vmap(lambda tc:
@@ -75,38 +77,47 @@ def structured_elbo_s2(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     Ksu_reord = reorder_covmat(Ksu_full, N, square=False)
 
     # compute parameters for \tilde{q(s|tau)}
-    WTy = jnp.einsum('ijk,ik->jk', What, yhat)
+    WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
     L = js.linalg.block_diag(*jnp.moveaxis(
       jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
-    lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+L@Kuu)
-    mu_s = Ksu_reord @ js.linalg.lu_solve(lu_fact, WTy)
-    sigma_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
+    LK = L@Kuu_reord
+    lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+LK)
+    KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
+    mu_s = Ksu_reord @ KyyWTy
+    cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
           in_axes=(0, -1))(Ksu_reord.reshape(T, N, -1), kss)
+    s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
+        cov_s, shape=(nsamples, T)), rng)
+
+    # compute E_{\tilde{q(s|tau)}}[log_p(x_t|s_t)]
+    Elogpx = jnp.mean(
+        jnp.sum(vmap(lambda _: vmap(logpx,(1, 0, None))(x, _, theta_x))(s), 1)
+    )
+
+    # compute KL[q(u)|p(u)]
+    tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
+    h = Kuu_reord@KyyWTy
+    logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
+                 +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
+    KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
+
+    elbo = Elogpx - KLqpu
 
 
-    
+    #Kyy = What[:, :, None]*Kuu*What[: , None, :] + jnp.eye(What.shape[-1])
+    #Kyyinv = jnp.linalg.inv(Kyy)
+    #Ksy = Ksu*What[:, None, :]
 
+    #qu_tau = (What*yhat), -.5*(jnp.linalg.inv(Kuu) + vmap(jnp.diag)(jnp.square(What)))
+    #qu_tau_meanparams = gaussian_meanparams(qu_tau)
 
-
-    Kyy = What[:, :, None]*Kuu*What[: , None, :] + jnp.eye(What.shape[-1])
-    Kyyinv = jnp.linalg.inv(Kyy)
-    Ksy = Ksu*What[:, None, :]
-
-    v_s = kss - jnp.sum(mmp(Ksy,Kyyinv)*Ksy, -1)
-    id_print(v_s)
-    mu_s = mvp(Ksy, mvp(Kyyinv, yhat))
-
-    qu_tau = (What*yhat), -.5*(jnp.linalg.inv(Kuu) + vmap(jnp.diag)(jnp.square(What)))
-    qu_tau_meanparams = gaussian_meanparams(qu_tau)
-
-    s = jax.random.normal(rng, (nsamples, *mu_s.shape))*jnp.sqrt(v_s) + mu_s
-    elbo = jnp.sum(gaussian_logZ(qu_tau), 0) \
-        - jnp.sum(qu_tau_meanparams[0]*What*yhat) \
-        - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(qu_tau_meanparams[1]))) \
-        + jnp.mean(jnp.sum(vmap(vmap(logpx, (1, 1, None)),
-                                (None, 0, None))(x, s, theta_x), 1), 0) \
-        - jnp.sum(.5*jnp.linalg.slogdet(2*jnp.pi*Kuu)[1], 0)
-    return elbo
+    #elbo = jnp.sum(gaussian_logZ(qu_tau), 0) \
+    #    - jnp.sum(qu_tau_meanparams[0]*What*yhat) \
+    #    - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(qu_tau_meanparams[1]))) \
+    #    + jnp.mean(jnp.sum(vmap(vmap(logpx, (1, 1, None)),
+    #                            (None, 0, None))(x, s, theta_x), 1), 0) \
+    #    - jnp.sum(.5*jnp.linalg.slogdet(2*jnp.pi*Kuu)[1], 0)
+    return 0
 
 
 # compute elbo estimate, assumes q(r) is gamma
