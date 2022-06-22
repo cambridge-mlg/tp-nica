@@ -100,24 +100,7 @@ def structured_elbo_s2(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
                  +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
     KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
-
-    elbo = Elogpx - KLqpu
-
-
-    #Kyy = What[:, :, None]*Kuu*What[: , None, :] + jnp.eye(What.shape[-1])
-    #Kyyinv = jnp.linalg.inv(Kyy)
-    #Ksy = Ksu*What[:, None, :]
-
-    #qu_tau = (What*yhat), -.5*(jnp.linalg.inv(Kuu) + vmap(jnp.diag)(jnp.square(What)))
-    #qu_tau_meanparams = gaussian_meanparams(qu_tau)
-
-    #elbo = jnp.sum(gaussian_logZ(qu_tau), 0) \
-    #    - jnp.sum(qu_tau_meanparams[0]*What*yhat) \
-    #    - jnp.sum(-.5*jnp.square(What)*(vmap(jnp.diag)(qu_tau_meanparams[1]))) \
-    #    + jnp.mean(jnp.sum(vmap(vmap(logpx, (1, 1, None)),
-    #                            (None, 0, None))(x, s, theta_x), 1), 0) \
-    #    - jnp.sum(.5*jnp.linalg.slogdet(2*jnp.pi*Kuu)[1], 0)
-    return 0
+    return Elogpx-KLqpu
 
 
 # compute elbo estimate, assumes q(r) is gamma
