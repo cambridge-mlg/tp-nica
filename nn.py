@@ -7,6 +7,7 @@ import jax.random as jrandom
 import jax.scipy as jsp
 from jax import vmap
 
+import pdb
 
 def l2normalize(W, axis=0):
     """Normalizes MLP weight matrices.
@@ -87,6 +88,7 @@ def nica_mlp(params, s, activation='xtanh', slope=0.1):
 
 
 def nica_logpx(x, s, theta_x):
-    theta_mix, theta_Q = theta_x
+    theta_mix, theta_var = theta_x
     mu = nica_mlp(theta_mix, s)
-    return jsp.stats.multivariate_normal.logpdf(x, mu, theta_Q)
+    S = jnp.diag(jnp.exp(theta_var))
+    return jsp.stats.multivariate_normal.logpdf(x, mu, S)

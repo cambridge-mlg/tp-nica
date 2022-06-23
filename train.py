@@ -41,11 +41,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         lambda _k: vmap(lambda _: rdm_SE_kernel_params(_, t)
                        )(jr.split(_k, N)), key
     )
-    theta_Q, key = rngcall(lambda _: jnp.eye(M)*jr.uniform(_, shape=(M,),
-                minval=0.01, maxval=0.2), key)
+    theta_var, key = rngcall(lambda _: jr.uniform(_, shape=(M,),
+                minval=-1, maxval=1), key)
     theta_mix, key = rngcall(lambda _: init_nica_params(
         _, N, M, L, repeat_layers=False), key)
-    theta_x = (theta_mix, theta_Q)
+    theta_x = (theta_mix, theta_var)
     theta = (theta_x, theta_k, theta_tau)
 
     # initialize variational parameters (phi) with pseudo-points (tu)

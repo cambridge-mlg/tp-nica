@@ -46,11 +46,11 @@ def parse():
                         help="approx. likelih. factor with diagonal Gaussian")
     parser.add_argument('--inference-iters', type=int, default=5,
                         help="num. of inference iterations")
-    parser.add_argument('--num-s-samples', type=int, default=5,
+    parser.add_argument('--num-s-samples', type=int, default=10,
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--learning-rate', type=float, default=3e-2,
+    parser.add_argument('--learning-rate', type=float, default=3e-3,
                         help="learning rate for training")
     parser.add_argument('--minib-size', type=float, default=1,
                         help="minibatch size")
@@ -62,7 +62,7 @@ def parse():
     parser.add_argument('--est-seed', type=int, default=50,
                         help="seed for initializing learning/inference")
     # plotting frequency
-    parser.add_argument('--plot-freq', type=int, default=10,
+    parser.add_argument('--plot-freq', type=int, default=100,
                         help="plot components every n epoch")
     # saving and loading
     parser.add_argument('--out-dir', type=str, default="output/",
