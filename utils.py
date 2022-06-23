@@ -7,6 +7,7 @@ import jax.random as jr
 import jax.scipy as js
 
 import numpy as np
+import scipy as sp
 import pdb
 
 from jax.experimental.host_callback import id_tap
@@ -82,6 +83,48 @@ def lu_invmp(x, y):
 
 def lu_inv(x):
     return js.linalg.lu_solve(js.linalg.lu_factor(x), jnp.eye(x.shape[0]))
+
+
+def matching_sources_corr(est_sources, true_sources, method="spearman"):
+    """Finding matching indices between true and estimated sources.
+    Args:
+        est_sources (array): data on estimated independent components.
+        true_sources (array): data on true independent components.
+        method (str): "pearson" or "spearman" correlation method to use.
+    Returns:
+        mean_abs_corr (array): average correlation matrix between
+                               matched sources.
+        s_est_sort (array): estimed sources array but columns sorted
+                            according to best matching index.
+        cid (array): vector of the best matching indices.
+    """
+    N = est_sources.shape[0]
+
+    # calculate correlations
+    if method == "pearson":
+        corr = np.corrcoef(true_sources, est_sources, rowvar=True)
+        corr = corr[0:N, N:]
+    elif method == "spearman":
+        corr, _ = sp.stats.spearmanr(true_sources, est_sources, axis=1)
+        corr = corr[0:N, N:]
+
+    # sort variables to try find matching components
+    ridx, cidx = sp.optimize.linear_sum_assignment(-np.abs(corr))
+
+    # calc with best matching components
+    mean_abs_corr = np.mean(np.abs(corr[ridx, cidx]))
+    s_est_sorted = est_sources[cidx, :]
+    return mean_abs_corr, s_est_sorted, cidx
+
+
+def plot_ic(s_n, s_est_n, ax, ax1):
+    T = s_n.shape[0]
+    ax.clear()
+    #ax1.clear()
+    ax.plot(s_n, color='blue')
+    ax.set_xlim([0, T])
+    #ax.set_ylim([-2, 2])
+    #ax1.plot(s_est_n, color='red')
 
 
 if __name__=="__main__":

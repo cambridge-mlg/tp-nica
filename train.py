@@ -5,7 +5,7 @@ config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import jax.random as jr
 import optax
-
+import matplotlib.pyplot as plt
 import pdb
 
 from jax import vmap, jit, value_and_grad
@@ -14,7 +14,8 @@ from functools import partial
 
 from tprocess.kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
-from utils import rdm_upper_cholesky_of_precision
+from utils import rdm_upper_cholesky_of_precision, matching_sources_corr
+from utils import plot_ic
 from util import rngcall, tree_get_idx, tree_get_range
 from inference import avg_neg_elbo
 
@@ -76,12 +77,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         #@jit
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
-            (nvlb, qs), g = value_and_grad(avg_neg_elbo, argnums=(1, 2),
+            (nvlb, s), g = value_and_grad(avg_neg_elbo, argnums=(1, 2),
                                      has_aux=True)(key, theta, phi_n, logpx,
                                                    kernel_fn, x, t, nsamples)
+            s = s.mean(axis=(1,2)).swapaxes(-1, -2)
             theta_g, phi_n_g = g
-
-            pdb.set_trace()
 
             # perform gradient updates
             theta_updates, theta_opt_state = optimizer.update(
@@ -90,7 +90,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             phi_n_updates, phi_n_opt_states = vmap(optimizer.update)(
                 phi_n_g, phi_n_opt_states, phi_n)
             phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
-            return nvlb, theta, phi_n, theta_opt_state, phi_n_opt_states
+            return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
         return training_step
 
 
@@ -99,20 +99,23 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
     # train over minibatches
     train_data = x.copy()
+    s_data = s.copy()
     # train for multiple epochs
     for epoch in range(num_epochs):
         shuffle_idx, key = rngcall(jr.permutation, key, n_data)
         shuff_data = train_data[shuffle_idx]
+        shuff_s = s_data[shuffle_idx]
         # iterate over all minibatches
         for it in range(num_minibs):
             x_it = shuff_data[it*minib_size:(it+1)*minib_size]
+            s_it = shuff_s[it*minib_size:(it+1)*minib_size]
             # select variational parameters of the observations in minibatch
             idx_set_it = shuffle_idx[it*minib_size:(it+1)*minib_size]
             phi_it = tree_get_idx(phi, idx_set_it)
             phi_opt_states_it = tree_get_idx(phi_opt_states, idx_set_it)
 
             # training step
-            (nvlb, theta, phi_it, theta_opt_state, phi_opt_states_it), key = rngcall(
+            (nvlb, s_sample, theta, phi_it, theta_opt_state, phi_opt_states_it), key = rngcall(
                 training_step, key, theta, phi_it, theta_opt_state,
                 phi_opt_states_it, x_it)
 
@@ -121,10 +124,43 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             phi_opt_states = tree_map(lambda a, b: a.at[idx_set_it].set(b),
                                       phi_opt_states, phi_opt_states_it)
 
+            # evaluate
+            minib_mccs = []
+            for j in range(minib_size):
+                mcc, _, sort_idx = matching_sources_corr(s_sample[j], s_it[j])
+                minib_mccs.append(mcc)
+            minib_avg_mcc = jnp.mean(jnp.array(minib_mccs))
 
             print("*Epoch: [{0}/{1}]\t"
                   "Minibatch: [{2}/{3}]\t"
-                  "ELBO: {4}".format(epoch, num_epochs, it, num_minibs, -nvlb))
+                  "ELBO: {4}\t"
+                  "MCC: {5}".format(epoch, num_epochs-1, it,
+                                    num_minibs-1, -nvlb, minib_avg_mcc))
+
+            # plot regularly
+            if epoch % args.plot_freq == 0:
+                plot_idx = 0 # which data sample to plot in each minibatch
+                plot_start = 0
+                plot_len = 200
+                plot_end = plot_start+plot_len
+
+                # set plot
+                fig, ax = plt.subplots(1, N, figsize=(10 * N, 6), sharex=True)
+
+                # create separate plot for each IC
+                for n in range(N):
+                    s_sample_n = s_sample[plot_idx][sort_idx][n, plot_start:
+                                                              plot_end]
+                    s_it_n = s_it[plot_idx][sort_idx][n, plot_start:
+                                                      plot_end]
+                    ax[n].clear()
+                    ax2_n = ax[n].twinx()
+                    ax[n].plot(s_it_n, color='blue')
+                    ax[n].set_xlim([0, T])
+                    ax2_n.plot(s_sample_n, color='red')
+                plt.show(block=False)
+                plt.pause(10.)
+                plt.close()
     return 0
 
 

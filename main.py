@@ -27,15 +27,15 @@ def parse():
                         help="number of ICs")
     parser.add_argument('-M', type=int, default=3,
                         help="dimension of each observed data point")
-    parser.add_argument('-T', type=int, default=100,
+    parser.add_argument('-T', type=int, default=200,
                         help="number of latent input locations")
     parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=1,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=10,
+    parser.add_argument('--num-data', type=int, default=1,
                         help="total number of data samples to generate")
-    parser.add_argument('-L', type=int, default=2,
+    parser.add_argument('-L', type=int, default=0,
                         help="number of nonlinear layers; 0 = linear ICA")
     parser.add_argument('--mean-function', type=str, default="zero",
                         help="zero (zero mean assumed),")
@@ -61,6 +61,9 @@ def parse():
                         help="seed for initializing data generation")
     parser.add_argument('--est-seed', type=int, default=50,
                         help="seed for initializing learning/inference")
+    # plotting frequency
+    parser.add_argument('--plot-freq', type=int, default=10,
+                        help="plot components every n epoch")
     # saving and loading
     parser.add_argument('--out-dir', type=str, default="output/",
                         help="location where data is saved")
@@ -86,6 +89,8 @@ def main():
         k_fn = se_kernel_fn
     else:
         raise NotImplementedError
+
+    assert args.minib_size <= args.num_data
 
     # generate synthetic data
     if args.D == 1:
