@@ -76,10 +76,12 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         #@jit
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
-            nvlb, g = value_and_grad(avg_neg_elbo, argnums=(1, 2))(
-                              key, theta, phi_n, logpx,
-                              kernel_fn, x, t, nsamples)
+            (nvlb, qs), g = value_and_grad(avg_neg_elbo, argnums=(1, 2),
+                                     has_aux=True)(key, theta, phi_n, logpx,
+                                                   kernel_fn, x, t, nsamples)
             theta_g, phi_n_g = g
+
+            pdb.set_trace()
 
             # perform gradient updates
             theta_updates, theta_opt_state = optimizer.update(
