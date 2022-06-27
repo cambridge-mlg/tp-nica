@@ -60,6 +60,8 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
                  +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
     KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
+    #jax_print(Elogpx)
+    #jax_print(KLqpu)
     return Elogpx-KLqpu, s
 
 

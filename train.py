@@ -8,7 +8,7 @@ import optax
 import matplotlib.pyplot as plt
 import pdb
 
-from jax import vmap, jit, value_and_grad
+from jax import vmap, jit, value_and_grad, lax
 from jax.tree_util import tree_map
 from functools import partial
 
@@ -32,6 +32,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     num_epochs = args.num_epochs
     nsamples = (args.num_s_samples, args.num_tau_samples)
     lr = args.learning_rate
+    gt_Q, gt_mixer_params, gt_kernel_params, gt_dfs = params
 
     # initialize generative model params (theta)
     theta_tau, key = rngcall(
@@ -46,6 +47,15 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta_mix, key = rngcall(lambda _: init_nica_params(
         _, N, M, L, repeat_layers=False), key)
     theta_x = (theta_mix, theta_var)
+
+    # for debugging: set some params to ground-truths
+    if args.use_gt_nica:
+        theta_x = (gt_mixer_params, jnp.log(jnp.diag(gt_Q)))
+    if args.use_gt_kernel:
+        theta_k = gt_kernel_params
+    if args.use_gt_dfs:
+        theta_tau = gt_dfs
+
     theta = (theta_x, theta_k, theta_tau)
 
     # initialize variational parameters (phi) with pseudo-points (tu)
@@ -65,7 +75,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     phi_tau = (phi_df, phi_df)
     phi = (phi_s, phi_tau)
 
-    # set up training params
+    # set up training details
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
     optimizer = optax.adam(lr)
@@ -73,7 +83,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta_opt_state = optimizer.init(theta)
 
 
-    def make_training_step(logpx, kernel_fn, t, nsamples):
+    def make_training_step(logpx, kernel_fn, t, nsamples, args):
         #@jit
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
@@ -86,6 +96,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             # perform gradient updates
             theta_updates, theta_opt_state = optimizer.update(
                 theta_g, theta_opt_state, theta)
+
             theta = optax.apply_updates(theta, theta_updates)
             phi_n_updates, phi_n_opt_states = vmap(optimizer.update)(
                 phi_n_g, phi_n_opt_states, phi_n)
@@ -95,7 +106,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
 
     training_step = make_training_step(nica_logpx, tp_kernel_fn, t,
-                                       nsamples)
+                                       nsamples, args)
 
     # train over minibatches
     train_data = x.copy()

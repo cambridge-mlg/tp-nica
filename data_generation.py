@@ -47,7 +47,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
 
     # sample ICs and their mixtures
     key, *sample_keys = jr.split(key, num_samples+1)
-    z, s, r = vmap(
+    z, s, tau = vmap(
         lambda _: sample_tpnica(_, t, mu_func, kernel_func, k_params,
                                 dfs, mixer_params)
     )(jnp.vstack(sample_keys))
@@ -57,7 +57,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
                                                        keepdims=True)
     x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
     Q = noise_factor*jnp.eye(M)
-    return x, z, s, r, Q, mixer_params, k_params, dfs
+    return x, z, s, tau, Q, mixer_params, k_params, dfs
 
 
 if __name__ == "__main__":

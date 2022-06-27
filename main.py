@@ -46,18 +46,18 @@ def parse():
                         help="approx. likelih. factor with diagonal Gaussian")
     parser.add_argument('--inference-iters', type=int, default=5,
                         help="num. of inference iterations")
-    parser.add_argument('--num-s-samples', type=int, default=10,
+    parser.add_argument('--num-s-samples', type=int, default=5,
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--learning-rate', type=float, default=3e-3,
+    parser.add_argument('--learning-rate', type=float, default=3e-2,
                         help="learning rate for training")
     parser.add_argument('--minib-size', type=float, default=1,
                         help="minibatch size")
-    parser.add_argument('--num-epochs', type=float, default=1000,
+    parser.add_argument('--num-epochs', type=float, default=10000,
                         help="number of training epochs")
     # set seeds
-    parser.add_argument('--data-seed', type=int, default=0,
+    parser.add_argument('--data-seed', type=int, default=1,
                         help="seed for initializing data generation")
     parser.add_argument('--est-seed', type=int, default=50,
                         help="seed for initializing learning/inference")
@@ -67,7 +67,13 @@ def parse():
     # saving and loading
     parser.add_argument('--out-dir', type=str, default="output/",
                         help="location where data is saved")
-
+    # for debugging
+    parser.add_argument('--use-gt-nica', action='store_true', default=False,
+                        help="set nonlinear ica params to ground-truth values")
+    parser.add_argument('--use-gt-kernel', action='store_true', default=False,
+                        help="set GP kernel params to ground-truth values")
+    parser.add_argument('--use-gt-dfs', action='store_true', default=False,
+                        help="set tau to ground-truth values")
     args = parser.parse_args()
     return args
 
@@ -99,9 +105,9 @@ def main():
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
 
-    x, z, s, r, *params = gen_tprocess_nica_data(data_key, t, args.N, args.M,
-                                                 args.L, args.num_data, mu_fn,
-                                                 k_fn)
+    x, z, s, tau, *params = gen_tprocess_nica_data(data_key, t, args.N, args.M,
+                                                   args.L, args.num_data, mu_fn,
+                                                   k_fn)
     # train model
     train(x, z, s, t, mu_fn, k_fn, params, args, est_key)
 

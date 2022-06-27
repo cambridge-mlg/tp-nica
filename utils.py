@@ -80,7 +80,7 @@ def comp_K_N(t1, t2, cov_fn, theta_cov):
     return out
 
 
-def matching_sources_corr(est_sources, true_sources, method="spearman"):
+def matching_sources_corr(est_sources, true_sources, method="pearson"):
     """Finding matching indices between true and estimated sources.
     Args:
         est_sources (array): data on estimated independent components.
