@@ -80,7 +80,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             (nvlb, s), g = value_and_grad(avg_neg_elbo, argnums=(1, 2),
                                      has_aux=True)(key, theta, phi_n, logpx,
                                                    kernel_fn, x, t, nsamples)
-            s = s.mean(axis=(1,2)).swapaxes(-1, -2)
+            s = s.mean(axis=(1, 2)).swapaxes(-1, -2)
             theta_g, phi_n_g = g
 
             # perform gradient updates

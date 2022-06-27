@@ -14,7 +14,7 @@ from functools import partial
 from math import factorial
 from tprocess.kernels import se_kernel_fn, compute_K
 from tprocess.sampling import sample_tprocess
-from utils import reorder_covmat, jax_print
+from utils import reorder_covmat, jax_print, comp_K_N
 from util import *
 from gamma import *
 from gaussian import *
@@ -25,33 +25,27 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
     T = t.shape[0]
-    Kuu = compute_K(tu, cov_fn, theta_cov).transpose(2, 0, 1)/tau[:, None, None]\
-        + 1e-6*jnp.eye(len(tu))
-    Ksu = vmap(lambda tc:
-            vmap(lambda t1:
-                vmap(lambda t2: cov_fn(t1, t2, tc))(tu)
-            )(t)
-        )(theta_cov)/tau[:, None, None]
+    Kuu = vmap(lambda b: vmap(lambda a:
+        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None]+1e-6*jnp.eye(N)
+    )(tu))(tu)
+    Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
+    Ksu = vmap(lambda b:vmap(lambda a:
+        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None])(tu))(t)
+    Ksu = Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N)
     kss = vmap(
         lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
         )(theta_cov) / tau[:, None]
-    # construct large block diagonal cov matrices
-    Kuu_full = js.linalg.block_diag(*Kuu)
-    Ksu_full = js.linalg.block_diag(*Ksu)
-    # re-order the matrices to have same time points next to each other
-    Kuu_reord = reorder_covmat(Kuu_full, N)
-    Ksu_reord = reorder_covmat(Ksu_full, N, square=False)
 
     # compute parameters for \tilde{q(s|tau)}
     WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
     L = js.linalg.block_diag(*jnp.moveaxis(
       jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
-    LK = L@Kuu_reord
+    LK = L@Kuu
     lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+LK)
     KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
-    mu_s = Ksu_reord @ KyyWTy
+    mu_s = Ksu @ KyyWTy
     cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
-          in_axes=(0, -1))(Ksu_reord.reshape(T, N, -1), kss)
+          in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
@@ -62,7 +56,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
     # compute KL[q(u)|p(u)]
     tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
-    h = Kuu_reord@KyyWTy
+    h = Kuu@KyyWTy
     logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
                  +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
     KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ

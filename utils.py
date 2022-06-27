@@ -1,4 +1,4 @@
-from jax._src.scipy.linalg import lu_factor
+from jax.scipy.linalg import lu_factor
 from jax.config import config
 config.update("jax_enable_x64", True)
 
@@ -10,29 +10,10 @@ import numpy as np
 import scipy as sp
 import pdb
 
+from jax import vmap
+from jax.lax import cond
 from jax.experimental.host_callback import id_tap
-
-
-
-
-
-# inv(L*L.T)*Y
-#def invcholp(L, Y):
-#    D = js.linalg.solve_triangular(L, Y, lower=True)
-#    B = js.linalg.solve_triangular(L.T, D, lower=False)
-#    return B
-#
-#
-## inv(X)*Y
-#def invmp(X, Y):
-#    return invcholp(jnp.linalg.cholesky(X), Y)
-
-
-#def gaussian_sample_from_mu_prec(mu, prec, key):
-#    # reparametrization trick but sampling using precision matrix instead
-#    L = jnp.linalg.cholesky(prec)
-#    z = jr.normal(key, mu.shape)
-#    return mu+js.linalg.solve_triangular(L.T, z, lower=False)
+from util import tree_get_idx
 
 
 def rdm_upper_cholesky_of_precision(key, dim):
@@ -83,6 +64,20 @@ def lu_invmp(x, y):
 
 def lu_inv(x):
     return js.linalg.lu_solve(js.linalg.lu_factor(x), jnp.eye(x.shape[0]))
+
+
+def comp_k_n(t1, t2, n1, n2, cov_fn, theta_cov):
+    return cond(n1==n2, lambda a, b, c: cov_fn(a, b, c),
+                lambda a, b, c: jnp.array(0.),
+                t1, t2, tree_get_idx(theta_cov, n1))
+
+
+def comp_K_N(t1, t2, cov_fn, theta_cov):
+    N = theta_cov[0].shape[0]
+    out = vmap(lambda a: vmap(
+        lambda b: comp_k_n(t1, t2, a, b, cov_fn, theta_cov)
+                         )(jnp.arange(N)))(jnp.arange(N))
+    return out
 
 
 def matching_sources_corr(est_sources, true_sources, method="spearman"):
