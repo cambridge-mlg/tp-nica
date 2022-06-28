@@ -56,7 +56,7 @@ def cos_1d_mean_fn(x):
 
 
 
-def profile(theta, state, step, nsteps, nsamples):
+def jax_profiler(theta, state, step, nsteps, nsamples):
     rng = jax.random.PRNGKey(0)
     durations = []
     f = jax.jit(lambda k: scan(lambda s, k: step(k, theta, s), state,
