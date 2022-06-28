@@ -15,7 +15,7 @@ from functools import partial
 from tprocess.kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
 from utils import rdm_upper_cholesky_of_precision, matching_sources_corr
-from utils import plot_ic
+from utils import plot_ic, jax_print
 from util import rngcall, tree_get_idx, tree_get_range
 from inference import avg_neg_elbo
 
@@ -32,7 +32,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     num_epochs = args.num_epochs
     nsamples = (args.num_s_samples, args.num_tau_samples)
     lr = args.learning_rate
-    gt_Q, gt_mixer_params, gt_kernel_params, gt_dfs = params
+    gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
     # initialize generative model params (theta)
     theta_tau, key = rngcall(
@@ -53,8 +53,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         theta_x = (gt_mixer_params, jnp.log(jnp.diag(gt_Q)))
     if args.use_gt_kernel:
         theta_k = gt_kernel_params
-    if args.use_gt_dfs:
-        theta_tau = gt_dfs
+    if args.use_gt_tau:
+        theta_tau = gt_tau
 
     theta = (theta_x, theta_k, theta_tau)
 
@@ -84,7 +84,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
 
     def make_training_step(logpx, kernel_fn, t, nsamples, args):
-        #@jit
+        @jit
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
             (nvlb, s), g = value_and_grad(avg_neg_elbo, argnums=(1, 2),
@@ -96,6 +96,20 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             # perform gradient updates
             theta_updates, theta_opt_state = optimizer.update(
                 theta_g, theta_opt_state, theta)
+
+            # override updates in debug mode
+            if args.use_gt_nica:
+                theta_updates = (tree_map(lambda _: jnp.zeros(shape=_.shape),
+                                          theta_updates[0]), theta_updates[1],
+                                 theta_updates[2])
+            if args.use_gt_kernel:
+                theta_updates = (theta_updates[0],
+                                 tree_map(lambda _: jnp.zeros(shape=_.shape),
+                                          theta_updates[1]), theta_updates[2])
+            if args.use_gt_tau:
+                theta_updates = (theta_updates[0], theta_updates[1],
+                                 tree_map(lambda _: jnp.zeros(shape=_.shape),
+                                          theta_updates[2]))
 
             theta = optax.apply_updates(theta, theta_updates)
             phi_n_updates, phi_n_opt_states = vmap(optimizer.update)(

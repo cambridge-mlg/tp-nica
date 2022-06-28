@@ -35,7 +35,7 @@ def parse():
                         help="dimension of latent input locations")
     parser.add_argument('--num-data', type=int, default=1,
                         help="total number of data samples to generate")
-    parser.add_argument('-L', type=int, default=0,
+    parser.add_argument('-L', type=int, default=4,
                         help="number of nonlinear layers; 0 = linear ICA")
     parser.add_argument('--mean-function', type=str, default="zero",
                         help="zero (zero mean assumed),")
@@ -72,7 +72,7 @@ def parse():
                         help="set nonlinear ica params to ground-truth values")
     parser.add_argument('--use-gt-kernel', action='store_true', default=False,
                         help="set GP kernel params to ground-truth values")
-    parser.add_argument('--use-gt-dfs', action='store_true', default=False,
+    parser.add_argument('--use-gt-tau', action='store_true', default=False,
                         help="set tau to ground-truth values")
     args = parser.parse_args()
     return args
