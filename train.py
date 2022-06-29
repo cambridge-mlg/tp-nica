@@ -59,9 +59,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta = (theta_x, theta_k, theta_tau)
 
     # initialize variational parameters (phi) with pseudo-points (tu)
-    tu, key = rngcall(lambda k: jr.uniform(k, shape=(n_data, n_pseudo, 1),
-                                           minval=jnp.min(t),
-                                           maxval=jnp.max(t)), key)
+    tu, key = rngcall(lambda k: jr.choice(k, t, shape=(n_data, n_pseudo),
+                                          replace=False), key)
     W, key = rngcall(lambda _k: vmap(
         lambda _: rdm_upper_cholesky_of_precision(_, N), out_axes=-1)(
             jr.split(_k, n_pseudo)), key
@@ -162,7 +161,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                   "MCC: {5}".format(epoch, num_epochs-1, it,
                                     num_minibs-1, -nvlb, minib_avg_mcc))
 
-            # plot regularly
+            ## plot regularly
             if epoch % args.plot_freq == 0:
                 plot_idx = 0 # which data sample to plot in each minibatch
                 plot_start = 0

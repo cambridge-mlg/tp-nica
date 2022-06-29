@@ -29,13 +29,13 @@ def parse():
                         help="dimension of each observed data point")
     parser.add_argument('-T', type=int, default=200,
                         help="number of latent input locations")
-    parser.add_argument('--num-pseudo', type=int, default=100,
+    parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=1,
                         help="dimension of latent input locations")
     parser.add_argument('--num-data', type=int, default=1,
                         help="total number of data samples to generate")
-    parser.add_argument('-L', type=int, default=4,
+    parser.add_argument('-L', type=int, default=0,
                         help="number of nonlinear layers; 0 = linear ICA")
     parser.add_argument('--mean-function', type=str, default="zero",
                         help="zero (zero mean assumed),")
@@ -44,9 +44,9 @@ def parse():
     # inference, training and optimization args
     parser.add_argument('--diag-approx', action='store_true', default=False,
                         help="approx. likelih. factor with diagonal Gaussian")
-    parser.add_argument('--inference-iters', type=int, default=5,
-                        help="num. of inference iterations")
-    parser.add_argument('--num-s-samples', type=int, default=5,
+    #parser.add_argument('--inference-iters', type=int, default=5,
+    #                    help="num. of inference iterations")
+    parser.add_argument('--num-s-samples', type=int, default=10,
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
@@ -57,7 +57,7 @@ def parse():
     parser.add_argument('--num-epochs', type=float, default=10000,
                         help="number of training epochs")
     # set seeds
-    parser.add_argument('--data-seed', type=int, default=1,
+    parser.add_argument('--data-seed', type=int, default=2,
                         help="seed for initializing data generation")
     parser.add_argument('--est-seed', type=int, default=50,
                         help="seed for initializing learning/inference")

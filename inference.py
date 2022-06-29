@@ -25,44 +25,41 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
     T = t.shape[0]
-    Kuu = jax.block_until_ready(vmap(lambda b: vmap(lambda a:
+    Kuu = vmap(lambda b: vmap(lambda a:
         comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None]+1e-6*jnp.eye(N)
-    )(tu))(tu))
-    Kuu = jax.block_until_ready(Kuu.swapaxes(1, 2).reshape(n_pseudo*N,
-                                                           n_pseudo*N))
-    Ksu = jax.block_until_ready(vmap(lambda b:vmap(lambda a:
-        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None])(tu))(t))
-    Ksu = jax.block_until_ready(Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N))
-    kss = jax.block_until_ready(vmap(
+    )(tu))(tu)
+    Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
+    Ksu = vmap(lambda b:vmap(lambda a:
+        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None])(tu))(t)
+    Ksu = Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N)
+    kss = vmap(
         lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
-        )(theta_cov) / tau[:, None])
+        )(theta_cov) / tau[:, None]
 
     # compute parameters for \tilde{q(s|tau)}
-    WTy = jax.block_until_ready(jnp.einsum('ijk,ik->jk', What,
-                                           yhat).T.reshape(-1, 1))
-    L = jax.block_until_ready(js.linalg.block_diag(*jnp.moveaxis(
-      jnp.einsum('ijk, ilk->jlk', What, What), -1, 0)))
-    LK = jax.block_until_ready(L@Kuu)
-    lu_fact = jax.block_until_ready(js.linalg.lu_factor(jnp.eye(L.shape[0])+LK))
-    KyyWTy = jax.block_until_ready(js.linalg.lu_solve(lu_fact, WTy))
-    mu_s = jax.block_until_ready(Ksu @ KyyWTy)
-    cov_s = jax.block_until_ready(vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
-          in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss))
-    s, rng = jax.block_until_ready(rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
-        cov_s, shape=(nsamples, T)), rng))
+    WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
+    L = js.linalg.block_diag(*jnp.moveaxis(
+      jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
+    LK = L@Kuu
+    lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+LK)
+    KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
+    mu_s = Ksu @ KyyWTy
+    cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
+          in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
+    s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
+        cov_s, shape=(nsamples, T)), rng)
 
     # compute E_{\tilde{q(s|tau)}}[log_p(x_t|s_t)]
-    Elogpx = jax.block_until_ready(jnp.mean(
+    Elogpx = jnp.mean(
         jnp.sum(vmap(lambda _: vmap(logpx,(1, 0, None))(x, _, theta_x))(s), 1)
-    ))
+    )
 
     # compute KL[q(u)|p(u)]
-    tr = jax.block_until_ready(jnp.trace(js.linalg.lu_solve(lu_fact, LK.T,
-                                                            trans=1).T))
-    h = jax.block_until_ready(Kuu@KyyWTy)
-    logZ = jax.block_until_ready(-0.5*(-jnp.dot(WTy.squeeze(),
-                                                h)+jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1]))
-    KLqpu = jax.block_until_ready(-0.5*(tr+h.T@L@h)+WTy.T@h - logZ)
+    tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
+    h = Kuu@KyyWTy
+    logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
+                 +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
+    KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     return Elogpx-KLqpu, s
 
 
@@ -71,14 +68,14 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     nsamples_s, nsamples_tau = nsamples
     theta_tau = theta[2]
     phi_s, phi_tau = phi[:2]
-    tau, rng = jax.block_until_ready(rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau),
-                       (nsamples_tau, *phi_tau[0].shape)))
-    kl = jax.block_until_ready(jnp.sum(
+    tau, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau),
+                       (nsamples_tau, *phi_tau[0].shape))
+    kl = jnp.sum(
         gamma_kl(
             gamma_natparams_fromstandard(phi_tau),
-            gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0))
-    vlb_s, s = jax.block_until_ready(vmap(lambda _: structured_elbo_s(
-        rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples_s))(tau))
+            gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0)
+    vlb_s, s = vmap(lambda _: structured_elbo_s(
+        rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples_s))(tau)
     return jnp.mean(vlb_s, 0) - kl, s
 
 
