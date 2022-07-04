@@ -1,6 +1,7 @@
 import argparse
 import jax
 from jax._src.numpy.linalg import slogdet
+from jax._src.scipy.sparse.linalg import cg
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
@@ -12,6 +13,7 @@ from jax.random import split
 
 from functools import partial
 from math import factorial
+from numpy import linalg
 from tprocess.kernels import se_kernel_fn, compute_K
 from tprocess.sampling import sample_tprocess
 from utils import reorder_covmat, jax_print, comp_K_N
@@ -38,21 +40,18 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
     # compute parameters for \tilde{q(s|tau)}
     WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
-    L = js.linalg.block_diag(*jnp.moveaxis(
-      jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
-    LK = L@Kuu
-    #lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+LK)
-    #KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
-    #mu_s = Ksu @ KyyWTy
-
-    # new
-    #precond = jnp.linalg.inv(jnp.eye(L.shape[0])+LK)
-    Kyy_vp_fn = lambda x: (jnp.eye(L.shape[0])+LK)@x
-    KyyWTy = js.sparse.linalg.bicgstab(Kyy_vp_fn, WTy)[0]
-    mu_s = Ksu @ KyyWTy
-    KyyL = js.sparse.linalg.bicgstab(Kyy_vp_fn, L)[0]
-    cov_s = vmap(lambda X, y: jnp.diag(y)-X@KyyL@X.T, in_axes=(0, -1)
-                )(Ksu.reshape(T, N, -1), kss)
+    L_blocks = jnp.moveaxis(jnp.einsum('ijk, ilk->jlk', What, What), -1, 0)
+    L = js.linalg.block_diag(*L_blocks)
+    Linv = js.linalg.block_diag(*vmap(jnp.linalg.inv)(L_blocks))
+    solve_fn = lambda x: (Kuu+Linv)@x
+    KyyLinv = js.sparse.linalg.cg(solve_fn, Linv, M=L, maxiter=10)[0]
+    KyyLinvWTy = KyyLinv @ WTy
+    mu_s = Ksu @ KyyLinvWTy
+    cov_s = vmap(
+        lambda X, y: jnp.diag(y)-X@js.sparse.linalg.cg(solve_fn, X.T, M=L,
+                                                       maxiter=100)[0],
+          in_axes=(0, -1)
+    )(Ksu.reshape(T, N, -1), kss)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
@@ -62,10 +61,10 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     )
 
     # compute KL[q(u)|p(u)]
-    tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
-    h = Kuu@KyyWTy
+    tr = jnp.trace(L @ Kuu @ KyyLinv)
+    h = Kuu@KyyLinvWTy
     logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
-                 +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
+                 +jnp.linalg.slogdet(jnp.eye(L.shape[0])+L@Kuu)[1])
     KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     #jax_print(Elogpx)
     #jax_print(KLqpu)
