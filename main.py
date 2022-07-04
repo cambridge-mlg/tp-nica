@@ -44,17 +44,15 @@ def parse():
     # inference, training and optimization args
     parser.add_argument('--diag-approx', action='store_true', default=False,
                         help="approx. likelih. factor with diagonal Gaussian")
-    #parser.add_argument('--inference-iters', type=int, default=5,
-    #                    help="num. of inference iterations")
     parser.add_argument('--num-s-samples', type=int, default=10,
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--learning-rate', type=float, default=3e-2,
                         help="learning rate for training")
-    parser.add_argument('--minib-size', type=float, default=1,
+    parser.add_argument('--minib-size', type=int, default=1,
                         help="minibatch size")
-    parser.add_argument('--num-epochs', type=float, default=10000,
+    parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")
     # set seeds
     parser.add_argument('--data-seed', type=int, default=2,
@@ -109,7 +107,8 @@ def main():
                                                    args.L, args.num_data, mu_fn,
                                                    k_fn)
     # train model
-    train(x, z, s, t, mu_fn, k_fn, params, args, est_key)
+    mcc_hist, elbo_hist = train(x, z, s, t, mu_fn, k_fn, params, args, est_key)
+    pdb.set_trace()
 
 
 if __name__=="__main__":

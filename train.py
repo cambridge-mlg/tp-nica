@@ -59,10 +59,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta = (theta_x, theta_k, theta_tau)
 
     # initialize variational parameters (phi) with pseudo-points (tu)
-    tu, key = rngcall(lambda k: jr.choice(k, t, shape=(n_data, n_pseudo),
-                                          replace=False), key)
+    tu, key = rngcall(lambda _: vmap(lambda k: jr.choice(k, t,
+            shape=(n_pseudo,), replace=False))(jr.split(_, n_data)), key)
+
     W, key = rngcall(lambda _k: vmap(
-        lambda _: rdm_upper_cholesky_of_precision(_, N), out_axes=-1)(
+        lambda _: rdm_upper_cholesky_of_precision(_, N)*10, out_axes=-1)(
             jr.split(_k, n_pseudo)), key
     )
     if args.diag_approx:
@@ -71,7 +72,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
              jnp.ones(shape=(n_data, N, n_pseudo)), tu)
     phi_df, key = rngcall(lambda _: vmap(rdm_df)(jr.split(_, n_data*N)), key)
     phi_df = phi_df.reshape(n_data, N)
-    phi_tau = (phi_df, phi_df)
+    phi_tau = (phi_df, phi_df*10)
     phi = (phi_s, phi_tau)
 
     # set up training details
@@ -124,6 +125,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     # train over minibatches
     train_data = x.copy()
     s_data = s.copy()
+    mcc_hist = []
+    elbo_hist = []
     # train for multiple epochs
     for epoch in range(num_epochs):
         shuffle_idx, key = rngcall(jr.permutation, key, n_data)
@@ -155,6 +158,9 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 minib_mccs.append(mcc)
             minib_avg_mcc = jnp.mean(jnp.array(minib_mccs))
 
+            mcc_hist.append(minib_avg_mcc.item())
+            elbo_hist.append(-nvlb.item())
+
             print("*Epoch: [{0}/{1}]\t"
                   "Minibatch: [{2}/{3}]\t"
                   "ELBO: {4}\t"
@@ -162,7 +168,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                                     num_minibs-1, -nvlb, minib_avg_mcc))
 
             ## plot regularly
-            if epoch % args.plot_freq == 0:
+            if epoch % args.plot_freq == 0 and it == 0:
                 plot_idx = 0 # which data sample to plot in each minibatch
                 plot_start = 0
                 plot_len = 200
@@ -180,12 +186,12 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                     ax[n].clear()
                     ax2_n = ax[n].twinx()
                     ax[n].plot(s_it_n, color='blue')
-                    ax[n].set_xlim([0, T])
+                    ax[n].set_xlim([plot_start, plot_end])
                     ax2_n.plot(s_sample_n, color='red')
                 plt.show(block=False)
                 plt.pause(10.)
                 plt.close()
-    return 0
+    return mcc_hist, elbo_hist
 
 
 

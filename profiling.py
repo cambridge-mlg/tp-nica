@@ -12,9 +12,9 @@ import pdb
 from jax import vmap, jit, value_and_grad
 from jax.lax import cond
 from jax.tree_util import tree_map
-from util import profile, rngcall, mvp, tree_get_idx
+from util import jax_profiler, rngcall, mvp, tree_get_idx
 from utils import rdm_upper_cholesky_of_precision, jax_print, reorder_covmat
-from utils import cho_inv, cho_invmp, lu_inv, lu_invmp
+from utils import cho_inv, cho_invmp, lu_inv, lu_invmp, comp_K_N
 from tprocess.kernels import compute_K, se_kernel_fn, rdm_SE_kernel_params
 from tprocess.sampling import gen_1d_locations
 
@@ -37,49 +37,72 @@ tu, key = rngcall(lambda k: jr.uniform(k, shape=(n_pseudo, 1),
 theta_k, key = rngcall(
    lambda _k: vmap(lambda _: rdm_SE_kernel_params(_, t)
                   )(jr.split(_k, N)), key)
-Kuu = compute_K(tu, se_kernel_fn, theta_k).transpose(2, 0, 1) + 1e-6*jnp.eye(len(tu))
 
 
-#UU = vmap(lambda b:vmap(lambda a: comp_K_tn(a, b, se_kernel_fn, theta_k))(tu))(tu)
-#SU = vmap(lambda b:vmap(lambda a: comp_K_tn(a, b, se_kernel_fn, theta_k))(tu))(t)
-
-Ksu = vmap(lambda tc:
-        vmap(lambda t1:
-            vmap(lambda t2: se_kernel_fn(t1, t2, tc))(tu)
-        )(t)
-    )(theta_k)
+Kuu = vmap(lambda b: vmap(lambda a:
+    comp_K_N(a, b, se_kernel_fn, theta_k)+1e-6*jnp.eye(N)
+)(tu))(tu)
+Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
+Ksu = vmap(lambda b:vmap(lambda a:
+    comp_K_N(a, b, se_kernel_fn, theta_k))(tu))(t)
+Ksu = Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N)
 kss = vmap(
     lambda tc: vmap(lambda t: se_kernel_fn(t, t, tc))(t)
     )(theta_k)
 
-Kuu_full = js.linalg.block_diag(*Kuu)
-Ksu_full = js.linalg.block_diag(*Ksu)
-Kuu_reord = reorder_covmat(Kuu_full, N)
-Ksu_reord = reorder_covmat(Ksu_full, N, square=False)
-
-pdb.set_trace()
 
 WTy = jnp.einsum('ijk,ik->jk', W, y).T.reshape(-1, 1)
 L = js.linalg.block_diag(*jnp.moveaxis(
   jnp.einsum('ijk, ilk->jlk', W, W), -1, 0))
-lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+L@Kuu_reord)
-mu_s = Ksu_reord @ js.linalg.lu_solve(lu_fact, WTy)
+Kyy_inv = jnp.eye(L.shape[0])+L@Kuu
+lu_fact = js.linalg.lu_factor(Kyy_inv)
+
+solved = js.linalg.lu_solve(lu_fact, WTy)
+
+
+P = jnp.zeros_like(Kuu)
+for i in range(n_pseudo):
+    for j in range(N):
+        P = P.at[:,:].add(jnp.outer(jnp.kron(jnp.eye(n_pseudo)[i], jnp.eye(N)[j]),
+                       jnp.kron(jnp.eye(N)[j], jnp.eye(n_pseudo)[i])))
+
+mu_s = Ksu @ js.linalg.lu_solve(lu_fact, WTy)
 cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
-          in_axes=(0, -1))(Ksu_reord.reshape(T, N, -1), kss)
+          in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
 s, key = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
                                                   cov_s, shape=(2, T)), key)
 
 # profiling
-#theta = (Kuu_reord, L, WTy)
-#
-#
-#def v8(key, theta, s):
-#    Kuu, L, WTy = theta
-#    _ = key
-#    s = s + 1e-16
-#    return s, lu_invmp(jnp.eye(L.shape[0])+L@Kuu, WTy)
+theta = (Kuu, P, n_pseudo, N)
 
 
-#v7_time = profile(theta, jnp.ones(1), v8, 1e4, 3)
+def v8(key, theta, s):
+    Kuu_reord, P, np, N = theta
+    _ = key
+    s = s + 1e-16
+    return s, jnp.linalg.inv(Kuu_reord)+s
+
+
+def v9(key, theta, s):
+    Kuu_reord, P, np, N = theta
+    _ = key
+    s = s + 1e-16
+    return s, P@jnp.linalg.inv(P.T@Kuu_reord@P)@P.T + s
+
+
+def v10(key, theta, s):
+    Kuu_reord, P, np, N = theta
+    _ = key
+    s = s + 1e-16
+    block_diag = P.T@Kuu_reord@P
+    blocks_inv = js.linalg.block_diag(*[jnp.linalg.inv(block_diag[i*np:(i+1)*np,
+                                        i*np:(i+1)*np]) for i in range(N)])
+    return s, P@Kuu_reord@P.T + s
+
+
+v8_time = jax_profiler(theta, jnp.array(1e-16), v8, 1e4, 3)
+v9_time = jax_profiler(theta, jnp.array(1e-16), v9, 1e4, 3)
+v10_time = jax_profiler(theta, jnp.array(1e-16), v10, 1e4, 3)
+
 
 pdb.set_trace()
