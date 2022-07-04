@@ -59,6 +59,7 @@ lu_fact = js.linalg.lu_factor(Kyy_inv)
 
 solved = js.linalg.lu_solve(lu_fact, WTy)
 
+pdb.set_trace()
 
 P = jnp.zeros_like(Kuu)
 for i in range(n_pseudo):
