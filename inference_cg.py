@@ -43,13 +43,13 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     L_blocks = jnp.moveaxis(jnp.einsum('ijk, ilk->jlk', What, What), -1, 0)
     L = js.linalg.block_diag(*L_blocks)
     Linv = js.linalg.block_diag(*vmap(jnp.linalg.inv)(L_blocks))
-    solve_fn = lambda x: (Kuu+Linv)@x
-    KyyLinv = js.sparse.linalg.cg(solve_fn, Linv, M=L, maxiter=10)[0]
+    cho_fact = js.linalg.cho_factor(Kuu+Linv)
+    KyyLinv = js.linalg.cho_solve(cho_fact, Linv)
     KyyLinvWTy = KyyLinv @ WTy
     mu_s = Ksu @ KyyLinvWTy
-    KyyKus = js.sparse.linalg.cg(solve_fn, Ksu.T, M=L, maxiter=90)[0]
-    cov_s = vmap(lambda X, Y, z: jnp.diag(z)-X@Y, in_axes=(0, 1, -1)
-        )(Ksu.reshape(T, N, -1), KyyKus.reshape(-1, T, N), kss)
+    cov_s = vmap(lambda X, z: jnp.diag(z)-X@js.linalg.cho_solve(cho_fact, X.T)
+                 , in_axes=(0, -1)
+        )(Ksu.reshape(T, N, -1), kss)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
