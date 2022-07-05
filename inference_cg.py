@@ -47,11 +47,9 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     KyyLinv = js.sparse.linalg.cg(solve_fn, Linv, M=L, maxiter=10)[0]
     KyyLinvWTy = KyyLinv @ WTy
     mu_s = Ksu @ KyyLinvWTy
-    cov_s = vmap(
-        lambda X, y: jnp.diag(y)-X@js.sparse.linalg.cg(solve_fn, X.T, M=L,
-                                                       maxiter=100)[0],
-          in_axes=(0, -1)
-    )(Ksu.reshape(T, N, -1), kss)
+    KyyKus = js.sparse.linalg.cg(solve_fn, Ksu.T, M=L, maxiter=90)[0]
+    cov_s = vmap(lambda X, Y, z: jnp.diag(z)-X@Y, in_axes=(0, 1, -1)
+        )(Ksu.reshape(T, N, -1), KyyKus.reshape(-1, T, N), kss)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
