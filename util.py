@@ -1,6 +1,7 @@
 import operator
 import jax
 import jax.numpy as jnp
+from jax import jit
 from jax.lax import scan
 from jax.random import split
 from jax.tree_util import tree_map

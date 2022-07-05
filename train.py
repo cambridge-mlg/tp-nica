@@ -17,7 +17,7 @@ from nn import init_nica_params, nica_logpx
 from utils import rdm_upper_cholesky_of_precision, matching_sources_corr
 from utils import plot_ic, jax_print
 from util import rngcall, tree_get_idx, tree_get_range
-from inference_cg import avg_neg_elbo
+from inference import avg_neg_elbo
 
 
 def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):

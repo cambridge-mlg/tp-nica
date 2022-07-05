@@ -5,7 +5,7 @@ config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import jax.random as jrandom
 import jax.scipy as jsp
-from jax import vmap
+from jax import vmap, jit
 
 import pdb
 
@@ -87,6 +87,7 @@ def nica_mlp(params, s, activation='xtanh', slope=0.1):
     return z
 
 
+@jit
 def nica_logpx(x, s, theta_x):
     theta_mix, theta_var = theta_x
     mu = nica_mlp(theta_mix, s)
