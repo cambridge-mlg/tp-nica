@@ -14,52 +14,94 @@ from functools import partial
 from math import factorial
 from tprocess.kernels import se_kernel_fn, compute_K
 from tprocess.sampling import sample_tprocess
-from utils import reorder_covmat, jax_print, comp_K_N
+from utils import reorder_covmat, jax_print, jax_time, comp_K_N
 from util import *
 from gamma import *
 from gaussian import *
 
 
 def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
-    theta_x, theta_cov = theta[:2]
-    What, yhat, tu = phi_s
-    N, n_pseudo = yhat.shape
-    T = t.shape[0]
-    Kuu = vmap(lambda b: vmap(lambda a:
+    theta_x, theta_cov = jax.block_until_ready(theta[:2])
+    What, yhat, tu = jax.block_until_ready(phi_s)
+    N, n_pseudo = jax.block_until_ready(yhat.shape)
+    T = jax.block_until_ready(t.shape[0])
+
+    jax.block_until_ready(jax_time(T))
+    Kuu = jax.block_until_ready(vmap(lambda b: vmap(lambda a:
         comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None]+1e-6*jnp.eye(N)
-    )(tu))(tu)
-    Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
-    Ksu = vmap(lambda b:vmap(lambda a:
-        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None])(tu))(t)
-    Ksu = Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N)
-    kss = vmap(
+    )(tu))(tu))
+    jax_time(Kuu)
+    Kuu = jax.block_until_ready(Kuu.swapaxes(1, 2).reshape(n_pseudo*N,
+                                                           n_pseudo*N))
+    jax.block_until_ready(jax_time(Kuu))
+    Ksu = jax.block_until_ready(vmap(lambda b:vmap(lambda a:
+        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None])(tu))(t))
+    jax.block_until_ready(jax_time(Ksu))
+    Ksu = jax.block_until_ready(Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N))
+    jax.block_until_ready(jax_time(Ksu))
+    kss = jax.block_until_ready(vmap(
         lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
-        )(theta_cov) / tau[:, None]
+        )(theta_cov) / tau[:, None])
+    jax.block_until_ready(jax_time(kss))
 
     # compute parameters for \tilde{q(s|tau)}
-    WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
-    L = js.linalg.block_diag(*jnp.moveaxis(
-      jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
-    LK = L@Kuu
-    lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+LK)
-    KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
-    mu_s = Ksu @ KyyWTy
-    cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
-          in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
-        cov_s, shape=(nsamples, T)), rng)
+    WTy = jax.block_until_ready(jnp.einsum('ijk,ik->jk', What,
+                                           yhat).T.reshape(-1, 1))
+    jax.block_until_ready(jax_time(WTy))
+
+
+    L = jax.block_until_ready(js.linalg.block_diag(*jnp.moveaxis(
+      jnp.einsum('ijk, ilk->jlk', What, What), -1, 0)))
+    jax.block_until_ready(jax_time(L))
+
+
+    LK = jax.block_until_ready(L@Kuu)
+    jax.block_until_ready(jax_time(LK))
+
+
+    lu_fact = jax.block_until_ready(js.linalg.lu_factor(jnp.eye(L.shape[0])+LK))
+    jax.block_until_ready(jax_time(lu_fact))
+
+
+    KyyWTy = jax.block_until_ready(js.linalg.lu_solve(lu_fact, WTy))
+    jax.block_until_ready(jax_time(KyyWTy))
+
+
+    mu_s = jax.block_until_ready(Ksu @ KyyWTy)
+    jax.block_until_ready(jax_time(mu_s))
+
+
+    cov_s = jax.block_until_ready(vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
+          in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss))
+    jax.block_until_ready(jax_time(cov_s))
+
+
+    s, rng = jax.block_until_ready(rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
+        cov_s, shape=(nsamples, T)), rng))
+    jax.block_until_ready(jax_time(s))
 
     # compute E_{\tilde{q(s|tau)}}[log_p(x_t|s_t)]
-    Elogpx = jnp.mean(
+    Elogpx = jax.block_until_ready(jnp.mean(
         jnp.sum(vmap(lambda _: vmap(logpx,(1, 0, None))(x, _, theta_x))(s), 1)
-    )
+    ))
+    jax.block_until_ready(jax_time(Elogpx))
+
 
     # compute KL[q(u)|p(u)]
-    tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
-    h = Kuu@KyyWTy
-    logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
-                 +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
-    KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
+    tr = jax.block_until_ready(jnp.trace(js.linalg.lu_solve(lu_fact, LK.T,
+                                                            trans=1).T))
+    jax.block_until_ready(jax_time(tr))
+
+    h = jax.block_until_ready(Kuu@KyyWTy)
+    jax.block_until_ready(jax_time(h))
+
+    logZ = jax.block_until_ready(-0.5*(-jnp.dot(WTy.squeeze(), h)
+                 +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1]))
+    jax.block_until_ready(jax_time(logZ))
+
+    KLqpu = jax.block_until_ready(-0.5*(tr+h.T@L@h)+WTy.T@h - logZ)
+    jax.block_until_ready(jax_time(KLqpu))
+
     #jax_print(Elogpx)
     #jax_print(KLqpu)
     return Elogpx-KLqpu, s
@@ -78,7 +120,7 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0)
     vlb_s, s = vmap(lambda _: structured_elbo_s(
         rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples_s))(tau)
-    jax_print(kl)
+    #jax_print(kl)
     return jnp.mean(vlb_s, 0) - kl, s
 
 

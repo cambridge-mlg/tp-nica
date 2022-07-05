@@ -23,11 +23,11 @@ def parse():
     """
     # synthetic data generation args
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('-N', type=int, default=3,
+    parser.add_argument('-N', type=int, default=12,
                         help="number of ICs")
-    parser.add_argument('-M', type=int, default=3,
+    parser.add_argument('-M', type=int, default=24,
                         help="dimension of each observed data point")
-    parser.add_argument('-T', type=int, default=200,
+    parser.add_argument('-T', type=int, default=1000,
                         help="number of latent input locations")
     parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
