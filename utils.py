@@ -76,7 +76,7 @@ def lu_inv(x):
 
 
 def comp_k_n(t1, t2, n1, n2, cov_fn, theta_cov):
-    return cond(n1==n2, lambda a, b, c: cov_fn(a, b, c),
+    return jit(cond)(n1==n2, lambda a, b, c: cov_fn(a, b, c),
                 lambda a, b, c: jnp.array(0.),
                 t1, t2, tree_get_idx(theta_cov, n1))
 

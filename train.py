@@ -85,8 +85,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta_opt_state = optimizer.init(theta)
 
 
-    def make_training_step(logpx, kernel_fn, t, nsamples, args):
-        @jit
+    @partial(jit, static_argnames=['logpx', 'kernel_fn'])
+    def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings):
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
             (nvlb, s), g = value_and_grad(avg_neg_elbo, argnums=(1, 2),
@@ -100,15 +100,16 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 theta_g, theta_opt_state, theta)
 
             # override updates in debug mode
-            if args.use_gt_nica:
+            use_gt_nica, use_gt_kernel, use_gt_tau = use_gt_settings
+            if use_gt_nica:
                 theta_updates = (tree_map(lambda _: jnp.zeros(shape=_.shape),
                                           theta_updates[0]), theta_updates[1],
                                  theta_updates[2])
-            if args.use_gt_kernel:
+            if use_gt_kernel:
                 theta_updates = (theta_updates[0],
                                  tree_map(lambda _: jnp.zeros(shape=_.shape),
                                           theta_updates[1]), theta_updates[2])
-            if args.use_gt_tau:
+            if use_gt_tau:
                 theta_updates = (theta_updates[0], theta_updates[1],
                                  tree_map(lambda _: jnp.zeros(shape=_.shape),
                                           theta_updates[2]))
