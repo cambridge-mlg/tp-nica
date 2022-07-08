@@ -36,23 +36,6 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
         )(theta_cov) / tau[:, None]
 
-
-    # alternative
-    #Kuu2 = compute_K(tu, cov_fn, theta_cov).transpose(2, 0, 1)/tau[:, None, None]\
-    #+ 1e-6*jnp.eye(len(tu))
-    #Ksu2 = vmap(lambda tc:
-    #            vmap(lambda t1:
-    #                vmap(lambda t2: cov_fn(t1, t2, tc))(tu)
-    #            )(t)
-    #)(theta_cov)/tau[:, None, None]
-    #Kuu_full = js.linalg.block_diag(*Kuu2)
-    #Ksu_full = js.linalg.block_diag(*Ksu2)
-    #Kuu_reord = reorder_covmat(Kuu_full, N)
-    #Ksu_reord = reorder_covmat(Ksu_full, N, square=False)
-
-    #pdb.set_trace()
-
-
     # compute parameters for \tilde{q(s|tau)}
     WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
     L = js.linalg.block_diag(*jnp.moveaxis(
