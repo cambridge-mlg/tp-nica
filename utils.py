@@ -2,7 +2,6 @@ from jax.scipy.linalg import lu_factor
 from jax.config import config
 config.update("jax_enable_x64", True)
 
-import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
@@ -57,7 +56,7 @@ def time_print(arg, transform):
 
 
 def jax_time(x):
-    jax.block_until_ready(id_tap(tap_func=time_print, arg=x))
+    id_tap(tap_func=time_print, arg=x)
 
 
 def cho_invmp(x, y):
