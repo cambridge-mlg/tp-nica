@@ -2,6 +2,7 @@ from jax.config import config
 
 config.update("jax_enable_x64", True)
 
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import optax
@@ -18,6 +19,7 @@ from utils import rdm_upper_cholesky_of_precision, matching_sources_corr
 from utils import plot_ic, jax_print
 from util import rngcall, tree_get_idx, tree_get_range
 from inference import avg_neg_elbo
+
 
 
 def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
@@ -142,9 +144,12 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             phi_opt_states_it = tree_get_idx(phi_opt_states, idx_set_it)
 
             # training step
-            (nvlb, s_sample, theta, phi_it, theta_opt_state, phi_opt_states_it), key = rngcall(
+            (nvlb, s_sample, theta, phi_it, theta_opt_state,
+             phi_opt_states_it), key = rngcall(
                 training_step, key, theta, phi_it, theta_opt_state,
                 phi_opt_states_it, x_it)
+
+            pdb.set_trace()
 
             # update the full variational parameter pytree at right indices
             phi = tree_map(lambda a, b: a.at[idx_set_it].set(b), phi, phi_it)

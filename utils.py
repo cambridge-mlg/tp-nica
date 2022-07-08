@@ -11,7 +11,7 @@ import scipy as sp
 import pdb
 import time
 
-from jax import vmap
+from jax import vmap, jit
 from jax.lax import cond
 from jax.experimental.host_callback import id_tap
 from util import tree_get_idx
@@ -83,9 +83,9 @@ def comp_k_n(t1, t2, n1, n2, cov_fn, theta_cov):
 
 def comp_K_N(t1, t2, cov_fn, theta_cov):
     N = theta_cov[0].shape[0]
-    out = vmap(lambda a: vmap(
+    out = jit(vmap(lambda a: vmap(
         lambda b: comp_k_n(t1, t2, a, b, cov_fn, theta_cov)
-                         )(jnp.arange(N)))(jnp.arange(N))
+                         )(jnp.arange(N))))(jnp.arange(N))
     return out
 
 
