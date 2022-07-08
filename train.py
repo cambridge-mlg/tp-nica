@@ -86,8 +86,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta_opt_state = optimizer.init(theta)
 
 
-    @partial(jit, static_argnames=['logpx', 'kernel_fn'])
     def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings):
+        @jit
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
             (nvlb, s), g = value_and_grad(avg_neg_elbo, argnums=(1, 2),
@@ -148,8 +148,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
              phi_opt_states_it), key = rngcall(
                 training_step, key, theta, phi_it, theta_opt_state,
                 phi_opt_states_it, x_it)
-
-            pdb.set_trace()
 
             # update the full variational parameter pytree at right indices
             phi = tree_map(lambda a, b: a.at[idx_set_it].set(b), phi, phi_it)
