@@ -57,6 +57,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         theta_k = gt_kernel_params
     if args.use_gt_tau:
         theta_tau = gt_tau
+    use_gt_settings = (args.use_gt_nica, args.use_gt_kernel, args.use_gt_tau)
 
     theta = (theta_x, theta_k, theta_tau)
 
@@ -101,19 +102,17 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
             # override updates in debug mode
             use_gt_nica, use_gt_kernel, use_gt_tau = use_gt_settings
-            if use_gt_nica:
-                theta_updates = (tree_map(lambda _: jnp.zeros(shape=_.shape),
-                                          theta_updates[0]), theta_updates[1],
-                                 theta_updates[2])
-            if use_gt_kernel:
-                theta_updates = (theta_updates[0],
-                                 tree_map(lambda _: jnp.zeros(shape=_.shape),
-                                          theta_updates[1]), theta_updates[2])
-            if use_gt_tau:
-                theta_updates = (theta_updates[0], theta_updates[1],
-                                 tree_map(lambda _: jnp.zeros(shape=_.shape),
-                                          theta_updates[2]))
+            gt_override_fun = lambda x: tree_map(lambda _:
+                            jnp.zeros(shape=_.shape), x)
+            nica_updates = lax.cond(use_gt_nica, gt_override_fun,
+                        lambda x: x, theta_updates[0])
+            kernel_updates = lax.cond(use_gt_kernel, gt_override_fun,
+                        lambda x: x, theta_updates[1])
+            tau_updates = lax.cond(use_gt_tau, gt_override_fun,
+                        lambda x: x, theta_updates[2])
+            theta_updates = (nica_updates, kernel_updates, tau_updates)
 
+            # perform gradient updates
             theta = optax.apply_updates(theta, theta_updates)
             phi_n_updates, phi_n_opt_states = vmap(optimizer.update)(
                 phi_n_g, phi_n_opt_states, phi_n)
@@ -123,7 +122,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
 
     training_step = make_training_step(nica_logpx, tp_kernel_fn, t,
-                                       nsamples, args)
+                                       nsamples, use_gt_settings)
 
     # train over minibatches
     train_data = x.copy()
