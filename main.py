@@ -27,7 +27,7 @@ def parse():
                         help="number of ICs")
     parser.add_argument('-M', type=int, default=3,
                         help="dimension of each observed data point")
-    parser.add_argument('-T', type=int, default=200,
+    parser.add_argument('-T', type=int, default=500,
                         help="number of latent input locations")
     parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
@@ -55,7 +55,7 @@ def parse():
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")
     # set seeds
-    parser.add_argument('--data-seed', type=int, default=2,
+    parser.add_argument('--data-seed', type=int, default=0,
                         help="seed for initializing data generation")
     parser.add_argument('--est-seed', type=int, default=50,
                         help="seed for initializing learning/inference")

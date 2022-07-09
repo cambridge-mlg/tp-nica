@@ -174,7 +174,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             if epoch % args.plot_freq == 0 and it == 0:
                 plot_idx = 0 # which data sample to plot in each minibatch
                 plot_start = 0
-                plot_len = 200
+                plot_len = min(500, T)
                 plot_end = plot_start+plot_len
 
                 # set plot
@@ -184,8 +184,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 for n in range(N):
                     s_sample_n = s_sample[plot_idx][sort_idx][n, plot_start:
                                                               plot_end]
-                    s_it_n = s_it[plot_idx][sort_idx][n, plot_start:
-                                                      plot_end]
+                    s_it_n = s_it[plot_idx][n, plot_start:plot_end]
                     ax[n].clear()
                     ax2_n = ax[n].twinx()
                     ax[n].plot(s_it_n, color='blue')
