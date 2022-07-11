@@ -22,16 +22,16 @@ from tprocess.sampling import gen_1d_locations
 from nn import init_nica_params, nica_logpx
 
 key = jr.PRNGKey(0)
-N = 3
-M = 3
+N = 24
+M = 24
 n_pseudo = 50
-nsamples = 10
+nsamples = 5
 T = 500
 L = 0
 n_data = 1
 
 # prof settings
-nsteps = 1e3
+nsteps = 100
 
 # generate locations
 t = gen_1d_locations(T)
@@ -317,6 +317,7 @@ s, key = jax.block_until_ready(rngcall(
 x, key = jax.block_until_ready(rngcall(
     lambda _:jr.multivariate_normal(_, mu_s.reshape(T, N),
     cov_s, shape=(nsamples, T)), key))
+x = x[0].T
 s_time = jax.block_until_ready(jax_profiler(
    theta, jnp.array(1e-16), s_prof, nsteps, 3))
 
@@ -328,14 +329,13 @@ theta = (nica_logpx, theta_x, x, s)
 def Elogpx_prof(key, theta, s):
     logpx, theta_x, x, sest = theta
     Elogpx = jax.block_until_ready(jnp.mean(
-        jnp.sum(vmap(lambda _: vmap(logpx,(1, 0, None))(x, _, theta_x))(sest), 1)
+        jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(sest), 1)
     ))
     s = s + 1e-16
     return s, Elogpx+s
 
-
 Elogpx = jax.block_until_ready(jnp.mean(
-    jnp.sum(vmap(lambda _: vmap(nica_logpx,(1, 0, None))(x, _, theta_x))(s), 1)))
+    jnp.sum(vmap(lambda _: vmap(nica_logpx, (1, 0, None))(x, _, theta_x))(s), 1)))
 Elogpx_time = jax.block_until_ready(jax_profiler(
    theta, jnp.array(1e-16), Elogpx_prof, nsteps, 3))
 
@@ -427,9 +427,3 @@ print("tr_time: ", tr_time)
 print("h_time: ", h_time)
 print("logz_time: ", logz_time)
 print("KL_time: ", KL_time)
-
-
-
-
-
-
