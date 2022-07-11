@@ -27,7 +27,7 @@ def parse():
                         help="number of ICs")
     parser.add_argument('-M', type=int, default=3,
                         help="dimension of each observed data point")
-    parser.add_argument('-T', type=int, default=500,
+    parser.add_argument('-T', type=int, default=200,
                         help="number of latent input locations")
     parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
