@@ -41,14 +41,12 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     L = js.linalg.block_diag(*jnp.moveaxis(
       jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
     LK = L@Kuu
-    lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+LK)
-    KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
-    two  = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
-    pdb.set_trace()
+    lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
+    KyyWTy = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
     mu_s = Ksu @ KyyWTy
-    cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
+    cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
+    cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    #cov_s = jnp.repeat(jnp.eye(N)[None], T, axis=0)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 

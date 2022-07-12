@@ -19,7 +19,7 @@ from nn import init_nica_params, nica_logpx
 from utils import rdm_upper_cholesky_of_precision, matching_sources_corr
 from utils import plot_ic, jax_print
 from util import rngcall, tree_get_idx, tree_get_range
-from inference import avg_neg_elbo
+from inference_cho import avg_neg_elbo
 
 
 
@@ -39,7 +39,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
     # initialize generative model params (theta)
     theta_tau, key = rngcall(
-        lambda _k: vmap(lambda _: rdm_df(_, maxval=20))(jr.split(_k, N)), key
+        lambda _k: vmap(lambda _: rdm_df(_, maxval=5))(jr.split(_k, N)), key
     )
     theta_k, key = rngcall(
         lambda _k: vmap(lambda _: rdm_SE_kernel_params(_, t)
@@ -67,7 +67,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             shape=(n_pseudo,), replace=False))(jr.split(_, n_data)), key)
 
     W, key = rngcall(lambda _k: vmap(
-        lambda _: rdm_upper_cholesky_of_precision(_, N)*10, out_axes=-1)(
+        lambda _: rdm_upper_cholesky_of_precision(_, N), out_axes=-1)(
             jr.split(_k, n_pseudo)), key
     )
     if args.diag_approx:
@@ -88,7 +88,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
 
     def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings):
-        #@jit
+        @jit
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
             (nvlb, s), g = value_and_grad(avg_neg_elbo, argnums=(1, 2),

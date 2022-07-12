@@ -80,8 +80,17 @@ def lu_inv(x):
 def custom_solve(a, b, lu_factor):
     def _solve(matvec, x):
         return js.linalg.lu_solve(lu_factor, x)
-    matvec = partial(np.dot, a)
-    return custom_linear_solve(matvec, b, _solve)
+    def _trans_solve(vecmat, x):
+        return js.linalg.lu_solve(lu_factor, x, trans=1)
+    matvec = partial(jnp.dot, a)
+    return custom_linear_solve(matvec, b, _solve, _trans_solve)
+
+
+def custom_chol_solve(a, b, chol_factor):
+    def _solve(matvec, x):
+        return js.linalg.cho_solve(chol_factor, x)
+    matvec = partial(jnp.dot, a)
+    return custom_linear_solve(matvec, b, _solve, symmetric=True)
 
 
 def comp_k_n(t1, t2, n1, n2, cov_fn, theta_cov):

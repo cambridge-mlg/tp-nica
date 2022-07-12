@@ -16,7 +16,7 @@ from math import factorial
 from numpy import linalg
 from tprocess.kernels import se_kernel_fn, compute_K
 from tprocess.sampling import sample_tprocess
-from utils import reorder_covmat, jax_print, comp_K_N
+from utils import custom_chol_solve, jax_print, comp_K_N
 from util import *
 from gamma import *
 from gaussian import *
@@ -44,11 +44,15 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     L = js.linalg.block_diag(*L_blocks)
     Linv = js.linalg.block_diag(*vmap(jnp.linalg.inv)(L_blocks))
     cho_fact = js.linalg.cho_factor(Kuu+Linv)
-    KyyLinv = js.linalg.cho_solve(cho_fact, Linv)
+    #KyyLinv = js.linalg.cho_solve(cho_fact, Linv)
+    KyyLinv = custom_chol_solve(Kuu+Linv, Linv, cho_fact)
     KyyLinvWTy = KyyLinv @ WTy
     mu_s = Ksu @ KyyLinvWTy
-    cov_s = vmap(lambda X, z: jnp.diag(z)-X@js.linalg.cho_solve(cho_fact, X.T)
-                 , in_axes=(0, -1)
+    #cov_s = vmap(lambda X, z: jnp.diag(z)-X@js.linalg.cho_solve(cho_fact, X.T)
+    #             , in_axes=(0, -1)
+    #    )(Ksu.reshape(T, N, -1), kss)
+    cov_s = vmap(lambda X, z: jnp.diag(z)-X@custom_chol_solve(Kuu+Linv, X.T,
+                 cho_fact), in_axes=(0, -1)
         )(Ksu.reshape(T, N, -1), kss)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)

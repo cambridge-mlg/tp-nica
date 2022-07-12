@@ -22,8 +22,8 @@ from tprocess.sampling import gen_1d_locations
 from nn import init_nica_params, nica_logpx
 
 key = jr.PRNGKey(0)
-N = 12
-M = 12
+N = 3
+M = 3
 n_pseudo = 50
 nsamples = 5
 T = 200
@@ -256,6 +256,7 @@ def KyyWTy_prof(key, theta, s):
 
 
 KyyWTy = jax.block_until_ready(js.linalg.lu_solve(lu_fact, WTy))
+pdb.set_trace()
 KyyWTy_time = jax.block_until_ready(jax_profiler(
     theta, jnp.array(1e-16), KyyWTy_prof, nsteps, 3))
 
