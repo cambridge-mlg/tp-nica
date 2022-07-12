@@ -8,6 +8,7 @@ import jax.random as jr
 import optax
 import matplotlib.pyplot as plt
 import pdb
+import time
 
 from jax import vmap, jit, value_and_grad, lax
 from jax.tree_util import tree_map
@@ -131,6 +132,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     elbo_hist = []
     # train for multiple epochs
     for epoch in range(num_epochs):
+        tic = time.perf_counter()
         shuffle_idx, key = rngcall(jr.permutation, key, n_data)
         shuff_data = train_data[shuffle_idx]
         shuff_s = s_data[shuffle_idx]
@@ -193,6 +195,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 plt.show(block=False)
                 plt.pause(10.)
                 plt.close()
+        toc = time.perf_counter()
+        print("Epoch took: ", toc-tic) 
     return mcc_hist, elbo_hist
 
 

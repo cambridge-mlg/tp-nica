@@ -1,3 +1,4 @@
+from functools import partial
 from jax.scipy.linalg import lu_factor
 from jax.config import config
 config.update("jax_enable_x64", True)
@@ -12,7 +13,8 @@ import pdb
 import time
 
 from jax import vmap, jit
-from jax.lax import cond
+from jax.lax import cond, scan, dynamic_slice
+from jax.tree_util import Partial
 from jax.experimental.host_callback import id_tap
 from util import tree_get_idx
 
@@ -87,6 +89,11 @@ def comp_K_N(t1, t2, cov_fn, theta_cov):
         lambda b: comp_k_n(t1, t2, a, b, cov_fn, theta_cov)
                          )(jnp.arange(N))))(jnp.arange(N))
     return out
+
+
+@Partial(jit, static_argnames=['N', 'T'])
+def get_diag_blocks(A, N, T):
+    return vmap(lambda i: dynamic_slice(A, (i*N, i*N), (N, N)))(jnp.arange(T))
 
 
 def matching_sources_corr(est_sources, true_sources, method="pearson"):

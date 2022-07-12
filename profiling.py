@@ -11,27 +11,27 @@ import optax
 import pdb
 
 from jax import vmap, jit, value_and_grad
-from jax.lax import cond
+from jax.lax import cond, dynamic_slice
 from jax.tree_util import tree_map
 from util import jax_profiler, rngcall, mvp, tree_get_idx
 from utils import rdm_upper_cholesky_of_precision, jax_print, reorder_covmat
-from utils import cho_inv, cho_invmp, lu_inv, lu_invmp, comp_K_N
+from utils import comp_K_N, get_diag_blocks
 from tprocess.kernels import compute_K, se_kernel_fn, rdm_SE_kernel_params
 from tprocess.kernels import rdm_df
 from tprocess.sampling import gen_1d_locations
 from nn import init_nica_params, nica_logpx
 
 key = jr.PRNGKey(0)
-N = 24
-M = 24
+N = 3
+M = 3
 n_pseudo = 50
 nsamples = 5
-T = 500
+T = 200
 L = 0
 n_data = 1
 
 # prof settings
-nsteps = 100
+nsteps = 1e3
 
 # generate locations
 t = gen_1d_locations(T)
@@ -79,7 +79,7 @@ T = t.shape[0]
 
 # profiling
 # 1
-theta = (se_kernel_fn, theta_cov, N, tu) 
+theta = (se_kernel_fn, theta_cov, N, tu)
 
 
 def Kuu_prof(key, theta, s):
@@ -408,6 +408,42 @@ KL_time = jax.block_until_ready(jax_profiler(
    theta, jnp.array(1e-16), KL_prof, nsteps, 3))
 
 
+# Xtra
+theta = (lu_fact, L, Ksu, kss, T, N)
+
+def cov_s2_prof(key, theta, s):
+    _ = key
+    lu_fact, L, Ksu, kss, T, N = theta
+    cov_s = jax.block_until_ready(vmap(jnp.diag, 1)(kss) - get_diag_blocks(
+        Ksu@js.linalg.lu_solve(lu_fact, L@Ksu.T), N, T))
+    s = s + 1e-16
+    return s, cov_s+s
+
+
+cov_s2_time = jax.block_until_ready(jax_profiler(
+    theta, jnp.array(1e-16), cov_s2_prof, nsteps, 3))
+
+
+def cov_s3_prof(key, theta, s):
+    _ = key
+    lu_fact, L, Ksu, kss, T, N = theta
+    solved = js.linalg.lu_solve(lu_fact, L@Ksu.T)
+    cov_s = jax.block_until_ready(vmap(
+        lambda c, A, B: jnp.diag(c)-A@B,
+          in_axes=(-1, 0, 1))(kss, Ksu.reshape(T, N, -1),
+                              solved.reshape(-1, T, N)))
+    s = s + 1e-16
+    return s, cov_s+s
+
+
+cov_s3_time = jax.block_until_ready(jax_profiler(
+    theta, jnp.array(1e-16), cov_s3_prof, nsteps, 3))
+
+
+
+
+
+
 # print
 print("Kuu: ", Kuu_time)
 print("Kuuswap: ", Kuuswap_time)
@@ -421,6 +457,8 @@ print("lufact_time: ", lufact_time)
 print("KyyWTy_time: ", KyyWTy_time)
 print("mu_s_time: ", mu_s_time)
 print("cov_s_time: ", cov_s_time)
+print("cov_s2_time: ", cov_s2_time)
+print("cov_s3_time: ", cov_s3_time)
 print("s_time: ", s_time)
 print("Elogpx_time: ", Elogpx_time)
 print("tr_time: ", tr_time)

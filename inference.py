@@ -14,7 +14,7 @@ from functools import partial
 from math import factorial
 from tprocess.kernels import se_kernel_fn, compute_K
 from tprocess.sampling import sample_tprocess
-from utils import reorder_covmat, jax_print, comp_K_N
+from utils import reorder_covmat, jax_print, comp_K_N, get_diag_blocks
 from util import *
 from gamma import *
 from gaussian import *
@@ -46,6 +46,12 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     mu_s = Ksu @ KyyWTy
     cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
+    #cov_solve = (Ksu@js.linalg.lu_solve(lu_fact, L@Ksu.T)).reshape(
+    #    T, N, T, N).swapaxes(1, 2).reshape(-1, N, N)[::(T+1)]
+    #cov_s = vmap(jnp.diag, -1)(kss) - cov_solve
+    #cov_solve = js.linalg.lu_solve(lu_fact, L@Ksu.T)
+    #cov_s = vmap(lambda c, A, B: jnp.diag(c)-A@B, in_axes=(-1, 0, 1))(kss,
+    #      Ksu.reshape(T, N, -1), cov_solve.reshape(-1, T, N))
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
