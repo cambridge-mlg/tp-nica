@@ -14,7 +14,7 @@ from functools import partial
 from math import factorial
 from tprocess.kernels import se_kernel_fn, compute_K
 from tprocess.sampling import sample_tprocess
-from utils import reorder_covmat, jax_print, comp_K_N, get_diag_blocks
+from utils import custom_solve, jax_print, comp_K_N, get_diag_blocks
 from util import *
 from gamma import *
 from gaussian import *
@@ -43,9 +43,12 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     LK = L@Kuu
     lu_fact = js.linalg.lu_factor(jnp.eye(L.shape[0])+LK)
     KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
+    two  = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
+    pdb.set_trace()
     mu_s = Ksu @ KyyWTy
     cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
+    #cov_s = jnp.repeat(jnp.eye(N)[None], T, axis=0)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
@@ -60,8 +63,6 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
                  +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
     KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
-    #jax_print(Elogpx)
-    #jax_print(KLqpu)
     return Elogpx-KLqpu, s
 
 
@@ -78,7 +79,7 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0)
     vlb_s, s = vmap(lambda _: structured_elbo_s(
         rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples_s))(tau)
-    jax_print(kl)
+    #jax_print(kl)
     return jnp.mean(vlb_s, 0) - kl, s
 
 

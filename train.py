@@ -88,7 +88,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
 
     def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings):
-        @jit
+        #@jit
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
             (nvlb, s), g = value_and_grad(avg_neg_elbo, argnums=(1, 2),

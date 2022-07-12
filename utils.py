@@ -13,7 +13,7 @@ import pdb
 import time
 
 from jax import vmap, jit
-from jax.lax import cond, scan, dynamic_slice
+from jax.lax import cond, scan, dynamic_slice, custom_linear_solve
 from jax.tree_util import Partial
 from jax.experimental.host_callback import id_tap
 from util import tree_get_idx
@@ -75,6 +75,13 @@ def lu_invmp(x, y):
 
 def lu_inv(x):
     return js.linalg.lu_solve(js.linalg.lu_factor(x), jnp.eye(x.shape[0]))
+
+
+def custom_solve(a, b, lu_factor):
+    def _solve(matvec, x):
+        return js.linalg.lu_solve(lu_factor, x)
+    matvec = partial(np.dot, a)
+    return custom_linear_solve(matvec, b, _solve)
 
 
 def comp_k_n(t1, t2, n1, n2, cov_fn, theta_cov):
