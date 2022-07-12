@@ -22,8 +22,8 @@ from tprocess.sampling import gen_1d_locations
 from nn import init_nica_params, nica_logpx
 
 key = jr.PRNGKey(0)
-N = 3
-M = 3
+N = 12
+M = 12
 n_pseudo = 50
 nsamples = 5
 T = 200
@@ -414,8 +414,9 @@ theta = (lu_fact, L, Ksu, kss, T, N)
 def cov_s2_prof(key, theta, s):
     _ = key
     lu_fact, L, Ksu, kss, T, N = theta
-    cov_s = jax.block_until_ready(vmap(jnp.diag, 1)(kss) - get_diag_blocks(
-        Ksu@js.linalg.lu_solve(lu_fact, L@Ksu.T), N, T))
+    cov_solve = (Ksu@js.linalg.lu_solve(lu_fact, L@Ksu.T)).reshape(
+        T, N, T, N).swapaxes(1, 2).reshape(-1, N, N)[::(T+1)]
+    cov_s = jax.block_until_ready(vmap(jnp.diag, 1)(kss) - cov_solve)
     s = s + 1e-16
     return s, cov_s+s
 
@@ -438,9 +439,6 @@ def cov_s3_prof(key, theta, s):
 
 cov_s3_time = jax.block_until_ready(jax_profiler(
     theta, jnp.array(1e-16), cov_s3_prof, nsteps, 3))
-
-
-
 
 
 
