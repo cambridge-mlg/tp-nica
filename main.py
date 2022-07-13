@@ -1,8 +1,8 @@
 import os
-#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -62,7 +62,7 @@ def parse():
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")
     # set seeds
-    parser.add_argument('--data-seed', type=int, default=0,
+    parser.add_argument('--data-seed', type=int, default=1,
                         help="seed for initializing data generation")
     parser.add_argument('--est-seed', type=int, default=50,
                         help="seed for initializing learning/inference")
