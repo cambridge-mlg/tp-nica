@@ -11,10 +11,9 @@ from jax.lax import scan
 from jax.random import split
 
 from functools import partial
-from math import factorial
-from tprocess.kernels import se_kernel_fn, compute_K
-from tprocess.sampling import sample_tprocess
-from utils import custom_solve, jax_print, comp_K_N, get_diag_blocks
+from kernels import se_kernel_fn, compute_K
+from data_generation import sample_tprocess
+from utils import custom_solve, jax_print, comp_K_N
 from util import *
 from gamma import *
 from gaussian import *
@@ -26,7 +25,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     N, n_pseudo = yhat.shape
     T = t.shape[0]
     Kuu = vmap(lambda b: vmap(lambda a:
-        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None]+1e-6*jnp.eye(N)
+        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None]
     )(tu))(tu)
     Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
     Ksu = vmap(lambda b:vmap(lambda a:

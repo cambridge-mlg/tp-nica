@@ -1,8 +1,8 @@
 import os
-os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -17,10 +17,12 @@ import jax.numpy as jnp
 import seaborn as sns
 
 from train import train
-from data_generation import gen_tprocess_nica_data
-from tprocess.sampling import gen_1d_locations, gen_2d_locations
-from tprocess.kernels import se_kernel_fn
-from tprocess.util import zero_mean_fn
+from data_generation import (
+    gen_tprocess_nica_data,
+    gen_1d_locations,
+    gen_2d_locations
+)
+from kernels import se_kernel_fn
 
 
 def parse():

@@ -4,34 +4,50 @@ import jax.random as jr
 
 import pdb
 
-from jax import jit, vmap
+from jax import vmap
 from nn import init_nica_params, nica_mlp
-from tprocess.sampling import sample_tprocess
-from tprocess.kernels import (
-    rdm_df,
-    rdm_SE_kernel_params,
-    se_kernel_fn
-)
+from kernels import rdm_df, rdm_SE_kernel_params, compute_K
 
 import matplotlib.pyplot as plt
-import seaborn as sns
+
+
+def gen_1d_locations(T):
+    return jnp.linspace(0, 10, T)[:, None]
+
+
+def gen_2d_locations(T):
+    t1, t2 = jnp.meshgrid(jnp.linspace(0, 10, int(jnp.sqrt(T))),
+                        jnp.linspace(0, 10, int(jnp.sqrt(T))))
+    return jnp.hstack((t1.flatten()[:, None], t2.flatten()[:, None]))
+
+
+def sample_tprocess(key, latent_inputs, gp_mu_fn, gp_kernel_fn,
+                    gp_kernel_params, df):
+    # sample (1/r) from Gamma prior
+    tau_key, tp_key = jr.split(key)
+    tau_sample = jr.gamma(tau_key, df/2, shape=())/(df/2)
+    # define GP parameters
+    mu = vmap(gp_mu_fn)(latent_inputs)
+    K = compute_K(latent_inputs, gp_kernel_fn, gp_kernel_params)
+    # sample
+    tp_sample = jr.multivariate_normal(tp_key, mu, (1/tau_sample)*K)
+    return tp_sample, tau_sample
 
 
 def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
     # sample each IC as a t-process
     N = df.shape[0]
     key, *s_key = jr.split(key, N+1)
-    s, r = vmap(
+    s, tau = vmap(
         lambda _a, _b, _c: sample_tprocess(_a, t, gp_mu_fn, gp_k_fn, _b, _c)
     )(jnp.vstack(s_key), gp_k_params, df)
     # mix the ICs
     z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
-    return z, s, r
+    return z, s, tau
 
 
-def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
-                           mu_func, kernel_func, noise_factor=0.15,
-                           repeat_layers=False):
+def gen_tprocess_nica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
+                           noise_factor=0.15, repeat_layers=False):
     # set-up Gamma prior and GP parameters (used for all samples)
     key, *gamma_keys = jr.split(key, N+1)
     key, *k_keys = jr.split(key, N+1)
@@ -41,8 +57,6 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples,
     # initialize mixing function parameters
     key, mlp_key = jr.split(key, 2)
     mixer_params = init_nica_params(mlp_key, N, M, L, repeat_layers)
-    # DEBUG
-    #mixer_params = [jnp.eye(_.shape[0]) for _ in mixer_params]
 
     # sample ICs and their mixtures
     key, *sample_keys = jr.split(key, num_samples+1)
