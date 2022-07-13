@@ -28,7 +28,7 @@ def compute_K(x, kernel_fn, params):
 
 
 def rdm_SE_kernel_params(key, x, lscale_min_multip=15., lscale_max_multip=50.,
-                         sd_min=0.1, sd_max=1., noise_multip=1e-6):
+                         sd_min=0.1, sd_max=1., noise_multip=1e-3):
     """
     Note: x is needed to find reasonable length-scale thats not too smooth
     """
@@ -38,7 +38,7 @@ def rdm_SE_kernel_params(key, x, lscale_min_multip=15., lscale_max_multip=50.,
                         maxval=lscale_max_multip*min_val)
     key, sd_key = jr.split(key)
     sd = jr.uniform(sd_key, minval=sd_min, maxval=sd_max)
-    noise_sd = noise_multip * jr.uniform(key, minval=sd_min, maxval=sd_max)
+    noise_sd = jnp.array(noise_multip)
     return (sd, lscale, noise_sd)
 
 
