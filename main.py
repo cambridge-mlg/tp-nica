@@ -1,14 +1,19 @@
+import os
+os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 import argparse
 import pdb
 import sys
 
 from jax.config import config
-config.update("jax_enable_x64", True)
-config.update("jax_debug_nans", True)
+#config.update("jax_enable_x64", True)
 
 import jax.random as jr
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import seaborn as sns
 
 from train import train
@@ -44,7 +49,7 @@ def parse():
     # inference, training and optimization args
     parser.add_argument('--diag-approx', action='store_true', default=False,
                         help="approx. likelih. factor with diagonal Gaussian")
-    parser.add_argument('--num-s-samples', type=int, default=10,
+    parser.add_argument('--num-s-samples', type=int, default=5,
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
@@ -72,6 +77,9 @@ def parse():
                         help="set GP kernel params to ground-truth values")
     parser.add_argument('--use-gt-tau', action='store_true', default=False,
                         help="set tau to ground-truth values")
+    # server settings
+    parser.add_argument('--headless', action='store_true', default=False,
+                        help="switch behaviour on server")
     args = parser.parse_args()
     return args
 

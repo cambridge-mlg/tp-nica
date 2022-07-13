@@ -1,7 +1,3 @@
-from jax.config import config
-
-config.update("jax_enable_x64", True)
-
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -19,7 +15,7 @@ from nn import init_nica_params, nica_logpx
 from utils import rdm_upper_cholesky_of_precision, matching_sources_corr
 from utils import plot_ic, jax_print
 from util import rngcall, tree_get_idx, tree_get_range
-from inference_cho import avg_neg_elbo
+from inference import avg_neg_elbo
 
 
 
@@ -192,8 +188,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                     ax[n].plot(s_it_n, color='blue')
                     ax[n].set_xlim([plot_start, plot_end])
                     ax2_n.plot(s_sample_n, color='red')
-                plt.show(block=False)
-                plt.pause(10.)
+                if args.headless:
+                    plt.savefig("s_vs_sest.png")
+                else:
+                    plt.show(block=False)
+                    plt.pause(10.)
                 plt.close()
         toc = time.perf_counter()
         print("Epoch took: ", toc-tic) 

@@ -1,7 +1,5 @@
 from functools import partial
 from jax.scipy.linalg import lu_factor
-from jax.config import config
-config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
 import jax.random as jr
