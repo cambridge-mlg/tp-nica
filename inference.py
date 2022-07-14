@@ -41,14 +41,14 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
       jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
     LK = L@Kuu
     lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
-    #KyyWTy = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
-    KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
+    KyyWTy = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
+    #KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
     mu_s = Ksu @ KyyWTy
-    #cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
-    #cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
-    #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
+    cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
+    cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
+    #cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
+    #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
