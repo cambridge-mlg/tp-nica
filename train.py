@@ -12,7 +12,7 @@ from functools import partial
 
 from kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
-from utils import rdm_upper_cholesky_of_precision, matching_sources_corr
+from utils import rdm_upper_cholesky, matching_sources_corr
 from utils import plot_ic, jax_print
 from util import rngcall, tree_get_idx, tree_get_range
 from inference import avg_neg_elbo
@@ -62,8 +62,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             shape=(n_pseudo,), replace=False))(jr.split(_, n_data)), key)
 
     W, key = rngcall(lambda _k: vmap(
-        lambda _: rdm_upper_cholesky_of_precision(_, N)*10, out_axes=-1)(
-            jr.split(_k, n_pseudo)), key
+        lambda _: rdm_upper_cholesky(_, N)[jnp.triu_indices(N)]*10,
+        out_axes=-1)(jr.split(_k, n_pseudo)), key
     )
     if args.diag_approx:
         W = vmap(lambda _: jnp.diag(_), in_axes=-1, out_axes=-1)(W)

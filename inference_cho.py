@@ -18,7 +18,13 @@ from functools import partial
 from math import factorial
 from kernels import se_kernel_fn, compute_K
 from data_generation import sample_tprocess
-from utils import custom_chol_solve, jax_print, comp_K_N
+from utils import (
+    custom_chol_solve,
+    custom_tril_solve,
+    jax_print,
+    comp_K_N,
+    fill_triu
+)
 from util import *
 from gamma import *
 from gaussian import *
@@ -41,10 +47,14 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         )(theta_cov) / tau[:, None]
 
     # compute parameters for \tilde{q(s|tau)}
+    What = vmap(fill_triu, in_axes=(1, None), out_axes=-1)(What, N)
     WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
     L_blocks = jnp.moveaxis(jnp.einsum('ijk, ilk->jlk', What, What), -1, 0)
     L = js.linalg.block_diag(*L_blocks)
-    Linv = js.linalg.block_diag(*vmap(jnp.linalg.inv)(L_blocks))
+    Linv = js.linalg.block_diag(
+        *vmap(custom_chol_solve, in_axes=(0, None, (-1, None)))(
+        L_blocks, jnp.eye(N), (What, False))
+    )
     cho_fact = js.linalg.cho_factor(Kuu+Linv)
     #KyyLinv = js.linalg.cho_solve(cho_fact, Linv)
     KyyLinv = custom_chol_solve(Kuu+Linv, Linv, cho_fact)
@@ -53,9 +63,10 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #cov_s = vmap(lambda X, z: jnp.diag(z)-X@js.linalg.cho_solve(cho_fact, X.T)
     #             , in_axes=(0, -1)
     #    )(Ksu.reshape(T, N, -1), kss)
-    cov_s = vmap(lambda X, z: jnp.diag(z)-X@custom_chol_solve(Kuu+Linv, X.T,
-                 cho_fact), in_axes=(0, -1)
-        )(Ksu.reshape(T, N, -1), kss)
+    cov_solve = vmap(lambda b: custom_tril_solve(cho_fact[0].T, b.T))(
+            Ksu.reshape(T, N, -1))
+    cov_s = vmap(lambda X, z: jnp.diag(z)-X.T@X,
+                 in_axes=(0, -1))(cov_solve, kss)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 

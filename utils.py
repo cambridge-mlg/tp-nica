@@ -17,7 +17,7 @@ from jax.experimental.host_callback import id_tap
 from util import tree_get_idx
 
 
-def rdm_upper_cholesky_of_precision(key, dim):
+def rdm_upper_cholesky(key, dim):
     P = jr.orthogonal(key, dim)
     key, _ = jr.split(key)
     Q = jnp.diag(1/jr.uniform(key, shape=(dim,)))
@@ -84,6 +84,24 @@ def custom_solve(a, b, lu_factor):
     return custom_linear_solve(matvec, b, _solve, _trans_solve)
 
 
+def custom_triu_solve(u, b):
+    def _solve(matvec, x):
+        return js.linalg.solve_triangular(u, x)
+    def _trans_solve(vecmat, x):
+        return js.linalg.solve_triangular(u, x, trans=1)
+    matvec = partial(jnp.dot, u)
+    return custom_linear_solve(matvec, b, _solve, _trans_solve)
+
+
+def custom_tril_solve(u, b):
+    def _solve(matvec, x):
+        return js.linalg.solve_triangular(u, x, lower=True)
+    def _trans_solve(vecmat, x):
+        return js.linalg.solve_triangular(u, x, trans=1, lower=True)
+    matvec = partial(jnp.dot, u)
+    return custom_linear_solve(matvec, b, _solve, _trans_solve)
+
+
 def custom_chol_solve(a, b, chol_factor):
     def _solve(matvec, x):
         return js.linalg.cho_solve(chol_factor, x)
@@ -108,6 +126,12 @@ def comp_K_N(t1, t2, cov_fn, theta_cov):
 @Partial(jit, static_argnames=['N', 'T'])
 def get_diag_blocks(A, N, T):
     return vmap(lambda i: dynamic_slice(A, (i*N, i*N), (N, N)))(jnp.arange(T))
+
+
+@Partial(jit, static_argnames=['N'])
+def fill_triu(triu_elements, N):
+    U = jnp.zeros((N, N))
+    return U.at[jnp.triu_indices(N)].set(triu_elements)
 
 
 def matching_sources_corr(est_sources, true_sources, method="pearson"):

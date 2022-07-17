@@ -13,7 +13,7 @@ from jax.random import split
 from functools import partial
 from kernels import se_kernel_fn, compute_K
 from data_generation import sample_tprocess
-from utils import custom_solve, jax_print, comp_K_N
+from utils import custom_solve, jax_print, comp_K_N, fill_triu
 from util import *
 from gamma import *
 from gaussian import *
@@ -36,6 +36,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         )(theta_cov) / tau[:, None]
 
     # compute parameters for \tilde{q(s|tau)}
+    What = vmap(fill_triu, in_axes=(1, None), out_axes=-1)(What, N)
     WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
     L = js.linalg.block_diag(*jnp.moveaxis(
       jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
