@@ -64,6 +64,8 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
                  +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
     KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
+    jax_print(Elogpx)
+    jax_print(KLqpu)
     return Elogpx-KLqpu, s
 
 
@@ -80,7 +82,7 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0)
     vlb_s, s = vmap(lambda _: structured_elbo_s(
         rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples_s))(tau)
-    #jax_print(kl)
+    jax_print(kl)
     return jnp.mean(vlb_s, 0) - kl, s
 
 
