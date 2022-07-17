@@ -157,7 +157,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 mcc, _, sort_idx = matching_sources_corr(s_sample[j], s_it[j])
                 minib_mccs.append(mcc)
             minib_avg_mcc = jnp.mean(jnp.array(minib_mccs))
-
+            print(sort_idx)
             mcc_hist.append(minib_avg_mcc.item())
             elbo_hist.append(-nvlb.item())
 
