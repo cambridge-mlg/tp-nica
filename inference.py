@@ -13,7 +13,7 @@ from jax.random import split
 from functools import partial
 from kernels import se_kernel_fn, compute_K
 from data_generation import sample_tprocess
-from utils import custom_solve, jax_print, comp_K_N, fill_triu
+from utils import custom_solve, jax_print, comp_K_N, fill_triu, reorder_covmat
 from util import *
 from gamma import *
 from gaussian import *
@@ -50,7 +50,6 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
     #cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
     #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    jax_print(mu_s)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
@@ -65,8 +64,6 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
                  +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
     KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
-    #jax_print(Elogpx)
-    #jax_print(KLqpu)
     return Elogpx-KLqpu, s
 
 
