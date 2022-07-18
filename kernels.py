@@ -17,9 +17,9 @@ def squared_euclid_dist_mat(x):
 
 
 def se_kernel_fn(x, y, params):
-    sigma, lscale, noise = params
+    sigma, lscale = params
     k = sigma**2 * jnp.exp(-0.5*squared_euclid_dist(x, y) / lscale**2)
-    return k+(x==y).squeeze()*noise**2
+    return k+(x==y).squeeze()*1e-6**2
 
 
 def compute_K(x, kernel_fn, params):
@@ -39,7 +39,7 @@ def rdm_SE_kernel_params(key, x, lscale_min_multip=15., lscale_max_multip=50.,
     key, sd_key = jr.split(key)
     sd = jr.uniform(sd_key, minval=sd_min, maxval=sd_max)
     noise_sd = jnp.array(noise_multip)
-    return (sd, lscale, noise_sd)
+    return (sd, lscale)
 
 
 def rdm_df(key, maxval=4):
