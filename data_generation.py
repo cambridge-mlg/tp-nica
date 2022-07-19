@@ -56,7 +56,7 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     key, *gamma_keys = jr.split(key, N+1)
     key, *k_keys = jr.split(key, N+1)
     dfs = vmap(rdm_df)(jnp.vstack(gamma_keys))
-    k_params = vmap(lambda _: rdm_SE_kernel_params(_, t))(jnp.vstack(k_keys))
+    k_params = vmap(lambda _: rdm_SE_kernel_params(_))(jnp.vstack(k_keys))
 
     # initialize mixing function parameters
     key, mlp_key = jr.split(key, 2)
@@ -82,18 +82,18 @@ if __name__ == "__main__":
     M = 5
     D = 10
     L = 2
-    T = 200
+    T = 1000
 
     # some locations
     t = gen_1d_locations(T)
     mu_fn = lambda _: 0
     cov_fn = se_kernel_fn
     rng = jr.PRNGKey(0)
-    df = jnp.array(2.)
+    df = jnp.array(1000.)
     rng, rng0 = jr.split(rng)
-    theta_cov = rdm_SE_kernel_params(rng0, t)
+    theta_cov = rdm_SE_kernel_params(rng0)
     sample, tau = vmap(lambda _: sample_tprocess(_, t, mu_fn, cov_fn,
-            theta_cov, df))(jr.split(rng, 100))
+            theta_cov, df))(jr.split(rng, 10))
     plt.plot(sample.T)
     plt.show()
 
@@ -120,4 +120,3 @@ if __name__ == "__main__":
     #    sns.lineplot(t_int, y_int)
     #plt.show()
 
-    pdb.set_trace()
