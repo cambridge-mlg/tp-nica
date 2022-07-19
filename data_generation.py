@@ -1,3 +1,7 @@
+from jax.config import config
+config.update("jax_enable_x64", True)
+
+
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -6,24 +10,24 @@ import pdb
 
 from jax import vmap
 from nn import init_nica_params, nica_mlp
-from kernels import rdm_df, rdm_SE_kernel_params, compute_K
+from kernels import rdm_df, rdm_SE_kernel_params, compute_K, se_kernel_fn
 
 import matplotlib.pyplot as plt
 
 
 def gen_1d_locations(T):
-    return jnp.linspace(0, 10, T)[:, None]
+    return jnp.arange(T)[:, None]
 
 
 def gen_2d_locations(T):
-    t1, t2 = jnp.meshgrid(jnp.linspace(0, 10, int(jnp.sqrt(T))),
-                        jnp.linspace(0, 10, int(jnp.sqrt(T))))
+    t1, t2 = jnp.meshgrid(jnp.arange(int(jnp.sqrt(T))),
+                        jnp.arange(int(jnp.sqrt(T))))
     return jnp.hstack((t1.flatten()[:, None], t2.flatten()[:, None]))
 
 
 def sample_tprocess(key, latent_inputs, gp_mu_fn, gp_kernel_fn,
                     gp_kernel_params, df):
-    # sample (1/r) from Gamma prior
+    # sample tau from Gamma prior
     tau_key, tp_key = jr.split(key)
     tau_sample = jr.gamma(tau_key, df/2, shape=())/(df/2)
     # define GP parameters
@@ -78,22 +82,30 @@ if __name__ == "__main__":
     M = 5
     D = 10
     L = 2
+    T = 200
 
     # some locations
-    t = jnp.linspace(0, 3, 100)[:, None]
-    X, Y = jnp.meshgrid(jnp.linspace(0, 3, 20), jnp.linspace(0, 3, 20))
-    t2 = jnp.hstack((X.flatten()[:, None], Y.flatten()[:, None]))
+    t = gen_1d_locations(T)
+    mu_fn = lambda _: 0
+    cov_fn = se_kernel_fn
+    rng = jr.PRNGKey(0)
+    df = jnp.array(2.)
+    rng, rng0 = jr.split(rng)
+    theta_cov = rdm_SE_kernel_params(rng0, t)
+    sample, tau = vmap(lambda _: sample_tprocess(_, t, mu_fn, cov_fn,
+            theta_cov, df))(jr.split(rng, 100))
+    plt.plot(sample.T)
+    plt.show()
 
-    # define mean, kernel and paramter dictionary
 
 
     # use to plot 2D data
-    ax = plt.axes(projection='3d')
-    ax.plot_surface(X, Y, s[0, :].reshape(20, 20),
-                    rstride=1, cstride=1, cmap='viridis')
-    plt.show()
+    #ax = plt.axes(projection='3d')
+    #ax.plot_surface(X, Y, s[0, :].reshape(20, 20),
+    #                rstride=1, cstride=1, cmap='viridis')
+    #plt.show()
 
-    pdb.set_trace()
+    #pdb.set_trace()
 
 
     # for 1D data
@@ -107,3 +119,5 @@ if __name__ == "__main__":
     #    y_int = interp1d(t.squeeze(), s.T[:, i], kind='cubic')(t_int)
     #    sns.lineplot(t_int, y_int)
     #plt.show()
+
+    pdb.set_trace()
