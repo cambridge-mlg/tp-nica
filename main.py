@@ -1,8 +1,8 @@
 import os
-os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -34,7 +34,7 @@ def parse():
                         help="number of ICs")
     parser.add_argument('-M', type=int, default=3,
                         help="dimension of each observed data point")
-    parser.add_argument('-T', type=int, default=200,
+    parser.add_argument('-T', type=int, default=1000,
                         help="number of latent input locations")
     parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")

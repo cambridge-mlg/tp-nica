@@ -34,7 +34,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
     # initialize generative model params (theta)
     theta_tau, key = rngcall(
-        lambda _k: vmap(lambda _: rdm_df(_, maxval=5))(jr.split(_k, N)), key
+        lambda _k: vmap(lambda _: rdm_df(_, maxval=4))(jr.split(_k, N)), key
     )
     theta_k, key = rngcall(
         lambda _k: vmap(lambda _: rdm_SE_kernel_params(_)
@@ -60,7 +60,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     # initialize variational parameters (phi) with pseudo-points (tu)
     tu, key = rngcall(lambda _: vmap(lambda k: jr.choice(k, t,
             shape=(n_pseudo,), replace=False))(jr.split(_, n_data)), key)
-
     W, key = rngcall(lambda _k: vmap(
         lambda _: rdm_upper_cholesky(_, N)[jnp.triu_indices(N)]*10,
         out_axes=-1)(jr.split(_k, n_pseudo)), key
@@ -170,7 +169,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             if epoch % args.plot_freq == 0 and it == 0:
                 plot_idx = 0 # which data sample to plot in each minibatch
                 plot_start = 0
-                plot_len = min(500, T)
+                plot_len = min(1000, T)
                 plot_end = plot_start+plot_len
 
                 # set plot

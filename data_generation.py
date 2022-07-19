@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 
 def gen_1d_locations(T):
-    return jnp.arange(T)[:, None]
+    return jnp.arange(T, dtype=jnp.float64)[:, None]
 
 
 def gen_2d_locations(T):
