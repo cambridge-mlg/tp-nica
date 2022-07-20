@@ -6,9 +6,10 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
+
 import pdb
 
-from jax import vmap
+from jax import vmap, lax
 from nn import init_nica_params, nica_mlp
 from kernels import rdm_df, rdm_SE_kernel_params, compute_K, se_kernel_fn
 
@@ -64,10 +65,9 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
 
     # sample ICs and their mixtures
     key, *sample_keys = jr.split(key, num_samples+1)
-    z, s, tau = vmap(
+    z, s, tau = lax.map(
         lambda _: sample_tpnica(_, t, mu_func, kernel_func, k_params,
-                                dfs, mixer_params)
-    )(jnp.vstack(sample_keys))
+                                dfs, mixer_params), jnp.vstack(sample_keys))
 
     # standardize each dim independently so can add apropriate output noise
     z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(axis=(0, 2),
