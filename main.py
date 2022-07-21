@@ -11,6 +11,7 @@ import sys
 
 from jax.config import config
 config.update("jax_enable_x64", True)
+#config.update("jax_debug_nans", True)
 
 import jax.random as jr
 import jax.numpy as jnp
@@ -55,8 +56,10 @@ def parse():
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--learning-rate', type=float, default=3e-3,
-                        help="learning rate for training")
+    #parser.add_argument('--phi-learning-rate', type=float, default=3e-1,
+    #                    help="learning rate for variational params")
+    parser.add_argument('--theta-learning-rate', type=float, default=3e-3,
+                        help="learning rate for model params")
     parser.add_argument('--minib-size', type=int, default=16,
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
@@ -66,6 +69,8 @@ def parse():
                         help="seed for initializing data generation")
     parser.add_argument('--est-seed', type=int, default=50,
                         help="seed for initializing learning/inference")
+    parser.add_argument('--test-seed', type=int, default=50,
+                        help="seed for all kinds misc. testing")
     # plotting frequency
     parser.add_argument('--plot-freq', type=int, default=100,
                         help="plot components every n epoch")

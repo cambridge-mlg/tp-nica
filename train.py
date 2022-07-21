@@ -29,7 +29,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     minib_size = args.minib_size
     num_epochs = args.num_epochs
     nsamples = (args.num_s_samples, args.num_tau_samples)
-    lr = args.learning_rate
+    theta_lr = args.theta_learning_rate
+    #phi_lr = args.phi_learning_rate
     gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
     # initialize generative model params (theta)
@@ -76,12 +77,14 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     # set up training details
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
-    optimizer = optax.adam(lr)
-    phi_opt_states = vmap(optimizer.init)(phi)
-    theta_opt_state = optimizer.init(theta)
+    theta_optimizer = optax.adam(theta_lr)
+    #phi_optimizer = optax.adam(phi_lr)
+    theta_opt_state = theta_optimizer.init(theta)
+    phi_opt_states = vmap(theta_optimizer.init)(phi)
 
 
-    def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings):
+    def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings,
+                           optimizers):
         @jit
         def training_step(key, theta, phi_n, theta_opt_state,
                           phi_n_opt_states, x):
@@ -92,7 +95,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             theta_g, phi_n_g = g
 
             # perform gradient updates
-            theta_updates, theta_opt_state = optimizer.update(
+            theta_opt = optimizers
+            theta_updates, theta_opt_state = theta_opt.update(
                 theta_g, theta_opt_state, theta)
 
             # override updates in debug mode
@@ -109,7 +113,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
             # perform gradient updates
             theta = optax.apply_updates(theta, theta_updates)
-            phi_n_updates, phi_n_opt_states = vmap(optimizer.update)(
+            phi_n_updates, phi_n_opt_states = vmap(theta_opt.update)(
                 phi_n_g, phi_n_opt_states, phi_n)
             phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
             return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
@@ -117,7 +121,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
 
     training_step = make_training_step(nica_logpx, tp_kernel_fn, t,
-                                       nsamples, use_gt_settings)
+                                       nsamples, use_gt_settings,
+                                       theta_optimizer)
 
     # train over minibatches
     train_data = x.copy()
@@ -130,6 +135,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         shuffle_idx, key = rngcall(jr.permutation, key, n_data)
         shuff_data = train_data[shuffle_idx]
         shuff_s = s_data[shuffle_idx]
+        mcc_epoch_hist = []
+        elbo_epoch_hist = []
         # iterate over all minibatches
         for it in range(num_minibs):
             x_it = shuff_data[it*minib_size:(it+1)*minib_size]
@@ -156,8 +163,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 mcc, _, sort_idx = matching_sources_corr(s_sample[j], s_it[j])
                 minib_mccs.append(mcc)
             minib_avg_mcc = jnp.mean(jnp.array(minib_mccs))
-            mcc_hist.append(minib_avg_mcc.item())
-            elbo_hist.append(-nvlb.item())
+            mcc_epoch_hist.append(minib_avg_mcc.item())
+            elbo_epoch_hist.append(-nvlb.item())
 
             print("*Epoch: [{0}/{1}]\t"
                   "Minibatch: [{2}/{3}]\t"
@@ -192,10 +199,12 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                     plt.pause(10.)
                 plt.close()
         toc = time.perf_counter()
-        print("Epoch took: ", toc-tic) 
+        epoch_avg_mcc = jnp.mean(jnp.array(mcc_epoch_hist))
+        epoch_avg_elbo = jnp.mean(jnp.array(elbo_epoch_hist))
+        mcc_hist.append(epoch_avg_mcc.item())
+        elbo_hist.append(epoch_avg_elbo.item())
+
+        print("Epoch took: {0}\t"
+              "AVG. ELBO: {1} \t"
+              "AVG. MCC: {2}".format(toc-tic, epoch_avg_elbo, epoch_avg_mcc))
     return mcc_hist, elbo_hist
-
-
-
-
-
