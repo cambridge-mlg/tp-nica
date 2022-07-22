@@ -55,9 +55,9 @@ def parse():
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--phi-learning-rate', type=float, default=3e-1,
+    parser.add_argument('--phi-learning-rate', type=float, default=3e-2,
                         help="learning rate for variational params")
-    parser.add_argument('--theta-learning-rate', type=float, default=3e-4,
+    parser.add_argument('--theta-learning-rate', type=float, default=3e-2,
                         help="learning rate for model params")
     parser.add_argument('--minib-size', type=int, default=8,
                         help="minibatch size")
