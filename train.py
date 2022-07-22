@@ -30,7 +30,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     num_epochs = args.num_epochs
     nsamples = (args.num_s_samples, args.num_tau_samples)
     theta_lr = args.theta_learning_rate
-    #phi_lr = args.phi_learning_rate
+    phi_lr = args.phi_learning_rate
     gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
     # initialize generative model params (theta)
@@ -78,9 +78,9 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
     theta_optimizer = optax.adam(theta_lr)
-    #phi_optimizer = optax.adam(phi_lr)
+    phi_optimizer = optax.adam(phi_lr)
     theta_opt_state = theta_optimizer.init(theta)
-    phi_opt_states = vmap(theta_optimizer.init)(phi)
+    phi_opt_states = vmap(phi_optimizer.init)(phi)
 
 
     def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings,
@@ -95,7 +95,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             theta_g, phi_n_g = g
 
             # perform gradient updates
-            theta_opt = optimizers
+            (theta_opt, phi_opt) = optimizers
             theta_updates, theta_opt_state = theta_opt.update(
                 theta_g, theta_opt_state, theta)
 
@@ -113,7 +113,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
             # perform gradient updates
             theta = optax.apply_updates(theta, theta_updates)
-            phi_n_updates, phi_n_opt_states = vmap(theta_opt.update)(
+            phi_n_updates, phi_n_opt_states = vmap(phi_opt.update)(
                 phi_n_g, phi_n_opt_states, phi_n)
             phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
             return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
@@ -122,7 +122,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
     training_step = make_training_step(nica_logpx, tp_kernel_fn, t,
                                        nsamples, use_gt_settings,
-                                       theta_optimizer)
+                                       (theta_optimizer, phi_optimizer))
 
     # train over minibatches
     train_data = x.copy()

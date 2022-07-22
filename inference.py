@@ -11,7 +11,7 @@ from jax.lax import scan
 from jax.random import split
 
 from functools import partial
-from kernels import se_kernel_fn, compute_K
+from kernels import se_kernel_fn, compute_K, bound_se_kernel_params
 from data_generation import sample_tprocess
 from utils import custom_solve, jax_print, comp_K_N, fill_triu, reorder_covmat
 from util import *
@@ -21,6 +21,7 @@ from gaussian import *
 
 def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
+    theta_cov = bound_se_kernel_params(theta_cov)
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
     T = t.shape[0]

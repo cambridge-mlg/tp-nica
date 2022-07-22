@@ -19,7 +19,14 @@ def squared_euclid_dist_mat(x):
 def se_kernel_fn(x, y, params):
     sigma, lscale = params
     k = sigma**2 * jnp.exp(-0.5*squared_euclid_dist(x, y) / lscale**2)
-    return k+(x==y).squeeze()*1e-6
+    return k+(x==y).squeeze()*1e-5
+
+
+def bound_se_kernel_params(params, sigma_min=1e-3, ls_min=1, ls_max=900):
+    sigma, lscale = params
+    sigma = jnp.clip(jnp.abs(sigma), a_min=sigma_min)
+    lscale = jnp.clip(jnp.abs(lscale), a_min=ls_min, a_max=ls_max)
+    return (sigma, lscale)
 
 
 def compute_K(x, kernel_fn, params):
@@ -28,7 +35,7 @@ def compute_K(x, kernel_fn, params):
 
 
 def rdm_SE_kernel_params(key, min_lscale=25., max_lscale=100.,
-                         sd_min=0.1, sd_max=1., noise_multip=1e-3):
+                         sd_min=0.1, sd_max=1.):
     """
     Note: x is needed to find reasonable length-scale thats not too smooth
     """
@@ -36,7 +43,6 @@ def rdm_SE_kernel_params(key, min_lscale=25., max_lscale=100.,
                         maxval=max_lscale)
     key, sd_key = jr.split(key)
     sd = jr.uniform(sd_key, minval=sd_min, maxval=sd_max)
-    noise_sd = jnp.array(noise_multip)
     return (sd, lscale)
 
 

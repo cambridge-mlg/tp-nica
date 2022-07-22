@@ -1,0 +1,18 @@
+#!/bin/bash
+
+#SBATCH -M ukko
+#SBATCH -o res.txt
+#SBATCH -p gpu
+#SBATCH --constraint=[a100|v100]
+#SBATCH -c 4
+#SBATCH -t 23:59:00
+#SBATCH --mem-per-cpu=32G
+#SBATCH --gres=gpu:2
+#SBATCH --array=1-20
+
+module purge
+module load CUDA
+module load cuDNN
+conda activate tpnica
+
+#0 python main.py --headless

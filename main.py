@@ -11,7 +11,6 @@ import sys
 
 from jax.config import config
 config.update("jax_enable_x64", True)
-#config.update("jax_debug_nans", True)
 
 import jax.random as jr
 import jax.numpy as jnp
@@ -37,7 +36,7 @@ def parse():
                         help="dimension of each observed data point")
     parser.add_argument('-T', type=int, default=1000,
                         help="number of latent input locations")
-    parser.add_argument('--num-pseudo', type=int, default=100,
+    parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=1,
                         help="dimension of latent input locations")
@@ -56,11 +55,11 @@ def parse():
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
-    #parser.add_argument('--phi-learning-rate', type=float, default=3e-1,
-    #                    help="learning rate for variational params")
-    parser.add_argument('--theta-learning-rate', type=float, default=3e-3,
+    parser.add_argument('--phi-learning-rate', type=float, default=3e-1,
+                        help="learning rate for variational params")
+    parser.add_argument('--theta-learning-rate', type=float, default=3e-4,
                         help="learning rate for model params")
-    parser.add_argument('--minib-size', type=int, default=16,
+    parser.add_argument('--minib-size', type=int, default=8,
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")
@@ -69,7 +68,7 @@ def parse():
                         help="seed for initializing data generation")
     parser.add_argument('--est-seed', type=int, default=50,
                         help="seed for initializing learning/inference")
-    parser.add_argument('--test-seed', type=int, default=50,
+    parser.add_argument('--test-seed', type=int, default=99,
                         help="seed for all kinds misc. testing")
     # plotting frequency
     parser.add_argument('--plot-freq', type=int, default=100,
