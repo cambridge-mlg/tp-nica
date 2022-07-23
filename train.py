@@ -206,5 +206,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
         print("Epoch took: {0}\t"
               "AVG. ELBO: {1} \t"
-              "AVG. MCC: {2}".format(toc-tic, epoch_avg_elbo, epoch_avg_mcc))
+              "AVG. MCC: {2}\t"
+              "data seed: {3}\t"
+              "est. seed: {4}".format(toc-tic, epoch_avg_elbo, epoch_avg_mcc,
+                                      args.data_seed, args.est_seed))
     return mcc_hist, elbo_hist
