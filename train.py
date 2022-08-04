@@ -5,6 +5,7 @@ import optax
 import matplotlib.pyplot as plt
 import pdb
 import time
+import cloudpickle
 
 from jax import vmap, jit, value_and_grad, lax
 from jax.tree_util import tree_map
@@ -29,8 +30,15 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     minib_size = args.minib_size
     num_epochs = args.num_epochs
     nsamples = (args.num_s_samples, args.num_tau_samples)
-    theta_lr = args.theta_learning_rate
-    phi_lr = args.phi_learning_rate
+
+    tlr_key, plr_key = jr.split(jr.PRNGKey(args.test_seed))
+    theta_lr = jnp.exp(jr.uniform(tlr_key, minval=jnp.log(3e-4),
+                                  maxval=jnp.log(3e-1)))
+    phi_lr = jnp.exp(jr.uniform(plr_key, minval=jnp.log(3e-4),
+                                maxval=jnp.log(3e-1)))
+
+    #theta_lr = args.theta_learning_rate
+    #phi_lr = args.phi_learning_rate
     gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
     # initialize generative model params (theta)
@@ -129,6 +137,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     s_data = s.copy()
     mcc_hist = []
     elbo_hist = []
+    best_elbo = -jnp.inf
     # train for multiple epochs
     for epoch in range(num_epochs):
         tic = time.perf_counter()
@@ -208,6 +217,21 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
               "AVG. ELBO: {1} \t"
               "AVG. MCC: {2}\t"
               "data seed: {3}\t"
-              "est. seed: {4}".format(toc-tic, epoch_avg_elbo, epoch_avg_mcc,
-                                      args.data_seed, args.est_seed))
+              "est. seed: {4}\t"
+              "theta lr: {5}\t"
+              "phi lr: {6}".format(toc-tic, epoch_avg_elbo, epoch_avg_mcc,
+                                   args.data_seed, args.est_seed,
+                                   theta_lr.item(), phi_lr.item()))
+
+        # save checkpoint
+        if epoch_avg_elbo > best_elbo:
+            best_elbo = epoch_avg_elbo
+            best_opt_state_theta = theta_opt_state.copy()
+            best_opt_states_phi = phi_opt_states.copy()
+
+
+
+
+
+
     return mcc_hist, elbo_hist

@@ -66,7 +66,7 @@ def parse():
     # set seeds
     parser.add_argument('--data-seed', type=int, default=1,
                         help="seed for initializing data generation")
-    parser.add_argument('--est-seed', type=int, default=50,
+    parser.add_argument('--est-seed', type=int, default=9,
                         help="seed for initializing learning/inference")
     parser.add_argument('--test-seed', type=int, default=99,
                         help="seed for all kinds misc. testing")
