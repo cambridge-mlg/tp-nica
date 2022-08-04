@@ -1,8 +1,8 @@
 import os
-os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -30,17 +30,17 @@ def parse():
     """
     # synthetic data generation args
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('-N', type=int, default=6,
+    parser.add_argument('-N', type=int, default=3,
                         help="number of ICs")
-    parser.add_argument('-M', type=int, default=12,
+    parser.add_argument('-M', type=int, default=3,
                         help="dimension of each observed data point")
-    parser.add_argument('-T', type=int, default=1000,
+    parser.add_argument('-T', type=int, default=100,
                         help="number of latent input locations")
     parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=1,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=1024,
+    parser.add_argument('--num-data', type=int, default=10,
                         help="total number of data samples to generate")
     parser.add_argument('-L', type=int, default=0,
                         help="number of nonlinear layers; 0 = linear ICA")
@@ -116,10 +116,13 @@ def main():
     elif args.D == 2:
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
-
     x, z, s, tau, *params = gen_tprocess_nica_data(data_key, t, args.N, args.M,
                                                    args.L, args.num_data, mu_fn,
                                                    k_fn)
+    # create folder to save checkpoints    
+    if not os.path.isdir(args.out_dir):
+        os.mkdir(args.out_dir)
+
     # train model
     mcc_hist, elbo_hist = train(x, z, s, t, mu_fn, k_fn, params, args, est_key)
     pdb.set_trace()

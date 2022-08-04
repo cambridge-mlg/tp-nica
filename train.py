@@ -5,6 +5,7 @@ import optax
 import matplotlib.pyplot as plt
 import pdb
 import time
+import os
 import cloudpickle
 
 from jax import vmap, jit, value_and_grad, lax
@@ -225,13 +226,19 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
         # save checkpoint
         if epoch_avg_elbo > best_elbo:
+            print("**Saving checkpoint (best elbo thus far)**")
             best_elbo = epoch_avg_elbo
-            best_opt_state_theta = theta_opt_state.copy()
-            best_opt_states_phi = phi_opt_states.copy()
-
-
-
-
-
-
+            if not os.path.isdir(args.out_dir):
+                os.mkdir(args.out_dir)
+            relev_args_dict = {x: args.__dict__[x] for x in args.__dict__
+                               if x not in ['out_dir']}
+            file_id = ["".join([k[0] for k in str(i).split('_')])+str(j)
+                       for i,j in zip(relev_args_dict.keys(),
+                                      relev_args_dict.values())]
+            file_name = "_".join(file_id) + "_ckpt.pkl"
+            cloudpickle.dump((epoch, key, theta, phi, theta_opt_state,
+                              phi_opt_states),
+                             open(os.path.join(args.out_dir, file_name), 'wb'))
+            cloudpickle.dump((elbo_hist, mcc_hist), open(
+                os.path.join(args.out_dir, 'elbo_mcc_hists.pkl'), 'wb'))
     return mcc_hist, elbo_hist
