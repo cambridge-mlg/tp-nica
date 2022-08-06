@@ -59,7 +59,7 @@ def parse():
                         help="learning rate for variational params")
     parser.add_argument('--theta-learning-rate', type=float, default=3e-2,
                         help="learning rate for model params")
-    parser.add_argument('--minib-size', type=int, default=8,
+    parser.add_argument('--minib-size', type=int, default=2,
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")
@@ -73,9 +73,14 @@ def parse():
     # plotting frequency
     parser.add_argument('--plot-freq', type=int, default=100,
                         help="plot components every n epoch")
-    # saving and loading
+    # checkpoint saving, loading, and evaluation
     parser.add_argument('--out-dir', type=str, default="output/",
                         help="location where data is saved")
+    parser.add_argument('--resume-ckpt', action='store_true', default=False,
+                        help="resume training if checkpoint for matching\
+                        settings exists")
+    parser.add_argument('--eval-only', action='store_true', default=False,
+                        help="evaluate only, from checkpoint, no training")
     # for debugging
     parser.add_argument('--use-gt-nica', action='store_true', default=False,
                         help="set nonlinear ica params to ground-truth values")
@@ -123,9 +128,12 @@ def main():
     if not os.path.isdir(args.out_dir):
         os.mkdir(args.out_dir)
 
+    # ensure there checkpoint will be loaded if only evaluating
+    if args.eval_only:
+        assert args.resume_ckpt, "Eval only requires --resume-ckpt=True"
+
     # train model
-    mcc_hist, elbo_hist = train(x, z, s, t, mu_fn, k_fn, params, args, est_key)
-    pdb.set_trace()
+    elbo_hist, mcc_hist = train(x, z, s, t, mu_fn, k_fn, params, args, est_key)
 
 
 if __name__=="__main__":

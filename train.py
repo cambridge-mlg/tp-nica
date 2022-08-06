@@ -14,8 +14,13 @@ from functools import partial
 
 from kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
-from utils import rdm_upper_cholesky, matching_sources_corr
-from utils import plot_ic, jax_print
+from utils import (
+    rdm_upper_cholesky,
+    matching_sources_corr,
+    save_checkpoint,
+    load_checkpoint
+)
+
 from util import rngcall, tree_get_idx, tree_get_range
 from inference import avg_neg_elbo
 
@@ -91,7 +96,14 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta_opt_state = theta_optimizer.init(theta)
     phi_opt_states = vmap(phi_optimizer.init)(phi)
 
+    # optionally load from checkpoint
+    if args.resume_ckpt:
+        ckpt, hist = load_checkpoint(args)
+        ckpt_epoch, key, theta, phi, theta_opt_state, phi_opt_states = ckpt
+        elbo_hist, mcc_hist = hist
 
+
+    # define training step
     def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings,
                            optimizers):
         @jit
@@ -129,18 +141,38 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         return training_step
 
 
-    training_step = make_training_step(nica_logpx, tp_kernel_fn, t,
-                                       nsamples, use_gt_settings,
-                                       (theta_optimizer, phi_optimizer))
+    # define evaluation step
+    def make_eval_step(logpx, kernel_fn, t, nsamples):
+        def eval_step(key, theta, phi_n, x):
+            (nvlb, s)  = avg_neg_elbo(key, theta, phi_n, logpx,
+                                      kernel_fn, x, t, nsamples)
+            s = s.mean(axis=(1, 2)).swapaxes(-1, -2)
+            return nvlb, s
+        return eval_step
 
-    # train over minibatches
+
+    # initialize eval/training step
+    if args.eval_only:
+        eval_step = make_eval_step(nica_logpx, tp_kernel_fn, t, nsamples)
+    else:
+        training_step = make_training_step(nica_logpx, tp_kernel_fn, t,
+                                           nsamples, use_gt_settings,
+                                           (theta_optimizer, phi_optimizer))
+
+    # set up training
     train_data = x.copy()
     s_data = s.copy()
-    mcc_hist = []
-    elbo_hist = []
+    if args.resume_ckpt:
+        start_epoch = ckpt_epoch+1
+        if args.eval_only:
+            num_epochs = 1
+    else:
+        start_epoch = 0
+        mcc_hist = []
+        elbo_hist = []
     best_elbo = -jnp.inf
     # train for multiple epochs
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, start_epoch+num_epochs):
         tic = time.perf_counter()
         shuffle_idx, key = rngcall(jr.permutation, key, n_data)
         shuff_data = train_data[shuffle_idx]
@@ -156,16 +188,19 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             phi_it = tree_get_idx(phi, idx_set_it)
             phi_opt_states_it = tree_get_idx(phi_opt_states, idx_set_it)
 
-            # training step
-            (nvlb, s_sample, theta, phi_it, theta_opt_state,
-             phi_opt_states_it), key = rngcall(
-                training_step, key, theta, phi_it, theta_opt_state,
-                phi_opt_states_it, x_it)
-
-            # update the full variational parameter pytree at right indices
-            phi = tree_map(lambda a, b: a.at[idx_set_it].set(b), phi, phi_it)
-            phi_opt_states = tree_map(lambda a, b: a.at[idx_set_it].set(b),
-                                      phi_opt_states, phi_opt_states_it)
+            # training step (or evaluation)
+            if args.eval_only:
+                nvlb, s_sample = eval_step(key, theta, phi_it, x_it)
+            else:
+                (nvlb, s_sample, theta, phi_it, theta_opt_state,
+                 phi_opt_states_it), key = rngcall(
+                    training_step, key, theta, phi_it, theta_opt_state,
+                    phi_opt_states_it, x_it)
+ 
+                # update the full variational parameter pytree at right indices
+                phi = tree_map(lambda a, b: a.at[idx_set_it].set(b), phi, phi_it)
+                phi_opt_states = tree_map(lambda a, b: a.at[idx_set_it].set(b),
+                                          phi_opt_states, phi_opt_states_it)
 
             # evaluate
             minib_mccs = []
@@ -179,11 +214,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             print("*Epoch: [{0}/{1}]\t"
                   "Minibatch: [{2}/{3}]\t"
                   "ELBO: {4}\t"
-                  "MCC: {5}".format(epoch, num_epochs-1, it,
+                  "MCC: {5}".format(epoch, start_epoch+num_epochs-1, it,
                                     num_minibs-1, -nvlb, minib_avg_mcc))
 
             ## plot regularly
-            if epoch % args.plot_freq == 0 and it == 0:
+            if (epoch % args.plot_freq == 0 or args.eval_only) and it == 0:
                 plot_idx = 0 # which data sample to plot in each minibatch
                 plot_start = 0
                 plot_len = min(1000, T)
@@ -208,11 +243,10 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                     plt.show(block=False)
                     plt.pause(10.)
                 plt.close()
+
         toc = time.perf_counter()
         epoch_avg_mcc = jnp.mean(jnp.array(mcc_epoch_hist))
         epoch_avg_elbo = jnp.mean(jnp.array(elbo_epoch_hist))
-        mcc_hist.append(epoch_avg_mcc.item())
-        elbo_hist.append(epoch_avg_elbo.item())
 
         print("Epoch took: {0}\t"
               "AVG. ELBO: {1} \t"
@@ -224,21 +258,26 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                                    args.data_seed, args.est_seed,
                                    theta_lr.item(), phi_lr.item()))
 
-        # save checkpoint
-        if epoch_avg_elbo > best_elbo:
-            print("**Saving checkpoint (best elbo thus far)**")
-            best_elbo = epoch_avg_elbo
-            if not os.path.isdir(args.out_dir):
-                os.mkdir(args.out_dir)
-            relev_args_dict = {x: args.__dict__[x] for x in args.__dict__
-                               if x not in ['out_dir']}
-            file_id = ["".join([k[0] for k in str(i).split('_')])+str(j)
-                       for i,j in zip(relev_args_dict.keys(),
-                                      relev_args_dict.values())]
-            file_name = "_".join(file_id) + "_ckpt.pkl"
-            cloudpickle.dump((epoch, key, theta, phi, theta_opt_state,
-                              phi_opt_states),
-                             open(os.path.join(args.out_dir, file_name), 'wb'))
-            cloudpickle.dump((elbo_hist, mcc_hist), open(
-                os.path.join(args.out_dir, 'elbo_mcc_hists.pkl'), 'wb'))
-    return mcc_hist, elbo_hist
+        # save checkpoints
+        if not args.eval_only:
+            mcc_hist.append(epoch_avg_mcc.item())
+            elbo_hist.append(epoch_avg_elbo.item())
+            if epoch_avg_elbo > best_elbo:
+                print("**Saving checkpoint (best elbo thus far)**")
+                best_elbo = epoch_avg_elbo
+                save_checkpoint((epoch, key, theta, phi, theta_opt_state,
+                                 phi_opt_states), (elbo_hist, mcc_hist), args)
+
+        # plot training histories
+        if epoch % args.plot_freq == 0 or args.eval_only:
+            fig, (ax1, ax2) = plt.subplots(1, 2)
+            ax1.plot(elbo_hist)
+            ax2.plot(mcc_hist)
+            plt.tight_layout()
+            if args.headless:
+                plt.savefig("elbo_mcc_hist.png")
+            else:
+                plt.show(block=False)
+                plt.pause(5.)
+            plt.close()
+    return elbo_hist, mcc_hist

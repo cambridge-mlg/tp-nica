@@ -9,6 +9,9 @@ import numpy as np
 import scipy as sp
 import pdb
 import time
+import os
+import cloudpickle
+import pickle
 
 from jax import vmap, jit
 from jax.lax import cond, scan, dynamic_slice, custom_linear_solve
@@ -176,5 +179,41 @@ def plot_ic(s_n, s_est_n, ax, ax1):
     #ax1.plot(s_est_n, color='red')
 
 
+def save_checkpoint(params, hist, train_args):
+    if not os.path.isdir(train_args.out_dir):
+        os.mkdir(train_args.out_dir)
+    relev_args_dict = {k: train_args.__dict__[k] for k
+                       in train_args.__dict__ if k not in ['out_dir',
+                        'eval_only', 'resume_ckpt', 'headless', 'plot_freq']}
+    file_id = ["".join([k[0] for k in str(i).split('_')])+str(j)
+           for i,j in zip(relev_args_dict.keys(),
+                          relev_args_dict.values())]
+    ckpt_file_name = "_".join(file_id) + "_ckpt.pkl"
+    hist_file_name = "_".join(file_id) + "_hist.pkl"
+    cloudpickle.dump(params, open(os.path.join(train_args.out_dir,
+                                               ckpt_file_name), 'wb'))
+    cloudpickle.dump(hist, open(os.path.join(train_args.out_dir,
+                                             hist_file_name), 'wb'))
+
+
+def load_checkpoint(train_args):
+    if not os.path.isdir(train_args.out_dir):
+        os.mkdir(train_args.out_dir)
+    relev_args_dict = {k: train_args.__dict__[k] for k in train_args.__dict__
+                       if k not in ['out_dir', 'eval_only', 'resume_ckpt',
+                                    'headless', 'plot_freq']}
+    file_id = ["".join([k[0] for k in str(i).split('_')])+str(j)
+           for i,j in zip(relev_args_dict.keys(),
+                          relev_args_dict.values())]
+    ckpt_file_name = "_".join(file_id) + "_ckpt.pkl"
+    ckpt_file_path = os.path.join(train_args.out_dir, ckpt_file_name)
+    hist_file_name = "_".join(file_id) + "_hist.pkl"
+    hist_file_path = os.path.join(train_args.out_dir, hist_file_name)
+    assert os.path.isfile(ckpt_file_path), "No checkpoint found for these settings!"
+    assert os.path.isfile(hist_file_path), "No history found for these settings!"
+    ckpt = pickle.load(open(ckpt_file_path, "rb"))
+    hist = pickle.load(open(hist_file_path, "rb"))
+    return ckpt, hist
+
 if __name__=="__main__":
-    pdb.set_trace()
+    print('nothing here!')
