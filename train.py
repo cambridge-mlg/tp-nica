@@ -36,16 +36,29 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     minib_size = args.minib_size
     num_epochs = args.num_epochs
     nsamples = (args.num_s_samples, args.num_tau_samples)
-
-    tlr_key, plr_key = jr.split(jr.PRNGKey(args.test_seed))
-    theta_lr = jnp.exp(jr.uniform(tlr_key, minval=jnp.log(3e-4),
-                                  maxval=jnp.log(3e-1)))
-    phi_lr = jnp.exp(jr.uniform(plr_key, minval=jnp.log(3e-4),
-                                maxval=jnp.log(3e-1)))
-
-    #theta_lr = args.theta_learning_rate
-    #phi_lr = args.phi_learning_rate
+    theta_lr = args.theta_learning_rate
+    phi_lr = args.phi_learning_rate
     gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
+
+
+
+
+    ###### TEST #######
+
+    #tlr_key, plr_key = jr.split(jr.PRNGKey(args.test_seed))
+    #theta_lr = jnp.exp(jr.uniform(tlr_key, minval=jnp.log(3e-4),
+    #                              maxval=jnp.log(3e-1)))
+    #phi_lr = jnp.exp(jr.uniform(plr_key, minval=jnp.log(3e-4),
+    #                            maxval=jnp.log(3e-1)))
+
+
+    scales_bounds = {k*20: 1.16*0.999**(k-1) for k in range(1, 101)}
+    theta_lr = optax.piecewise_constant_schedule(theta_lr, scales_bounds)
+    phi_lr = optax.piecewise_constant_schedule(phi_lr, scales_bounds)
+    ###################
+
+
+
 
     # initialize generative model params (theta)
     theta_tau, key = rngcall(
@@ -256,7 +269,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
               "theta lr: {5}\t"
               "phi lr: {6}".format(toc-tic, epoch_avg_elbo, epoch_avg_mcc,
                                    args.data_seed, args.est_seed,
-                                   theta_lr.item(), phi_lr.item()))
+                                   theta_lr, phi_lr))
 
         # save checkpoints
         if not args.eval_only:
