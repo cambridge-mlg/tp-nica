@@ -289,7 +289,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             ax2.plot(mcc_hist)
             plt.tight_layout()
             if args.headless:
-                plt.savefig("elbo_mcc_hist.png")
+                plt.savefig("elbo_mcc_hist_test.png")
             else:
                 plt.show(block=False)
                 plt.pause(5.)
