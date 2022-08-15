@@ -10,6 +10,7 @@ import cloudpickle
 
 from jax import vmap, jit, value_and_grad, lax
 from jax.tree_util import tree_map
+from optax import piecewise_constant_schedule, cosine_onecycle_schedule
 from functools import partial
 
 from kernels import rdm_SE_kernel_params, rdm_df
@@ -41,8 +42,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
 
-
-
     ###### TEST #######
 
     #tlr_key, plr_key = jr.split(jr.PRNGKey(args.test_seed))
@@ -56,9 +55,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     theta_lr = optax.piecewise_constant_schedule(theta_lr, scales_bounds)
     phi_lr = optax.piecewise_constant_schedule(phi_lr, scales_bounds)
     ###################
-
-
-
 
     # initialize generative model params (theta)
     theta_tau, key = rngcall(
@@ -105,7 +101,12 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
     theta_optimizer = optax.adam(theta_lr)
-    phi_optimizer = optax.adam(phi_lr)
+
+    ## TEST
+    #phi_schedule = cosine_onecycle_schedule(1000, 3e-1)
+    phi_optimizer = optax.adam(learning_rate=phi_lr)
+    ##  
+
     theta_opt_state = theta_optimizer.init(theta)
     phi_opt_states = vmap(phi_optimizer.init)(phi)
 
@@ -266,8 +267,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
               "AVG. MCC: {2}\t"
               "data seed: {3}\t"
               "est. seed: {4}\t"
-              "theta lr: {5}\t"
-              "phi lr: {6}".format(toc-tic, epoch_avg_elbo, epoch_avg_mcc,
+              "init. theta lr: {5}\t"
+              "init. phi lr: {6}".format(toc-tic, epoch_avg_elbo, epoch_avg_mcc,
                                    args.data_seed, args.est_seed,
                                    theta_lr, phi_lr))
 
