@@ -23,7 +23,7 @@ from utils import (
 )
 
 from util import rngcall, tree_get_idx, tree_get_range
-from inference import avg_neg_elbo
+from inference_cho import avg_neg_elbo
 
 
 def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
@@ -101,12 +101,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
     theta_optimizer = optax.adam(theta_lr)
-
-    ## TEST
-    #phi_schedule = cosine_onecycle_schedule(1000, 3e-1)
     phi_optimizer = optax.adam(learning_rate=phi_lr)
-    ##  
-
     theta_opt_state = theta_optimizer.init(theta)
     phi_opt_states = vmap(phi_optimizer.init)(phi)
 

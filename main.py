@@ -12,6 +12,11 @@ import sys
 from jax.config import config
 config.update("jax_enable_x64", True)
 
+###DEBUG##############################
+#config.update('jax_disable_jit', True)
+config.update("jax_debug_nans", True)
+######################################
+
 import jax
 import jax.random as jr
 import jax.numpy as jnp
