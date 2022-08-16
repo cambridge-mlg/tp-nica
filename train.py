@@ -50,16 +50,15 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     #phi_lr = jnp.exp(jr.uniform(plr_key, minval=jnp.log(3e-4),
     #                            maxval=jnp.log(3e-1)))
 
-
-    scales_bounds = {k*20: 1.16*0.999**(k-1) for k in range(1, 101)}
     theta_lr = optax.piecewise_constant_schedule(theta_lr, scales_bounds)
     phi_lr = optax.piecewise_constant_schedule(phi_lr, scales_bounds)
     ###################
 
     # initialize generative model params (theta)
-    theta_tau, key = rngcall(
-        lambda _k: vmap(lambda _: rdm_df(_, maxval=4))(jr.split(_k, N)), key
-    )
+    #theta_tau, key = rngcall(
+    #    lambda _k: vmap(lambda _: rdm_df(_, maxval=4))(jr.split(_k, N)), key
+    #)
+    theta_tau = jnp.ones(N)
     theta_k, key = rngcall(
         lambda _k: vmap(lambda _: rdm_SE_kernel_params(_)
                        )(jr.split(_k, N)), key

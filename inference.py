@@ -73,6 +73,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     nsamples_s, nsamples_tau = nsamples
     theta_tau = theta[2]
+    theta_tau = jnp.exp(theta_tau)
     phi_s, phi_tau = phi[:2]
     tau, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau),
                        (nsamples_tau, *phi_tau[0].shape))
