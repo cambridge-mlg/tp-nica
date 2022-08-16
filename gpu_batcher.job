@@ -2,7 +2,7 @@
 #
 #SBATCH -M ukko
 #SBATCH -p gpu
-#SBATCH -o lr_test_theta.txt
+#SBATCH -o lr_test_both.txt
 #SBATCH -c 2
 #SBATCH -t 23:59:00
 #SBATCH --mem-per-cpu=32G
@@ -14,4 +14,4 @@ module load CUDA
 module load cuDNN
 conda activate tpnica
 
-python main.py --headless --phi-learning-rate 1e-3
+python main.py --headless

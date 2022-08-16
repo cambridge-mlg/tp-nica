@@ -16,7 +16,7 @@ from jax.random import split
 
 from functools import partial
 from math import factorial
-from kernels import se_kernel_fn, compute_K
+from kernels import se_kernel_fn, compute_K, bound_se_kernel_params
 from data_generation import sample_tprocess
 from utils import (
     custom_chol_solve,
@@ -32,6 +32,7 @@ from gaussian import *
 
 def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
+    theta_cov = bound_se_kernel_params(theta_cov)
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
     T = t.shape[0]
@@ -90,9 +91,11 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     nsamples_s, nsamples_tau = nsamples
     theta_tau = theta[2]
+    theta_tau = jnp.clip(theta_tau, 0.1)
     phi_s, phi_tau = phi[:2]
     tau, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau),
                        (nsamples_tau, *phi_tau[0].shape))
+    jax_print(theta_tau/2)
     kl = jnp.sum(
         gamma_kl(
             gamma_natparams_fromstandard(phi_tau),
