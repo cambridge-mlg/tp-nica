@@ -10,7 +10,7 @@ import cloudpickle
 
 from jax import vmap, jit, value_and_grad, lax
 from jax.tree_util import tree_map
-from optax import piecewise_constant_schedule, cosine_onecycle_schedule
+from optax import cosine_onecycle_schedule
 from functools import partial
 
 from kernels import rdm_SE_kernel_params, rdm_df
@@ -43,15 +43,15 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
 
     ###### TEST #######
-
-    #tlr_key, plr_key = jr.split(jr.PRNGKey(args.test_seed))
-    #theta_lr = jnp.exp(jr.uniform(tlr_key, minval=jnp.log(3e-4),
-    #                              maxval=jnp.log(3e-1)))
-    #phi_lr = jnp.exp(jr.uniform(plr_key, minval=jnp.log(3e-4),
-    #                            maxval=jnp.log(3e-1)))
-
-    theta_lr = optax.piecewise_constant_schedule(theta_lr, scales_bounds)
-    phi_lr = optax.piecewise_constant_schedule(phi_lr, scales_bounds)
+    tlr_key, plr_key = jr.split(jr.PRNGKey(args.test_seed))
+    peak_theta_lr = jnp.exp(jr.uniform(tlr_key, minval=jnp.log(0.1),
+                                  maxval=jnp.log(1.)))
+    peak_phi_lr = jnp.exp(jr.uniform(plr_key, minval=jnp.log(0.1),
+                                maxval=jnp.log(1.)))
+    theta_lr = optax.cosine_onecycle_schedule(2000, peak_value=peak_theta_lr,
+                                              div_factor=100)
+    phi_lr = optax.cosine_onecycle_schedule(20000, peak_value=peak_phi_lr,
+                                            div_factor=100)
     ###################
 
     # initialize generative model params (theta)
@@ -100,7 +100,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
     theta_optimizer = optax.adam(theta_lr)
-    phi_optimizer = optax.adam(learning_rate=phi_lr)
+    phi_optimizer = optax.adam(phi_lr)
     theta_opt_state = theta_optimizer.init(theta)
     phi_opt_states = vmap(phi_optimizer.init)(phi)
 
