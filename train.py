@@ -50,7 +50,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                                 maxval=jnp.log(1.)))
     theta_lr = optax.cosine_onecycle_schedule(2000, peak_value=peak_theta_lr,
                                               div_factor=100)
-    phi_lr = optax.cosine_onecycle_schedule(20000, peak_value=peak_phi_lr,
+    phi_lr = optax.cosine_onecycle_schedule(2000, peak_value=peak_phi_lr,
                                             div_factor=100)
     ###################
 
