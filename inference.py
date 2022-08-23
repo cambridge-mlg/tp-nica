@@ -9,6 +9,7 @@ import pdb
 from jax import grad, value_and_grad, vmap, jit
 from jax.lax import scan
 from jax.random import split
+from jax.tree_util import tree_map
 
 from functools import partial
 from kernels import se_kernel_fn, compute_K, bound_se_kernel_params
@@ -21,7 +22,7 @@ from gaussian import *
 
 def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
-    theta_cov = bound_se_kernel_params(theta_cov)
+    theta_cov = tree_map(lambda _: jnp.exp(_), theta_cov)
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
     T = t.shape[0]

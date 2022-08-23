@@ -14,7 +14,7 @@ config.update("jax_enable_x64", True)
 
 ###DEBUG##############################
 #config.update('jax_disable_jit', True)
-#config.update("jax_debug_nans", True)
+config.update("jax_debug_nans", True)
 ######################################
 
 import jax
@@ -71,6 +71,8 @@ def parse():
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")
+    parser.add_argument('--burn-in-len', type=int, default=100,
+                        help="number of epochs to keep theta params fixed")
     # set seeds
     parser.add_argument('--data-seed', type=int, default=1,
                         help="seed for initializing data generation")

@@ -48,6 +48,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                                   maxval=jnp.log(1.)))
     peak_phi_lr = jnp.exp(jr.uniform(plr_key, minval=jnp.log(0.1),
                                 maxval=jnp.log(1.)))
+    print(peak_theta_lr)
+    print(peak_phi_lr)
     theta_lr = optax.cosine_onecycle_schedule(2000, peak_value=peak_theta_lr,
                                               div_factor=100)
     phi_lr = optax.cosine_onecycle_schedule(2000, peak_value=peak_phi_lr,
@@ -55,14 +57,14 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     ###################
 
     # initialize generative model params (theta)
-    #theta_tau, key = rngcall(
-    #    lambda _k: vmap(lambda _: rdm_df(_, maxval=4))(jr.split(_k, N)), key
-    #)
-    theta_tau = jnp.ones(N)
-    theta_k, key = rngcall(
-        lambda _k: vmap(lambda _: rdm_SE_kernel_params(_)
-                       )(jr.split(_k, N)), key
+    theta_tau, key = rngcall(
+        lambda _k: vmap(lambda _: rdm_df(_, maxval=4))(jr.split(_k, N)), key
     )
+    theta_tau = jnp.log(theta_tau)
+    theta_k, key = rngcall(
+        lambda _k: vmap(lambda _: rdm_SE_kernel_params(_))(jr.split(_k, N)), key
+    )
+    theta_k = tree_map(lambda _: jnp.log(_), theta_k)
     theta_var, key = rngcall(lambda _: jr.uniform(_, shape=(M,),
                 minval=-1, maxval=1), key)
     theta_mix, key = rngcall(lambda _: init_nica_params(
@@ -116,7 +118,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                            optimizers):
         @jit
         def training_step(key, theta, phi_n, theta_opt_state,
-                          phi_n_opt_states, x):
+                          phi_n_opt_states, x, burn_in):
             (nvlb, s), g = value_and_grad(avg_neg_elbo, argnums=(1, 2),
                                      has_aux=True)(key, theta, phi_n, logpx,
                                                    kernel_fn, x, t, nsamples)
@@ -130,15 +132,19 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
             # override updates in debug mode
             use_gt_nica, use_gt_kernel, use_gt_tau = use_gt_settings
-            gt_override_fun = lambda x: tree_map(lambda _:
-                            jnp.zeros(shape=_.shape), x)
-            nica_updates = lax.cond(use_gt_nica, gt_override_fun,
+            grad_override_fun = lambda x: tree_map(lambda _:
+                                                   jnp.zeros(shape=_.shape), x)
+            nica_updates = lax.cond(use_gt_nica, grad_override_fun,
                         lambda x: x, theta_updates[0])
-            kernel_updates = lax.cond(use_gt_kernel, gt_override_fun,
+            kernel_updates = lax.cond(use_gt_kernel, grad_override_fun,
                         lambda x: x, theta_updates[1])
-            tau_updates = lax.cond(use_gt_tau, gt_override_fun,
+            tau_updates = lax.cond(use_gt_tau, grad_override_fun,
                         lambda x: x, theta_updates[2])
             theta_updates = (nica_updates, kernel_updates, tau_updates)
+
+            # also durning burn-in
+            theta_updates = lax.cond(burn_in, grad_override_fun,
+                                     lambda x: x, theta_updates)
 
             # perform gradient updates
             theta = optax.apply_updates(theta, theta_updates)
@@ -187,6 +193,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         shuff_s = s_data[shuffle_idx]
         mcc_epoch_hist = []
         elbo_epoch_hist = []
+        burn_in = epoch < args.burn_in_len
         # iterate over all minibatches
         for it in range(num_minibs):
             x_it = shuff_data[it*minib_size:(it+1)*minib_size]
@@ -203,7 +210,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 (nvlb, s_sample, theta, phi_it, theta_opt_state,
                  phi_opt_states_it), key = rngcall(
                     training_step, key, theta, phi_it, theta_opt_state,
-                    phi_opt_states_it, x_it)
+                    phi_opt_states_it, x_it, burn_in)
  
                 # update the full variational parameter pytree at right indices
                 phi = tree_map(lambda a, b: a.at[idx_set_it].set(b), phi, phi_it)
