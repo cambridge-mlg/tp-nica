@@ -1,3 +1,4 @@
+from jax._src.tree_util import tree_map
 import jax.numpy as jnp
 import jax.random as jr
 
@@ -24,8 +25,8 @@ def se_kernel_fn(x, y, params):
 
 def bound_se_kernel_params(params, sigma_min=1e-3, ls_min=1, ls_max=900):
     sigma, lscale = params
-    sigma = jnp.clip(jnp.abs(sigma), a_min=sigma_min)
-    lscale = jnp.clip(jnp.abs(lscale), a_min=ls_min, a_max=ls_max)
+    sigma = tree_map(lambda _: _+sigma_min, sigma)
+    lscale = tree_map(lambda _: ls_max/(_ + 1.) + ls_min, lscale)
     return (sigma, lscale)
 
 

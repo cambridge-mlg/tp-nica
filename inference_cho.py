@@ -34,6 +34,7 @@ from gaussian import *
 def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
     theta_cov = tree_map(lambda _: jnp.exp(_), theta_cov)
+    theta_cov = bound_se_kernel_params(theta_cov)
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
     T = t.shape[0]
