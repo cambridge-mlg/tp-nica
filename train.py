@@ -43,17 +43,17 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
 
     ###### TEST #######
-    tlr_key, plr_key = jr.split(jr.PRNGKey(args.test_seed))
-    peak_theta_lr = jnp.exp(jr.uniform(tlr_key, minval=jnp.log(0.1),
-                                  maxval=jnp.log(1.)))
-    peak_phi_lr = jnp.exp(jr.uniform(plr_key, minval=jnp.log(0.1),
-                                maxval=jnp.log(1.)))
-    print(peak_theta_lr)
-    print(peak_phi_lr)
-    theta_lr = optax.cosine_onecycle_schedule(2000, peak_value=peak_theta_lr,
-                                              div_factor=100)
-    phi_lr = optax.cosine_onecycle_schedule(2000, peak_value=peak_phi_lr,
-                                            div_factor=100)
+    #tlr_key, plr_key = jr.split(jr.PRNGKey(args.test_seed))
+    #peak_theta_lr = jnp.exp(jr.uniform(tlr_key, minval=jnp.log(0.1),
+    #                              maxval=jnp.log(1.)))
+    #peak_phi_lr = jnp.exp(jr.uniform(plr_key, minval=jnp.log(0.1),
+    #                            maxval=jnp.log(1.)))
+    #print(peak_theta_lr)
+    #print(peak_phi_lr)
+    #theta_lr = optax.cosine_onecycle_schedule(2000, peak_value=peak_theta_lr,
+    #                                          div_factor=100)
+    #phi_lr = optax.cosine_onecycle_schedule(2000, peak_value=peak_phi_lr,
+    #                                        div_factor=100)
     ###################
 
     # initialize generative model params (theta)

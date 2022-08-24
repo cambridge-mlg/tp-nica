@@ -17,7 +17,11 @@ from jax.tree_util import tree_map
 
 from functools import partial
 from math import factorial
-from kernels import se_kernel_fn, compute_K, bound_se_kernel_params
+from kernels import (
+    se_kernel_fn,
+    bound_se_kernel_params,
+    squared_euclid_dist_mat
+)
 from data_generation import sample_tprocess
 from utils import (
     custom_chol_solve,
@@ -34,7 +38,14 @@ from gaussian import *
 def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
     theta_cov = tree_map(lambda _: jnp.exp(_), theta_cov)
-    theta_cov = bound_se_kernel_params(theta_cov)
+    t_dist_mat = jnp.sqrt(squared_euclid_dist_mat(t))
+    theta_cov = bound_se_kernel_params(
+        theta_cov, sigma_min=1e-3,
+        ls_min=jnp.min(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)]),
+        ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
+    )
+    jax_print(theta_cov[0])
+    jax_print(theta_cov[1])
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
     T = t.shape[0]
