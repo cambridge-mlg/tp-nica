@@ -62,7 +62,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
     #cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
     #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-
+    jax_print(cov_s)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
@@ -74,8 +74,8 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     # compute KL[q(u)|p(u)]
     tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
     h = Kuu@KyyWTy
-    logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
-                 +jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
+    logZ = 0.5*(jnp.dot(WTy.squeeze(), h)
+                -jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
     KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     return Elogpx-KLqpu, s
 

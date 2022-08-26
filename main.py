@@ -1,8 +1,8 @@
 import os
-#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -14,7 +14,7 @@ config.update("jax_enable_x64", True)
 
 ###DEBUG##############################
 #config.update('jax_disable_jit', True)
-#config.update("jax_debug_nans", True)
+config.update("jax_debug_nans", True)
 ######################################
 
 import jax
@@ -38,17 +38,17 @@ def parse():
     """
     # synthetic data generation args
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('-N', type=int, default=3,
+    parser.add_argument('-N', type=int, default=6,
                         help="number of ICs")
-    parser.add_argument('-M', type=int, default=3,
+    parser.add_argument('-M', type=int, default=12,
                         help="dimension of each observed data point")
-    parser.add_argument('-T', type=int, default=200,
+    parser.add_argument('-T', type=int, default=1000,
                         help="number of latent input locations")
-    parser.add_argument('--num-pseudo', type=int, default=20,
+    parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=1,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=10,
+    parser.add_argument('--num-data', type=int, default=1024,
                         help="total number of data samples to generate")
     parser.add_argument('-L', type=int, default=0,
                         help="number of nonlinear layers; 0 = linear ICA")
@@ -63,11 +63,11 @@ def parse():
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--phi-learning-rate', type=float, default=1e-1,
+    parser.add_argument('--phi-learning-rate', type=float, default=1e-4,
                         help="learning rate for variational params")
-    parser.add_argument('--theta-learning-rate', type=float, default=1e-2,
+    parser.add_argument('--theta-learning-rate', type=float, default=1e-4,
                         help="learning rate for model params")
-    parser.add_argument('--minib-size', type=int, default=2,
+    parser.add_argument('--minib-size', type=int, default=8,
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")

@@ -44,8 +44,6 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         ls_min=jnp.min(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)]),
         ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
     )
-    jax_print(theta_cov[0])
-    jax_print(theta_cov[1])
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
     T = t.shape[0]
@@ -77,10 +75,11 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #cov_s = vmap(lambda X, z: jnp.diag(z)-X@js.linalg.cho_solve(cho_fact, X.T)
     #             , in_axes=(0, -1)
     #    )(Ksu.reshape(T, N, -1), kss)
-    cov_solve = vmap(lambda b: custom_tril_solve(cho_fact[0].T, b.T))(
+    cov_solve = vmap(lambda b: custom_tril_solve(Linv[0].T, b.T))(
             Ksu.reshape(T, N, -1))
     cov_s = vmap(lambda X, z: jnp.diag(z)-X.T@X,
                  in_axes=(0, -1))(cov_solve, kss)
+    jax_print(jnp.min(jnp.linalg.eigh(cov_s)[0]))
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
@@ -92,8 +91,8 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     # compute KL[q(u)|p(u)]
     tr = jnp.trace(L @ Kuu @ KyyLinv)
     h = Kuu@KyyLinvWTy
-    logZ = -0.5*(-jnp.dot(WTy.squeeze(), h)
-                 +jnp.linalg.slogdet(jnp.eye(L.shape[0])+L@Kuu)[1])
+    logZ = 0.5*(jnp.dot(WTy.squeeze(), h)
+                -jnp.linalg.slogdet(jnp.eye(L.shape[0])+L@Kuu)[1])
     KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     #jax_print(Elogpx)
     #jax_print(KLqpu)
