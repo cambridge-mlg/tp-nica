@@ -1,8 +1,8 @@
 import os
-os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -42,13 +42,13 @@ def parse():
                         help="number of ICs")
     parser.add_argument('-M', type=int, default=12,
                         help="dimension of each observed data point")
-    parser.add_argument('-T', type=int, default=1000,
+    parser.add_argument('-T', type=int, default=100,
                         help="number of latent input locations")
     parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=1,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=1024,
+    parser.add_argument('--num-data', type=int, default=10,
                         help="total number of data samples to generate")
     parser.add_argument('-L', type=int, default=0,
                         help="number of nonlinear layers; 0 = linear ICA")
@@ -67,7 +67,7 @@ def parse():
                         help="learning rate for variational params")
     parser.add_argument('--theta-learning-rate', type=float, default=1e-4,
                         help="learning rate for model params")
-    parser.add_argument('--minib-size', type=int, default=8,
+    parser.add_argument('--minib-size', type=int, default=1,
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")

@@ -75,7 +75,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #cov_s = vmap(lambda X, z: jnp.diag(z)-X@js.linalg.cho_solve(cho_fact, X.T)
     #             , in_axes=(0, -1)
     #    )(Ksu.reshape(T, N, -1), kss)
-    cov_solve = vmap(lambda b: custom_tril_solve(Linv[0].T, b.T))(
+    cov_solve = vmap(lambda b: custom_tril_solve(cho_fact[0].T, b.T))(
             Ksu.reshape(T, N, -1))
     cov_s = vmap(lambda X, z: jnp.diag(z)-X.T@X,
                  in_axes=(0, -1))(cov_solve, kss)

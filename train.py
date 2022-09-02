@@ -23,7 +23,7 @@ from utils import (
 )
 
 from util import rngcall, tree_get_idx, tree_get_range
-from inference_cho import avg_neg_elbo
+from inference import avg_neg_elbo
 
 
 def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):

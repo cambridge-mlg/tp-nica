@@ -49,6 +49,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
     # compute parameters for \tilde{q(s|tau)}
     What = vmap(fill_triu, in_axes=(1, None), out_axes=-1)(What, N)
+    pdb.set_trace()
     WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
     L = js.linalg.block_diag(*jnp.moveaxis(
       jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
