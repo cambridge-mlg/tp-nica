@@ -41,19 +41,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     phi_lr = args.phi_learning_rate
     gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
-
-    ###### TEST #######
-    #tlr_key, plr_key = jr.split(jr.PRNGKey(args.test_seed+100))
-    #theta_lr = jnp.exp(jr.uniform(tlr_key, minval=jnp.log(1e-3),
-    #                              maxval=jnp.log(0.5)))
-    #phi_lr = jnp.exp(jr.uniform(plr_key, minval=jnp.log(1e-3),
-    #                            maxval=jnp.log(0.5)))
-    #theta_lr = optax.cosine_onecycle_schedule(2000, peak_value=peak_theta_lr,
-    #                                          div_factor=100)
-    #phi_lr = optax.cosine_onecycle_schedule(2000, peak_value=peak_phi_lr,
-    #                                        div_factor=100)
-    ###################
-
     # initialize generative model params (theta)
     theta_tau, key = rngcall(
         lambda _k: vmap(lambda _: rdm_df(_, maxval=4))(jr.split(_k, N)), key
