@@ -72,20 +72,16 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     KyyLinv = custom_chol_solve(Kuu+Linv, Linv, cho_fact)
     KyyLinvWTy = KyyLinv @ WTy
     mu_s = Ksu @ KyyLinvWTy
-    #cov_s = vmap(lambda X, z: jnp.diag(z)-X@js.linalg.cho_solve(cho_fact, X.T)
-    #             , in_axes=(0, -1)
-    #    )(Ksu.reshape(T, N, -1), kss)
-    cov_solve = vmap(lambda b: custom_tril_solve(Linv[0].T, b.T))(
+    cov_solve = vmap(lambda b: custom_tril_solve(cho_fact[0].T, b.T))(
             Ksu.reshape(T, N, -1))
     cov_s = vmap(lambda X, z: jnp.diag(z)-X.T@X,
                  in_axes=(0, -1))(cov_solve, kss)
-    jax_print(jnp.min(jnp.linalg.eigh(cov_s)[0]))
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
     # compute E_{\tilde{q(s|tau)}}[log_p(x_t|s_t)]
     Elogpx = jnp.mean(
-        jnp.sum(vmap(lambda _: vmap(logpx,(1, 0, None))(x, _, theta_x))(s), 1)
+        jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
     )
 
     # compute KL[q(u)|p(u)]

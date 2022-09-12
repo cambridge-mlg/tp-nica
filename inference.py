@@ -62,7 +62,6 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
     #cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
     #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    jax_print(cov_s)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 

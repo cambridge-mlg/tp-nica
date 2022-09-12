@@ -63,9 +63,9 @@ def parse():
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--phi-learning-rate', type=float, default=1e-4,
+    parser.add_argument('--phi-learning-rate', type=float, default=0.28,
                         help="learning rate for variational params")
-    parser.add_argument('--theta-learning-rate', type=float, default=1e-4,
+    parser.add_argument('--theta-learning-rate', type=float, default=0.004,
                         help="learning rate for model params")
     parser.add_argument('--minib-size', type=int, default=8,
                         help="minibatch size")
@@ -76,7 +76,7 @@ def parse():
     # set seeds
     parser.add_argument('--data-seed', type=int, default=1,
                         help="seed for initializing data generation")
-    parser.add_argument('--est-seed', type=int, default=9,
+    parser.add_argument('--est-seed', type=int, default=50,
                         help="seed for initializing learning/inference")
     parser.add_argument('--test-seed', type=int, default=99,
                         help="seed for all kinds misc. testing")
