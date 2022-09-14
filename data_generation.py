@@ -52,10 +52,15 @@ def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
 
 
 def gen_tprocess_nica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
-                           noise_factor=0.15, repeat_layers=False):
+                           noise_factor=0.15, repeat_layers=False,
+                           repeat_dfs=False, repeat_kernels=False):
     # set-up Gamma prior and GP parameters (used for all samples)
     key, *gamma_keys = jr.split(key, N+1)
     key, *k_keys = jr.split(key, N+1)
+    if repeat_dfs:
+        gamma_keys = [gamma_keys[0]]*len(gamma_keys)
+    if repeat_kernels:
+        k_keys = [k_keys[0]]*len(k_keys)
     dfs = vmap(rdm_df)(jnp.vstack(gamma_keys))
     k_params = vmap(lambda _: rdm_SE_kernel_params(_))(jnp.vstack(k_keys))
 

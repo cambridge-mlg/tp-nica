@@ -73,6 +73,11 @@ def parse():
                         help="number of training epochs")
     parser.add_argument('--burn-in-len', type=int, default=100,
                         help="number of epochs to keep theta params fixed")
+    # set all ICs to have same distribs
+    parser.add_argument('--repeat-dfs', action='store_true', default=True,
+                        help="force all tprocesses to same degrees of freedom")
+    parser.add_argument('--repeat-kernels', action='store_true', default=True,
+                        help="force all t-processes to use the same kernel")
     # set seeds
     parser.add_argument('--data-seed', type=int, default=1,
                         help="seed for initializing data generation")
