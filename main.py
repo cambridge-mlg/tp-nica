@@ -139,8 +139,14 @@ def main():
     elif args.D == 2:
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
-    x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
-                                            args.L, args.num_data, mu_fn, k_fn)
+    if args.GP:
+        x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
+                              args.L, args.num_data, mu_fn, k_fn)
+    else:
+        x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
+                              args.L, args.num_data, mu_fn, k_fn)
+
+
     # create folder to save checkpoints    
     if not os.path.isdir(args.out_dir):
         os.mkdir(args.out_dir)

@@ -134,7 +134,7 @@ def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
 if __name__ == "__main__":
     N = 5
     M = 5
-    D = 10
+    D = 100
     L = 2
     T = 1000
 
@@ -147,13 +147,12 @@ if __name__ == "__main__":
     rng, rng0 = jr.split(rng)
     theta_cov = rdm_SE_kernel_params(rng0)
     tp_sample, tau = vmap(lambda _: sample_tprocess(_, t, mu_fn, cov_fn,
-            theta_cov, df))(jr.split(rng, 10))
+            theta_cov, df))(jr.split(rng, D))
     plt.plot(tp_sample.T)
-    plt.show()
 
     gp_sample = vmap(lambda _: sample_gp(_, t, mu_fn, cov_fn,
-            theta_cov))(jr.split(rng, 10))
-    plt.plot(gp_sample.T)
+            theta_cov))(jr.split(rng, D))
+    plt.plot(gp_sample.T, 'b--')
     plt.show()
  
 

@@ -10,8 +10,6 @@ import cloudpickle
 
 from jax import vmap, jit, value_and_grad, lax
 from jax.tree_util import tree_map
-from optax import cosine_onecycle_schedule
-from functools import partial
 
 from kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
@@ -22,8 +20,8 @@ from utils import (
     load_checkpoint
 )
 
-from util import rngcall, tree_get_idx, tree_get_range
-from inference import avg_neg_elbo
+from util import rngcall, tree_get_idx
+from inference import avg_neg_tp_elbo, avg_neg_gp_elbo
 
 
 def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
@@ -39,13 +37,18 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     nsamples = (args.num_s_samples, args.num_tau_samples)
     theta_lr = args.theta_learning_rate
     phi_lr = args.phi_learning_rate
-    gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
+    if args.GP:
+        gt_Q, gt_mixer_params, gt_kernel_params = params
+    else:
+        gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
     # initialize generative model params (theta)
-    theta_tau, key = rngcall(
-        lambda _k: vmap(lambda _: rdm_df(_, maxval=4))(jr.split(_k, N)), key
-    )
-    theta_tau = jnp.log(theta_tau)
+    if not args.GP:
+        theta_tau, key = rngcall(
+            lambda _k: vmap(lambda _: rdm_df(_, maxval=4))(jr.split(_k, N)), key
+        )
+        theta_tau = jnp.log(theta_tau)
+
     theta_k, key = rngcall(
         lambda _k: vmap(lambda _: rdm_SE_kernel_params(_))(jr.split(_k, N)), key
     )
@@ -61,11 +64,14 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         theta_x = (gt_mixer_params, jnp.log(jnp.diag(gt_Q)))
     if args.use_gt_kernel:
         theta_k = gt_kernel_params
-    if args.use_gt_tau:
+    if args.use_gt_tau and not args.GP:
         theta_tau = gt_tau
     use_gt_settings = (args.use_gt_nica, args.use_gt_kernel, args.use_gt_tau)
 
-    theta = (theta_x, theta_k, theta_tau)
+    if args.GP:
+        theta = (theta_x, theta_k)
+    else:
+        theta = (theta_x, theta_k, theta_tau)
 
     # initialize variational parameters (phi) with pseudo-points (tu)
     tu, key = rngcall(lambda _: vmap(lambda k: jr.choice(k, t,
@@ -78,10 +84,14 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         W = vmap(lambda _: jnp.diag(_), in_axes=-1, out_axes=-1)(W)
     phi_s = (jnp.repeat(W[None, :], n_data, 0),
              jnp.ones(shape=(n_data, N, n_pseudo)), tu)
-    phi_df, key = rngcall(lambda _: vmap(rdm_df)(jr.split(_, n_data*N)), key)
-    phi_df = phi_df.reshape(n_data, N)
-    phi_tau = (phi_df, phi_df*10)
-    phi = (phi_s, phi_tau)
+    if args.GP:
+        phi = phi_s
+    else:
+        phi_df, key = rngcall(lambda _:
+                              vmap(rdm_df)(jr.split(_, n_data*N)),key)
+        phi_df = phi_df.reshape(n_data, N)
+        phi_tau = (phi_df, phi_df*10)
+        phi = (phi_s, phi_tau)
 
     # set up training details
     num_full_minibs, remainder = divmod(n_data, minib_size)
@@ -100,50 +110,87 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
     # define training step
     def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings,
-                           optimizers):
-        @jit
-        def training_step(key, theta, phi_n, theta_opt_state,
-                          phi_n_opt_states, x, burn_in):
-            (nvlb, s), g = value_and_grad(avg_neg_elbo, argnums=(1, 2),
-                                     has_aux=True)(key, theta, phi_n, logpx,
-                                                   kernel_fn, x, t, nsamples)
-            s = s.mean(axis=(1, 2)).swapaxes(-1, -2)
-            theta_g, phi_n_g = g
+                           optimizers, is_gp):
+        if is_gp:
+            @jit
+            def gp_training_step(key, theta, phi_n, theta_opt_state,
+                                 phi_n_opt_states, x, burn_in):
+                (nvlb, s), g = value_and_grad(avg_neg_gp_elbo, argnums=(1, 2),
+                                         has_aux=True)(key, theta, phi_n, logpx,
+                                                       kernel_fn, x, t, nsamples)
+                s = s.mean(axis=(1, 2)).swapaxes(-1, -2)
+                theta_g, phi_n_g = g
 
-            # perform gradient updates
-            (theta_opt, phi_opt) = optimizers
-            theta_updates, theta_opt_state = theta_opt.update(
-                theta_g, theta_opt_state, theta)
+                # perform gradient updates
+                (theta_opt, phi_opt) = optimizers
+                theta_updates, theta_opt_state = theta_opt.update(
+                    theta_g, theta_opt_state, theta)
 
-            # override updates in debug mode
-            use_gt_nica, use_gt_kernel, use_gt_tau = use_gt_settings
-            grad_override_fun = lambda x: tree_map(lambda _:
-                                                   jnp.zeros(shape=_.shape), x)
-            nica_updates = lax.cond(use_gt_nica, grad_override_fun,
-                        lambda x: x, theta_updates[0])
-            kernel_updates = lax.cond(use_gt_kernel, grad_override_fun,
-                        lambda x: x, theta_updates[1])
-            tau_updates = lax.cond(use_gt_tau, grad_override_fun,
-                        lambda x: x, theta_updates[2])
-            theta_updates = (nica_updates, kernel_updates, tau_updates)
+                # override updates in debug mode
+                use_gt_nica, use_gt_kernel = use_gt_settings
+                grad_override_fun = lambda x: tree_map(lambda _:
+                                                       jnp.zeros(shape=_.shape), x)
+                nica_updates = lax.cond(use_gt_nica, grad_override_fun,
+                            lambda x: x, theta_updates[0])
+                kernel_updates = lax.cond(use_gt_kernel, grad_override_fun,
+                            lambda x: x, theta_updates[1])
+                theta_updates = (nica_updates, kernel_updates)
 
-            # also durning burn-in
-            theta_updates = lax.cond(burn_in, grad_override_fun,
-                                     lambda x: x, theta_updates)
+                # also durning burn-in
+                theta_updates = lax.cond(burn_in, grad_override_fun,
+                                         lambda x: x, theta_updates)
 
-            # perform gradient updates
-            theta = optax.apply_updates(theta, theta_updates)
-            phi_n_updates, phi_n_opt_states = vmap(phi_opt.update)(
-                phi_n_g, phi_n_opt_states, phi_n)
-            phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
-            return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
-        return training_step
+                # perform gradient updates
+                theta = optax.apply_updates(theta, theta_updates)
+                phi_n_updates, phi_n_opt_states = vmap(phi_opt.update)(
+                    phi_n_g, phi_n_opt_states, phi_n)
+                phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
+                return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
+            return gp_training_step
+        else:
+            @jit
+            def tp_training_step(key, theta, phi_n, theta_opt_state,
+                              phi_n_opt_states, x, burn_in):
+                (nvlb, s), g = value_and_grad(avg_neg_tp_elbo, argnums=(1, 2),
+                                         has_aux=True)(key, theta, phi_n, logpx,
+                                                       kernel_fn, x, t, nsamples)
+                s = s.mean(axis=(1, 2)).swapaxes(-1, -2)
+                theta_g, phi_n_g = g
+
+                # perform gradient updates
+                (theta_opt, phi_opt) = optimizers
+                theta_updates, theta_opt_state = theta_opt.update(
+                    theta_g, theta_opt_state, theta)
+
+                # override updates in debug mode
+                use_gt_nica, use_gt_kernel, use_gt_tau = use_gt_settings
+                grad_override_fun = lambda x: tree_map(lambda _:
+                                                       jnp.zeros(shape=_.shape), x)
+                nica_updates = lax.cond(use_gt_nica, grad_override_fun,
+                            lambda x: x, theta_updates[0])
+                kernel_updates = lax.cond(use_gt_kernel, grad_override_fun,
+                            lambda x: x, theta_updates[1])
+                tau_updates = lax.cond(use_gt_tau, grad_override_fun,
+                            lambda x: x, theta_updates[2])
+                theta_updates = (nica_updates, kernel_updates, tau_updates)
+
+                # also durning burn-in
+                theta_updates = lax.cond(burn_in, grad_override_fun,
+                                         lambda x: x, theta_updates)
+
+                # perform gradient updates
+                theta = optax.apply_updates(theta, theta_updates)
+                phi_n_updates, phi_n_opt_states = vmap(phi_opt.update)(
+                    phi_n_g, phi_n_opt_states, phi_n)
+                phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
+                return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
+            return tp_training_step
 
 
     # define evaluation step
-    def make_eval_step(logpx, kernel_fn, t, nsamples):
+    def make_eval_step(logpx, kernel_fn, t, nsamples, elbo_fn):
         def eval_step(key, theta, phi_n, x):
-            (nvlb, s)  = avg_neg_elbo(key, theta, phi_n, logpx,
+            (nvlb, s)  = elbo_fn(key, theta, phi_n, logpx,
                                       kernel_fn, x, t, nsamples)
             s = s.mean(axis=(1, 2)).swapaxes(-1, -2)
             return nvlb, s
@@ -152,11 +199,17 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
     # initialize eval/training step
     if args.eval_only:
-        eval_step = make_eval_step(nica_logpx, tp_kernel_fn, t, nsamples)
+        if args.GP:
+            elbo_fn = avg_neg_gp_elbo
+        else:
+            elbo_fn = avg_neg_tp_elbo
+        eval_step = make_eval_step(nica_logpx, tp_kernel_fn, t,
+                                   nsamples, elbo_fn)
     else:
         training_step = make_training_step(nica_logpx, tp_kernel_fn, t,
                                            nsamples, use_gt_settings,
-                                           (theta_optimizer, phi_optimizer))
+                                           (theta_optimizer, phi_optimizer),
+                                           args.GP)
 
     # set up training
     train_data = x.copy()

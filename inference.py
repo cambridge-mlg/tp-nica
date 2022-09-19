@@ -9,7 +9,7 @@ import pdb
 from jax import grad, value_and_grad, vmap, jit
 from jax.lax import scan
 from jax.random import split
-from jax.tree_util import tree_map
+from jax.tree_util import tree_map, Partial
 
 from functools import partial
 from kernels import (
@@ -97,50 +97,74 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     return jnp.mean(vlb_s, 0) - kl, s
 
 
-def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t, nsamples):
+def gp_elbo(rng, theta, phi_s, logpx, cov_fn, x, t, nsamples):
+    theta_x, theta_cov = theta[:2]
+    theta_cov = tree_map(lambda _: jnp.exp(_), theta_cov)
+    t_dist_mat = jnp.sqrt(squared_euclid_dist_mat(t))
+    theta_cov = bound_se_kernel_params(
+        theta_cov, sigma_min=1e-3,
+        ls_min=jnp.min(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)]),
+        ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
+    )
+    What, yhat, tu = phi_s
+    N, n_pseudo = yhat.shape
+    T = t.shape[0]
+    Kuu = vmap(lambda b: vmap(lambda a:
+        comp_K_N(a, b, cov_fn, theta_cov)
+    )(tu))(tu)
+    Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
+    Ksu = vmap(lambda b:vmap(lambda a:
+        comp_K_N(a, b, cov_fn, theta_cov))(tu))(t)
+    Ksu = Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N)
+    kss = vmap(
+        lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
+        )(theta_cov)
+
+    # compute parameters for \tilde{q(s)}
+    What = vmap(fill_triu, in_axes=(1, None), out_axes=-1)(What, N)
+    WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
+    L = js.linalg.block_diag(*jnp.moveaxis(
+      jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
+    LK = L@Kuu
+    lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
+    KyyWTy = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
+    #KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
+    mu_s = Ksu @ KyyWTy
+    cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
+    cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
+          in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
+    #cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
+    #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
+    s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
+        cov_s, shape=(nsamples, T)), rng)
+
+    # compute E_{\tilde{q(s)}}[log_p(x_t|s_t)]
+    Elogpx = jnp.mean(
+        jnp.sum(vmap(lambda _: vmap(logpx,(1, 0, None))(x, _, theta_x))(s), 1)
+    )
+
+    # compute KL[q(u)|p(u)]
+    tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
+    h = Kuu@KyyWTy
+    logZ = 0.5*(jnp.dot(WTy.squeeze(), h)
+                -jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
+    KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
+    return Elogpx-KLqpu, s
+
+
+def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t, nsamples, elbo_fn):
     """
     Calculate average negative elbo over training samples
     """
-    vlb, s = vmap(lambda a, b, c: structured_elbo(
+    vlb, s = vmap(lambda a, b, c: elbo_fn(
         a, theta, b, logpx, cov_fn, c, t, nsamples))(jr.split(rng, x.shape[0]),
                                                      phi_n, x)
     return -vlb.mean(), s
 
 
-def elbo_main():
-    rng = jax.random.PRNGKey(0)
-    N, T = 5, 20
-    cov = se_kernel_fn
-    noisesd = .5
-    logpx = lambda _, s, x: jax.scipy.stats.norm.logpdf(x.reshape(()), jnp.sum(s, 0), noisesd)
-    theta_cov = jnp.ones(N)*1.0, jnp.ones(N)*1.0
-    theta_tau = jnp.ones(N)*4.0
-    theta_x = () # likelihood parameters
-    t = jnp.linspace(0, 10, T)[:,None]
-    (s, tau), rng = rngcall(lambda k: \
-        vmap(lambda a, b, c: sample_tprocess(a, t, lambda _: .0, cov, b, c))(
-            split(k, N), theta_cov, theta_tau),
-        rng)
+avg_neg_tp_elbo = Partial(avg_neg_elbo, elbo_fn=structured_elbo)
+avg_neg_gp_elbo = Partial(avg_neg_elbo, elbo_fn=gp_elbo)
 
-    npseudopoints = T//2
-    tu, rng = rngcall(lambda k: jax.random.uniform(k, shape=(npseudopoints,), minval=jnp.min(t), maxval=jnp.max(t))[:,None], rng)
-    phi_tau = jnp.ones(N)*5, jnp.ones(N)*5
-    phi_s, rng = rngcall(lambda _: (jnp.zeros((N,len(tu))), jr.normal(_, ((N,len(tu))))*.05, tu), rng)
-    theta = theta_x, theta_cov, theta_tau
-    phi = phi_s, phi_tau
-    nsamples = (5, 10) # (nssamples, nrsamples)
-    x, rng = rngcall(lambda k: jax.random.normal(k, (1, T))*noisesd + jnp.sum(s, 0), rng)
-    lr = 1e-3
-    print(f"ground truth tau: {tau}")
-    def step(phi, rng):
-        vlb, g = value_and_grad(structured_elbo, 2)(rng, theta, phi, logpx, cov, x, t, nsamples)
-        return tree_add(phi, tree_scale(g, lr)), vlb
-    nepochs = 100000
-    for i in range(1, nepochs):
-        rng, key = split(rng)
-        phi, vlb = scan(step, phi, split(key, 10000))
-        phi_tau_natparams = gamma_natparams_fromstandard(phi[1])
-        print(f"{i}: elbo={vlb.mean(0)}, E[tau]={gamma_mean(phi_tau_natparams)}, V[tau]={gamma_var(phi_tau_natparams)}")
 
 if __name__ == "__main__":
-    elbo_main()
+    pdb.set_trace()
