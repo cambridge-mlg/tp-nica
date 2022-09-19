@@ -34,12 +34,13 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     n_pseudo = args.num_pseudo
     minib_size = args.minib_size
     num_epochs = args.num_epochs
-    nsamples = (args.num_s_samples, args.num_tau_samples)
     theta_lr = args.theta_learning_rate
     phi_lr = args.phi_learning_rate
     if args.GP:
+        nsamples = args.num_s_samples
         gt_Q, gt_mixer_params, gt_kernel_params = params
     else:
+        nsamples = (args.num_s_samples, args.num_tau_samples)
         gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
     # initialize generative model params (theta)
@@ -66,7 +67,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         theta_k = gt_kernel_params
     if args.use_gt_tau and not args.GP:
         theta_tau = gt_tau
-    use_gt_settings = (args.use_gt_nica, args.use_gt_kernel, args.use_gt_tau)
+
+    if args.GP:
+        use_gt_settings = (args.use_gt_nica, args.use_gt_kernel)
+    else:
+        use_gt_settings = (args.use_gt_nica, args.use_gt_kernel, args.use_gt_tau)
 
     if args.GP:
         theta = (theta_x, theta_k)
@@ -118,7 +123,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 (nvlb, s), g = value_and_grad(avg_neg_gp_elbo, argnums=(1, 2),
                                          has_aux=True)(key, theta, phi_n, logpx,
                                                        kernel_fn, x, t, nsamples)
-                s = s.mean(axis=(1, 2)).swapaxes(-1, -2)
                 theta_g, phi_n_g = g
 
                 # perform gradient updates
@@ -154,7 +158,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 (nvlb, s), g = value_and_grad(avg_neg_tp_elbo, argnums=(1, 2),
                                          has_aux=True)(key, theta, phi_n, logpx,
                                                        kernel_fn, x, t, nsamples)
-                s = s.mean(axis=(1, 2)).swapaxes(-1, -2)
                 theta_g, phi_n_g = g
 
                 # perform gradient updates
@@ -192,7 +195,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         def eval_step(key, theta, phi_n, x):
             (nvlb, s)  = elbo_fn(key, theta, phi_n, logpx,
                                       kernel_fn, x, t, nsamples)
-            s = s.mean(axis=(1, 2)).swapaxes(-1, -2)
             return nvlb, s
         return eval_step
 
@@ -256,6 +258,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                                           phi_opt_states, phi_opt_states_it)
 
             # evaluate
+            s_sample = s_sample.swapaxes(-1, -2)
+            if args.GP:
+                s_sample = s_sample.mean(axis=(1,))
+            else:
+                s_sample = s_sample.mean(axis=(1, 2))
             minib_mccs = []
             for j in range(minib_size):
                 mcc, _, sort_idx = matching_sources_corr(s_sample[j], s_it[j])

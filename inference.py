@@ -93,7 +93,6 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0)
     vlb_s, s = vmap(lambda _: structured_elbo_s(
         rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples_s))(tau)
-    #jax_print(kl)
     return jnp.mean(vlb_s, 0) - kl, s
 
 
