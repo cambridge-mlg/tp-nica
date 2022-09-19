@@ -26,7 +26,8 @@ print(jax.devices())
 
 from train import train
 from data_generation import (
-    gen_tprocess_nica_data,
+    gen_tpnica_data,
+    gen_gpnica_data,
     gen_1d_locations,
     gen_2d_locations
 )
@@ -56,6 +57,8 @@ def parse():
                         help="zero (zero mean assumed),")
     parser.add_argument('--kernel', type=str, default="se",
                         help="se (squared exponential),")
+    parser.add_argument('--GP', action='store_true', default=False,
+                        help="generate and train from GP latents instead of TP")
     # inference, training and optimization args
     parser.add_argument('--diag-approx', action='store_true', default=False,
                         help="approx. likelih. factor with diagonal Gaussian")
@@ -136,9 +139,8 @@ def main():
     elif args.D == 2:
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
-    x, z, s, tau, *params = gen_tprocess_nica_data(data_key, t, args.N, args.M,
-                                                   args.L, args.num_data, mu_fn,
-                                                   k_fn)
+    x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
+                                            args.L, args.num_data, mu_fn, k_fn)
     # create folder to save checkpoints    
     if not os.path.isdir(args.out_dir):
         os.mkdir(args.out_dir)

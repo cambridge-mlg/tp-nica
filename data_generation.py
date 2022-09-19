@@ -39,9 +39,16 @@ def sample_tprocess(key, latent_inputs, gp_mu_fn, gp_kernel_fn,
     return tp_sample, tau_sample
 
 
+def sample_gp(key, latent_inputs, gp_mu_fn, gp_kernel_fn, gp_kernel_params):
+    # define GP parameters
+    mu = vmap(gp_mu_fn)(latent_inputs)
+    K = compute_K(latent_inputs, gp_kernel_fn, gp_kernel_params)
+    return jr.multivariate_normal(key, mu, K)
+
+
 def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
     # sample each IC as a t-process
-    N = df.shape[0]
+    N = mixer_params[0].shape[0]
     key, *s_key = jr.split(key, N+1)
     s, tau = vmap(
         lambda _a, _b, _c: sample_tprocess(_a, t, gp_mu_fn, gp_k_fn, _b, _c)
@@ -51,9 +58,21 @@ def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
     return z, s, tau
 
 
-def gen_tprocess_nica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
-                           noise_factor=0.15, repeat_layers=False,
-                           repeat_dfs=False, repeat_kernels=False):
+def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
+    # sample each IC as a GP
+    N = mixer_params[0].shape[0]
+    key, *s_key = jr.split(key, N+1)
+    s = vmap(
+        lambda _a, _b: sample_gp(_a, t, gp_mu_fn, gp_k_fn, _b)
+    )(jnp.vstack(s_key), gp_k_params)
+    # mix the ICs
+    z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
+    return z, s
+
+
+def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
+                    noise_factor=0.15, repeat_layers=False, repeat_dfs=False,
+                    repeat_kernels=False):
     # set-up Gamma prior and GP parameters (used for all samples)
     key, *gamma_keys = jr.split(key, N+1)
     key, *k_keys = jr.split(key, N+1)
@@ -72,7 +91,8 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     key, *sample_keys = jr.split(key, num_samples+1)
     z, s, tau = lax.map(
         lambda _: sample_tpnica(_, t, mu_func, kernel_func, k_params,
-                                dfs, mixer_params), jnp.vstack(sample_keys))
+                                dfs, mixer_params), jnp.vstack(sample_keys)
+    )
 
     # standardize each dim independently so can add apropriate output noise
     z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(axis=(0, 2),
@@ -80,6 +100,35 @@ def gen_tprocess_nica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
     Q = noise_factor*jnp.eye(M)
     return x, z, s, tau, Q, mixer_params, k_params, dfs
+
+
+def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
+                    noise_factor=0.15, repeat_layers=False,
+                    repeat_kernels=False):
+    # set-up GP parameters (used for all samples)
+    key, *k_keys = jr.split(key, N+1)
+    if repeat_kernels:
+        k_keys = [k_keys[0]]*len(k_keys)
+    k_params = vmap(lambda _: rdm_SE_kernel_params(_))(jnp.vstack(k_keys))
+
+    # initialize mixing function parameters
+    key, mlp_key = jr.split(key, 2)
+    mixer_params = init_nica_params(mlp_key, N, M, L, repeat_layers)
+
+    # sample ICs and their mixtures
+    key, *sample_keys = jr.split(key, num_samples+1)
+    z, s = lax.map(
+        lambda _: sample_gpnica(_, t, mu_func, kernel_func, k_params,
+                                mixer_params), jnp.vstack(sample_keys)
+    )
+
+    # standardize each dim independently so can add apropriate output noise
+    z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(axis=(0, 2),
+                                                       keepdims=True)
+    x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
+    Q = noise_factor*jnp.eye(M)
+    return x, z, s, Q, mixer_params, k_params
+
 
 
 if __name__ == "__main__":
@@ -94,13 +143,20 @@ if __name__ == "__main__":
     mu_fn = lambda _: 0
     cov_fn = se_kernel_fn
     rng = jr.PRNGKey(0)
-    df = jnp.array(1000.)
+    df = jnp.array(2.)
     rng, rng0 = jr.split(rng)
     theta_cov = rdm_SE_kernel_params(rng0)
-    sample, tau = vmap(lambda _: sample_tprocess(_, t, mu_fn, cov_fn,
+    tp_sample, tau = vmap(lambda _: sample_tprocess(_, t, mu_fn, cov_fn,
             theta_cov, df))(jr.split(rng, 10))
-    plt.plot(sample.T)
+    plt.plot(tp_sample.T)
     plt.show()
+
+    gp_sample = vmap(lambda _: sample_gp(_, t, mu_fn, cov_fn,
+            theta_cov))(jr.split(rng, 10))
+    plt.plot(gp_sample.T)
+    plt.show()
+ 
+
 
 
 
