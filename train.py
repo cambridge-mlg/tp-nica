@@ -49,11 +49,16 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             lambda _k: vmap(lambda _: rdm_df(_, maxval=4))(jr.split(_k, N)), key
         )
         theta_tau = jnp.log(theta_tau)
+        if args.repeat_dfs:
+            theta_tau = theta_tau[:1]
 
     theta_k, key = rngcall(
         lambda _k: vmap(lambda _: rdm_SE_kernel_params(_))(jr.split(_k, N)), key
     )
     theta_k = tree_map(lambda _: jnp.log(_), theta_k)
+    if args.repeat_kernels:
+        theta_k = tree_map(lambda _: _[:1], theta_k)
+
     theta_var, key = rngcall(lambda _: jr.uniform(_, shape=(M,),
                 minval=-1, maxval=1), key)
     theta_mix, key = rngcall(lambda _: init_nica_params(
