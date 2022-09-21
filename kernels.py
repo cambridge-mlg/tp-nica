@@ -4,19 +4,22 @@ import jax.random as jr
 
 import pdb
 
-from jax import vmap
+from jax import vmap, jit
 from jax import lax
 from jax.tree_util import Partial
 
 
+@jit
 def squared_euclid_dist(x, y):
     return jnp.sum((x-y)**2, -1)
 
 
+@jit
 def squared_euclid_dist_mat(x):
     return vmap(lambda _x: vmap(lambda _y: squared_euclid_dist(_x, _y))(x))(x)
 
 
+@jit
 def se_kernel_fn(x, y, params):
     sigma, lscale = params
     k = sigma**2 * jnp.exp(-0.5*squared_euclid_dist(x, y) / lscale**2)

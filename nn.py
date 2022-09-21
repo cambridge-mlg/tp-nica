@@ -2,7 +2,9 @@ import jax.numpy as jnp
 import jax.random as jrandom
 import jax.scipy as jsp
 import jax.nn as nn
-from jax import vmap, jit
+
+from jax import vmap, jit, lax
+from utils import jax_print
 
 import pdb
 
@@ -84,20 +86,27 @@ def init_encoder_params(x_dim, s_dim, hidden_dim, hidden_layers, key):
             in zip(layer_sizes[:-1], layer_sizes[1:], keys)]
 
 
+@jit
 def nica_mlp(params, s, activation='xtanh', slope=0.1):
     """Forward-pass of mixing function.
     """
-    if activation == 'xtanh':
-        act = xtanh(slope)
-    else:
-        act = SmoothLeakyRelu(slope)
+    act = xtanh(slope) # add option to switch to smoothleakyrelu
     z = s
-    if len(params) > 1:
-        hidden_params = params[:-1]
-        for i in range(len(hidden_params)):
-            z = act(z@hidden_params[i])
-    A_final = params[-1]
-    z = z@A_final
+
+    def _fwd_pass(z, W_list):
+        for i in range(len(W_list[:-1])):
+            z = act(z@W_list[i])
+        return z@W_list[-1]
+
+    z = lax.cond(len(params) > 1, lambda a, B: _fwd_pass(a, B),
+                 lambda a, B: a@B[0], z, params)
+
+    #if len(params) > 1:
+    #    hidden_params = params[:-1]
+    #    for i in range(len(hidden_params)):
+    #        z = act(z@hidden_params[i])
+    #A_final = params[-1]
+    #z = z@A_final
     return z
 
 
@@ -136,3 +145,7 @@ def nica_logpx(x, s, theta_x):
     mu = nica_mlp(theta_mix, s)
     S = jnp.diag(jnp.exp(theta_var))
     return jsp.stats.multivariate_normal.logpdf(x, mu, S)
+
+
+
+

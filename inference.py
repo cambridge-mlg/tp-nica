@@ -93,7 +93,7 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
         rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples_s))(tau)
     return jnp.mean(vlb_s, 0) - kl, s
 
-
+#@jit
 def gp_elbo(rng, theta, phi_s, logpx, cov_fn, x, t, nsamples):
     theta_x, theta_cov = theta[:2]
     What, yhat, tu = phi_s

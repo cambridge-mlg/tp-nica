@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=L5_1
+#SBATCH --job-name=tp_L0_1
 #SBATCH -M ukko
 #SBATCH -p gpu
-#SBATCH -o L5_1.txt
+#SBATCH -o tp_L0_1.txt
 #SBATCH -c 2
 #SBATCH -t 23:59:00
-#SBATCH --mem-per-cpu=32G
+#SBATCH --mem-per-cpu=16G
 #SBATCH --gres=gpu:1
 
 module purge
@@ -13,4 +13,4 @@ module load CUDA
 module load cuDNN
 conda activate tpnica
 
-python main.py --headless -L 4 --data-seed 1 --resume-ckpt
+srun --unbuffered python main.py --headless -L 0 --data-seed 1

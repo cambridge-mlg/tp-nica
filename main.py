@@ -1,8 +1,8 @@
 import os
-#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -43,13 +43,13 @@ def parse():
                         help="number of ICs")
     parser.add_argument('-M', type=int, default=12,
                         help="dimension of each observed data point")
-    parser.add_argument('-T', type=int, default=200,
+    parser.add_argument('-T', type=int, default=1000,
                         help="number of latent input locations")
     parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=1,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=10,
+    parser.add_argument('--num-data', type=int, default=1024,
                         help="total number of data samples to generate")
     parser.add_argument('-L', type=int, default=0,
                         help="number of nonlinear layers; 0 = linear ICA")
@@ -64,7 +64,7 @@ def parse():
                         help="approx. likelih. factor with diagonal Gaussian")
     parser.add_argument('--num-s-samples', type=int, default=5,
                         help="num. of samples from q(s|tau) in elbo")
-    parser.add_argument('--num-tau-samples', type=int, default=10,
+    parser.add_argument('--num-tau-samples', type=int, default=5,
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--phi-learning-rate', type=float, default=0.28,
                         help="learning rate for variational params")
