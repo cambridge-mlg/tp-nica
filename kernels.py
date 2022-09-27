@@ -7,6 +7,7 @@ import pdb
 from jax import vmap, jit
 from jax import lax
 from jax.tree_util import Partial
+from utils import jax_print
 
 
 @jit
@@ -23,7 +24,7 @@ def squared_euclid_dist_mat(x):
 def se_kernel_fn(x, y, params):
     sigma, lscale = params
     k = sigma**2 * jnp.exp(-0.5*squared_euclid_dist(x, y) / lscale**2)
-    return lax.cond((x == y).squeeze(), lambda _: _ + 1e-5, lambda _: _, k)
+    return lax.cond(jnp.all(x == y), lambda _: _ + 1e-5, lambda _: _, k)
 
 
 def bound_se_kernel_params(params, sigma_min=1e-3, ls_min=1, ls_max=900):
