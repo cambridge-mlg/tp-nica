@@ -42,7 +42,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     else:
         nsamples = (args.num_s_samples, args.num_tau_samples)
         gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
-
     # initialize generative model params (theta)
     if not args.GP:
         theta_tau, key = rngcall(

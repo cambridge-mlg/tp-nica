@@ -21,8 +21,8 @@ def gen_1d_locations(T):
 
 
 def gen_2d_locations(T):
-    t1, t2 = jnp.meshgrid(jnp.arange(int(jnp.sqrt(T))),
-                        jnp.arange(int(jnp.sqrt(T))))
+    t1, t2 = jnp.meshgrid(jnp.arange(int(jnp.sqrt(T)), dtype=jnp.float64),
+                        jnp.arange(int(jnp.sqrt(T)), dtype=jnp.float64))
     return jnp.hstack((t1.flatten()[:, None], t2.flatten()[:, None]))
 
 
