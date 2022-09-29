@@ -50,13 +50,10 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     LK = L@Kuu
     lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
     KyyWTy = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
-    #KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
     mu_s = Ksu @ KyyWTy
     cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
     cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    #cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
-    #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
     s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
         cov_s, shape=(nsamples, T)), rng)
 
@@ -78,11 +75,13 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     nsamples_s, nsamples_tau = nsamples
     theta_tau = theta[2]
-    theta_tau = jnp.exp(theta_tau)
+    theta_tau = jnp.exp(theta_tau)+2
     phi_s, phi_tau = phi[:2]
     N = phi_tau[0].shape[0]
     # in case df param is replicated to be same for all ICs
     theta_tau = theta_tau.repeat(N-theta_tau.shape[0]+1)
+    # to avoid numerical issues
+    phi_tau = tree_map(lambda _: jnp.exp(_)+0.1, phi_tau)
     tau, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau),
                        (nsamples_tau, *phi_tau[0].shape))
     kl = jnp.sum(
@@ -92,6 +91,7 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     vlb_s, s = vmap(lambda _: structured_elbo_s(
         rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples_s))(tau)
     return jnp.mean(vlb_s, 0) - kl, s
+
 
 #@jit
 def gp_elbo(rng, theta, phi_s, logpx, cov_fn, x, t, nsamples):

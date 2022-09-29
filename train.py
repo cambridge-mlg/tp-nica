@@ -96,10 +96,9 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     if args.GP:
         phi = phi_s
     else:
-        phi_df, key = rngcall(lambda _:
-                              vmap(rdm_df)(jr.split(_, n_data*N)),key)
-        phi_df = phi_df.reshape(n_data, N)
-        phi_tau = (phi_df, phi_df*10)
+        phi_df, key = rngcall(lambda _:vmap(rdm_df)(jr.split(_, n_data*N)), key)
+        phi_df = jnp.log(phi_df.reshape(n_data, N))
+        phi_tau = (phi_df, phi_df)
         phi = (phi_s, phi_tau)
 
     # set up training details
