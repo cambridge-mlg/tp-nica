@@ -75,13 +75,13 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     nsamples_s, nsamples_tau = nsamples
     theta_tau = theta[2]
-    theta_tau = jnp.exp(theta_tau)+2
+    theta_tau = jnp.exp(theta_tau)
     phi_s, phi_tau = phi[:2]
     N = phi_tau[0].shape[0]
     # in case df param is replicated to be same for all ICs
     theta_tau = theta_tau.repeat(N-theta_tau.shape[0]+1)
     # to avoid numerical issues
-    phi_tau = tree_map(lambda _: jnp.exp(_)+0.1, phi_tau)
+    phi_tau = tree_map(lambda _: jnp.exp(_), phi_tau)
     tau, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau),
                        (nsamples_tau, *phi_tau[0].shape))
     kl = jnp.sum(
