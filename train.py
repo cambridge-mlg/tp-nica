@@ -51,9 +51,18 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         if args.repeat_dfs:
             theta_tau = theta_tau[:1]
 
-    theta_k, key = rngcall(
-        lambda _k: vmap(lambda _: rdm_SE_kernel_params(_))(jr.split(_k, N)), key
-    )
+    if args.D == 1:
+        theta_k, key = rngcall(
+            lambda _k: vmap(lambda _: rdm_SE_kernel_params(_))(jr.split(_k, N)),
+            key
+        )
+    elif args.D == 2:
+        theta_k, key = rngcall(
+            lambda _k: vmap(lambda _: rdm_SE_kernel_params(
+                _, min_lscale=4., max_lscale=10.))(jr.split(_k, N)),
+            key
+        )
+
     theta_k = tree_map(lambda _: jnp.log(_), theta_k)
     if args.repeat_kernels:
         theta_k = tree_map(lambda _: _[:1], theta_k)

@@ -74,6 +74,7 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
                     noise_factor=0.15, repeat_layers=False, repeat_dfs=False,
                     repeat_kernels=False):
     # set-up Gamma prior and GP parameters (used for all samples)
+    D = t.shape[-1]
     key, *gamma_keys = jr.split(key, N+1)
     key, *k_keys = jr.split(key, N+1)
     if repeat_dfs:
@@ -81,7 +82,12 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     if repeat_kernels:
         k_keys = [k_keys[0]]*len(k_keys)
     dfs = vmap(rdm_df)(jnp.vstack(gamma_keys))
-    k_params = vmap(lambda _: rdm_SE_kernel_params(_))(jnp.vstack(k_keys))
+    if D == 1:
+        k_params = vmap(lambda _: rdm_SE_kernel_params(_))(jnp.vstack(k_keys))
+    elif D == 2:
+        k_params = vmap(
+            lambda _: rdm_SE_kernel_params(_, min_lscale=4., max_lscale=10.)
+        )(jnp.vstack(k_keys))
 
     # initialize mixing function parameters
     key, mlp_key = jr.split(key, 2)
@@ -95,8 +101,8 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     )
 
     # standardize each dim independently so can add apropriate output noise
-    z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(axis=(0, 2),
-                                                       keepdims=True)
+    z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(
+        axis=(2,), keepdims=True).mean(0, keepdims=True)
     x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
     Q = noise_factor*jnp.eye(M)
     return x, z, s, tau, Q, mixer_params, k_params, dfs
@@ -105,11 +111,17 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
 def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
                     noise_factor=0.15, repeat_layers=False,
                     repeat_kernels=False):
+    D = t.shape[-1]
     # set-up GP parameters (used for all samples)
     key, *k_keys = jr.split(key, N+1)
     if repeat_kernels:
         k_keys = [k_keys[0]]*len(k_keys)
-    k_params = vmap(lambda _: rdm_SE_kernel_params(_))(jnp.vstack(k_keys))
+    if D == 1:
+        k_params = vmap(lambda _: rdm_SE_kernel_params(_))(jnp.vstack(k_keys))
+    elif D == 2:
+        k_params = vmap(
+            lambda _: rdm_SE_kernel_params(_, min_lscale=4., max_lscale=10.)
+        )(jnp.vstack(k_keys))
 
     # initialize mixing function parameters
     key, mlp_key = jr.split(key, 2)
@@ -123,8 +135,8 @@ def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     )
 
     # standardize each dim independently so can add apropriate output noise
-    z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(axis=(0, 2),
-                                                       keepdims=True)
+    z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(
+        axis=(2,), keepdims=True).mean(0, keepdims=True)
     x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
     Q = noise_factor*jnp.eye(M)
     return x, z, s, Q, mixer_params, k_params
