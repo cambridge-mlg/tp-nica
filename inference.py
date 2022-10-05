@@ -75,7 +75,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     nsamples_s, nsamples_tau = nsamples
     theta_tau = theta[2]
-    theta_tau = jnp.exp(theta_tau)
+    theta_tau = 2.+jnp.exp(theta_tau)
     phi_s, phi_tau = phi[:2]
     N = phi_tau[0].shape[0]
     # in case df param is replicated to be same for all ICs
