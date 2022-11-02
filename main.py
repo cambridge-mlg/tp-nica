@@ -1,9 +1,9 @@
 import os
-os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
 from matplotlib import projections
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -149,10 +149,17 @@ def main():
         x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
                               args.L, args.num_data, mu_fn, k_fn)
 
+
+    # measure nonlinearity
+    from sklearn.linear_model import LinearRegression as LR
+    print(LR().fit(s[0,:,:].T, z[0,:,:].T).score(s[0,:,:].T, z[0,:,:].T))
+
+    pdb.set_trace()
+
     # just to plot data for now:
     #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))
     #ax = plt.axes(projection='3d')
-    #ax.plot_surface(X, Y, x[0][0, :].reshape(32, 32), rstride=1, cstride=1,
+    #ax.plot_surface(X, Y, s[0][0, :].reshape(32, 32), rstride=1, cstride=1,
     #                cmap='viridis')
     #plt.show()
 
