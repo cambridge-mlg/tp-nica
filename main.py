@@ -13,6 +13,8 @@ import sys
 from jax.config import config
 config.update("jax_enable_x64", True)
 
+from sklearn.linear_model import LinearRegression as LR
+
 ###DEBUG##############################
 #config.update('jax_disable_jit', True)
 #config.update("jax_debug_nans", True)
@@ -154,6 +156,13 @@ def main():
     #                cmap='viridis')
     #plt.show()
 
+    # measure nonlinearity
+    nl_metrics = []
+    for i in range(args.num_data):
+        nl_metrics.append(LR().fit(s[i, :, :].T,  z[i, :, :].T).score(
+            s[i, :, :].T, z[i, :, :].T))
+    print("Non-linearity metric: ", jnp.mean(jnp.array(nl_metrics)))
+
     # create folder to save checkpoints    
     if not os.path.isdir(args.out_dir):
         os.mkdir(args.out_dir)
@@ -168,4 +177,3 @@ def main():
 
 if __name__=="__main__":
     sys.exit(main())
-

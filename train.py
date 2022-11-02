@@ -286,7 +286,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             print("*Epoch: [{0}/{1}]\t"
                   "Minibatch: [{2}/{3}]\t"
                   "ELBO: {4}\t"
-                  "MCC: {5}".format(epoch, start_epoch+num_epochs-1, it,
+                  "MCC: {5}".format(epoch, num_epochs-1, it,
                                     num_minibs-1, -nvlb, minib_avg_mcc))
 
             ## plot regularly

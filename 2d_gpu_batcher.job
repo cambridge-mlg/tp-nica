@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=2d_tp_L0_1
+#SBATCH --job-name=2d_tp_L2_5
 #SBATCH -M ukko
 #SBATCH -p gpu
-#SBATCH -o 2d_tp_L0_1.txt
+#SBATCH -o 2d_tp_L2_5.txt
 #SBATCH -c 2
 #SBATCH -t 23:59:00
 #SBATCH --mem-per-cpu=16G
@@ -13,4 +13,4 @@ module load CUDA
 module load cuDNN
 conda activate tpnica
 
-srun --unbuffered python main.py -D 2 --headless -L 0 --data-seed 1 --resume-ckpt
+srun --unbuffered python main.py -D 2 --headless -L 2 --data-seed 5 --resume-ckpt

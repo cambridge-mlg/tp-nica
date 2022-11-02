@@ -43,8 +43,8 @@ def xtanh(slope):
 
 def unif_nica_layer(N, M, key, iter_4_cond=1e4):
     def _gen_matrix(N, M, key):
-        A = jrandom.uniform(key, (N, M), minval=0., maxval=2.) - 1.
-        A = l2normalize(A)
+        A = jrandom.uniform(key, (N, M), minval=-2., maxval=2.)
+        #A = l2normalize(A)
         _cond = jnp.linalg.cond(A)
         return A, _cond
 
@@ -110,7 +110,7 @@ def nica_mlp(params, s, activation='xtanh', slope=0.1):
     return z
 
 
-def encoder_mlp(params, x, activation='xtanh', slope=0.1):
+def encoder_mlp(params, x, activation='xtanh', slope=0.01):
     """Forward pass for encoder MLP that predicts likelihood natparams.
     Args:
         params (list): nested list where each element is a list of weight
