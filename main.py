@@ -162,6 +162,7 @@ def main():
         nl_metrics.append(LR().fit(s[i, :, :].T,  z[i, :, :].T).score(
             s[i, :, :].T, z[i, :, :].T))
     print("Non-linearity metric: ", jnp.mean(jnp.array(nl_metrics)))
+    sys.exit()
 
     # create folder to save checkpoints    
     if not os.path.isdir(args.out_dir):
