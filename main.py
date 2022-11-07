@@ -54,8 +54,10 @@ def parse():
                         help="dimension of latent input locations")
     parser.add_argument('--num-data', type=int, default=1024,
                         help="total number of data samples to generate")
-    parser.add_argument('-L', type=int, default=0,
-                        help="number of nonlinear layers; 0 = linear ICA")
+    parser.add_argument('--L-data', type=int, default=0,
+                        help="data gen: number of nonlinear layers; 0 = linear ICA")
+    parser.add_argument('--L-est', type=int, default=0,
+                        help="model: number of nonlinear layers; 0 = linear ICA")
     parser.add_argument('--mean-function', type=str, default="zero",
                         help="zero (zero mean assumed),")
     parser.add_argument('--kernel', type=str, default="se",
@@ -144,10 +146,10 @@ def main():
         t = gen_2d_locations(args.T)
     if args.GP:
         x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
-                              args.L, args.num_data, mu_fn, k_fn)
+                              args.L_data, args.num_data, mu_fn, k_fn)
     else:
         x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
-                              args.L, args.num_data, mu_fn, k_fn)
+                              args.L_data, args.num_data, mu_fn, k_fn)
 
 
     # measure nonlinearity
@@ -162,14 +164,6 @@ def main():
     #ax.plot_surface(X, Y, s[0][0, :].reshape(32, 32), rstride=1, cstride=1,
     #                cmap='viridis')
     #plt.show()
-
-    # measure nonlinearity
-    nl_metrics = []
-    for i in range(args.num_data):
-        nl_metrics.append(LR().fit(s[i, :, :].T,  z[i, :, :].T).score(
-            s[i, :, :].T, z[i, :, :].T))
-    print("Non-linearity metric: ", jnp.mean(jnp.array(nl_metrics)))
-    sys.exit()
 
     # create folder to save checkpoints    
     if not os.path.isdir(args.out_dir):

@@ -28,7 +28,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     # unpack useful args
     N = args.N
     M = args.M
-    L = args.L
+    L = args.L_est
     T = args.T
     n_data = args.num_data
     n_pseudo = args.num_pseudo
