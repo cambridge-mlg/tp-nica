@@ -146,10 +146,12 @@ def main():
         t = gen_2d_locations(args.T)
     if args.GP:
         x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
-                              args.L_data, args.num_data, mu_fn, k_fn)
+                              args.L_data, args.num_data, mu_fn, k_fn,
+                              repeat_kernels=True)
     else:
         x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
-                              args.L_data, args.num_data, mu_fn, k_fn)
+                              args.L_data, args.num_data, mu_fn, k_fn,
+                              repeat_kernels=True, repeat_dfs=True)
 
 
     # just to plot data for now:
