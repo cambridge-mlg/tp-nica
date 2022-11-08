@@ -62,7 +62,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 _, min_lscale=4., max_lscale=10.))(jr.split(_k, N)),
             key
         )
-
     theta_k = tree_map(lambda _: jnp.log(_), theta_k)
     if args.repeat_kernels:
         theta_k = tree_map(lambda _: _[:1], theta_k)
@@ -77,9 +76,9 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     if args.use_gt_nica:
         theta_x = (gt_mixer_params, jnp.log(jnp.diag(gt_Q)))
     if args.use_gt_kernel:
-        theta_k = gt_kernel_params
+        theta_k = tree_map(lambda _:  jnp.log(_), gt_kernel_params)
     if args.use_gt_tau and not args.GP:
-        theta_tau = gt_tau
+        theta_tau = jnp.log(gt_tau)
 
     if args.GP:
         use_gt_settings = (args.use_gt_nica, args.use_gt_kernel)
@@ -90,6 +89,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         theta = (theta_x, theta_k)
     else:
         theta = (theta_x, theta_k, theta_tau)
+    pdb.set_trace()
 
     # initialize variational parameters (phi) with pseudo-points (tu)
     tu, key = rngcall(lambda _: vmap(lambda k: jr.choice(k, t,
