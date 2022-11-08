@@ -152,12 +152,6 @@ def main():
                               args.L_data, args.num_data, mu_fn, k_fn)
 
 
-    # measure nonlinearity
-    from sklearn.linear_model import LinearRegression as LR
-    print(LR().fit(s[0,:,:].T, z[0,:,:].T).score(s[0,:,:].T, z[0,:,:].T))
-
-    pdb.set_trace()
-
     # just to plot data for now:
     #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))
     #ax = plt.axes(projection='3d')
