@@ -284,9 +284,9 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
             print("*Epoch: [{0}/{1}]\t"
                   "Minibatch: [{2}/{3}]\t"
-                  "ELBO: {4}\t"
-                  "MCC: {5}".format(epoch, num_epochs-1, it,
-                                    num_minibs-1, -nvlb, minib_avg_mcc))
+                  "ELBO: {4:.2f}\t"
+                  "MCC: {5:.3f}".format(epoch, num_epochs-1, it,
+                                        num_minibs-1, -nvlb, minib_avg_mcc))
 
             ## plot regularly
             if (epoch % args.plot_freq == 0 or args.eval_only) and it == 0:
@@ -319,15 +319,16 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         epoch_avg_mcc = jnp.mean(jnp.array(mcc_epoch_hist))
         epoch_avg_elbo = jnp.mean(jnp.array(elbo_epoch_hist))
 
-        print("Epoch took: {0}\t"
-              "AVG. ELBO: {1} \t"
-              "AVG. MCC: {2}\t"
-              "data seed: {3}\t"
-              "est. seed: {4}\t"
-              "init. theta lr: {5}\t"
-              "init. phi lr: {6}".format(toc-tic, epoch_avg_elbo, epoch_avg_mcc,
-                                   args.data_seed, args.est_seed,
-                                   theta_lr, phi_lr))
+        print("Epoch [{0}/{1}] took: {2:.2f}\t"
+              "AVG. ELBO: {3:.2f}\t"
+              "AVG. MCC: {4:.3f}\t"
+              "data seed: {5}\t"
+              "est. seed: {6}\t"
+              "init. theta lr: {7}\t"
+              "init. phi lr: {8}".format(epoch, num_epochs-1,
+                                         toc-tic, epoch_avg_elbo,
+                                         epoch_avg_mcc, args.data_seed,
+                                         args.est_seed, theta_lr, phi_lr))
 
         # save checkpoints
         if not args.eval_only:

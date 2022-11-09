@@ -59,7 +59,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
     # compute E_{\tilde{q(s|tau)}}[log_p(x_t|s_t)]
     Elogpx = jnp.mean(
-        jnp.sum(vmap(lambda _: vmap(logpx,(1, 0, None))(x, _, theta_x))(s), 1)
+        jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
     )
 
     # compute KL[q(u)|p(u)]

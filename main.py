@@ -154,6 +154,11 @@ def main():
                               repeat_kernels=args.repeat_kernels,
                               repeat_dfs=args.repeat_dfs)
 
+    # check that noise is appropriate level
+    nr = x.var(2).mean(0)/z.var(2).mean(0)
+    print("Noise-ratio min: {0:.2f} -- max: {1:.2f}".format(jnp.min(nr),
+                                                            jnp.max(nr)))
+
 
     # just to plot data for now:
     #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))

@@ -101,15 +101,14 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     )
 
     # standardize each dim independently so can add apropriate output noise
-    z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(
-        axis=(2,), keepdims=True).mean(0, keepdims=True)
-    x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
-    Q = noise_factor*jnp.eye(M)
+    zv = z.var(2, keepdims=True).mean(0, keepdims=True)
+    x = z+jnp.sqrt(noise_factor*zv)*jr.normal(key, shape=z.shape)
+    Q = noise_factor*zv.squeeze()*jnp.eye(M)
     return x, z, s, tau, Q, mixer_params, k_params, dfs
 
 
 def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
-                    noise_factor=0.15, repeat_layers=False,
+                    noise_factor=1., repeat_layers=False,
                     repeat_kernels=False):
     D = t.shape[-1]
     # set-up GP parameters (used for all samples)
@@ -135,10 +134,9 @@ def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     )
 
     # standardize each dim independently so can add apropriate output noise
-    z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(
-        axis=(2,), keepdims=True).mean(0, keepdims=True)
-    x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
-    Q = noise_factor*jnp.eye(M)
+    zv = z.var(2, keepdims=True).mean(0, keepdims=True)
+    x = z+jnp.sqrt(noise_factor*zv)*jr.normal(key, shape=z.shape)
+    Q = noise_factor*zv.squeeze()*jnp.eye(M)
     return x, z, s, Q, mixer_params, k_params
 
 
@@ -166,7 +164,6 @@ if __name__ == "__main__":
             theta_cov))(jr.split(rng, D))
     plt.plot(gp_sample.T, 'b--')
     plt.show()
- 
 
 
 
