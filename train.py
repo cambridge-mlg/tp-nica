@@ -89,7 +89,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         theta = (theta_x, theta_k)
     else:
         theta = (theta_x, theta_k, theta_tau)
-    pdb.set_trace()
 
     # initialize variational parameters (phi) with pseudo-points (tu)
     tu, key = rngcall(lambda _: vmap(lambda k: jr.choice(k, t,
