@@ -161,7 +161,6 @@ def main():
     print("Noise-ratio min: {0:.2f} -- max: {1:.2f}".format(jnp.min(nr),
                                                             jnp.max(nr)))
 
-
     # just to plot data for now:
     #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))
     #ax = plt.axes(projection='3d')
