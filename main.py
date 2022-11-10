@@ -167,7 +167,6 @@ def main():
             s[i, :, :].T, z[i, :, :].T))
     print("Linearity (R2): {0:.2f}".format(
         jnp.median((jnp.array(nl_metrics)))))
-    pdb.set_trace()
 
     # just to plot data for now:
     #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))
