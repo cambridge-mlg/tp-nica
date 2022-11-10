@@ -62,6 +62,8 @@ def parse():
                         help="zero (zero mean assumed),")
     parser.add_argument('--kernel', type=str, default="se",
                         help="se (squared exponential),")
+    parser.add_argument('--tp-df', type=float, default=2.01,
+                        help="df of t-process for simulated data")
     parser.add_argument('--GP', action='store_true', default=False,
                         help="generate and train from GP latents instead of TP")
     # inference, training and optimization args
@@ -151,7 +153,7 @@ def main():
     else:
         x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
                               args.L_data, args.num_data, mu_fn, k_fn,
-                              repeat_kernels=args.repeat_kernels,
+                              args.tp_df, repeat_kernels=args.repeat_kernels,
                               repeat_dfs=args.repeat_dfs)
 
     # check that noise is appropriate level
