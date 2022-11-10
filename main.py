@@ -158,8 +158,16 @@ def main():
 
     # check that noise is appropriate level
     nr = x.var(2).mean(0)/z.var(2).mean(0)
-    print("Noise-ratio min: {0:.2f} -- max: {1:.2f}".format(jnp.min(nr),
-                                                            jnp.max(nr)))
+    print("Noise-ratio avg.: {0:.2f}".format(jnp.mean(nr)))
+
+    # measure nonlinearity
+    nl_metrics = []
+    for i in range(args.num_data):
+        nl_metrics.append(LR().fit(s[i, :, :].T, z[i, :, :].T).score(
+            s[i, :, :].T, z[i, :, :].T))
+    print("Linearity (R2): {0:.2f}".format(
+        jnp.median((jnp.array(nl_metrics)))))
+    pdb.set_trace()
 
     # just to plot data for now:
     #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))

@@ -48,7 +48,7 @@ def sample_gp(key, latent_inputs, gp_mu_fn, gp_kernel_fn, gp_kernel_params):
 
 def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
     # sample each IC as a t-process
-    N = mixer_params[0].shape[0]
+    N = df.shape[0]
     key, *s_key = jr.split(key, N+1)
     s, tau = vmap(
         lambda _a, _b, _c: sample_tprocess(_a, t, gp_mu_fn, gp_k_fn, _b, _c)
@@ -60,7 +60,7 @@ def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
 
 def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
     # sample each IC as a GP
-    N = mixer_params[0].shape[0]
+    N = mixer_params[0][0].shape[0]
     key, *s_key = jr.split(key, N+1)
     s = vmap(
         lambda _a, _b: sample_gp(_a, t, gp_mu_fn, gp_k_fn, _b)
@@ -109,7 +109,7 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
 
 
 def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
-                    noise_factor=1., repeat_layers=False,
+                    noise_factor=0.15, repeat_layers=False,
                     repeat_kernels=False):
     D = t.shape[-1]
     # set-up GP parameters (used for all samples)

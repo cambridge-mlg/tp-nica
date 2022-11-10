@@ -53,7 +53,9 @@ def unif_nica_layer(N, M, key, iter_4_cond=1e4):
     A, conds = vmap(_gen_matrix, (None, None, 0))(N, M, keys)
     target_cond = jnp.percentile(conds, 25)
     target_idx = jnp.argmin(jnp.abs(conds-target_cond))
-    return A[target_idx]
+    # NOTE: bias has been fixed to zero for now:
+    b = jrandom.uniform(jrandom.split(keys[-1])[0], (M,), minval=0., maxval=0.)
+    return A[target_idx], b
 
 
 def init_nica_params(key, N, M, nonlin_layers, repeat_layers):
@@ -70,34 +72,20 @@ def init_nica_params(key, N, M, nonlin_layers, repeat_layers):
             in zip(layer_sizes[:-1], layer_sizes[1:], keys)]
 
 
-def init_layer_params(in_dim, out_dim, key):
-    W_key, b_key = jrandom.split(key, 2)
-    W_init = nn.initializers.glorot_uniform(dtype=jnp.float64)
-    b_init = nn.initializers.normal(dtype=jnp.float64)
-    return W_init(W_key, (in_dim, out_dim)), b_init(b_key, (out_dim,))
-
-
 @jit
 def nica_mlp(params, s, activation='xtanh', slope=0.01):
     """Forward-pass of mixing function.
     """
+    def _fwd_pass(z, params_list):
+        for A, b in params_list[:-1]:
+            z = act(z@A)+b
+        return z@params_list[-1][0]+params_list[-1][1]
+
+
     act = xtanh(slope) # add option to switch to smoothleakyrelu
     z = s
-
-    def _fwd_pass(z, W_list):
-        for i in range(len(W_list[:-1])):
-            z = act(z@W_list[i])
-        return z@W_list[-1]
-
     z = lax.cond(len(params) > 1, lambda a, B: _fwd_pass(a, B),
-                 lambda a, B: a@B[0], z, params)
-
-    #if len(params) > 1:
-    #    hidden_params = params[:-1]
-    #    for i in range(len(hidden_params)):
-    #        z = act(z@hidden_params[i])
-    #A_final = params[-1]
-    #z = z@A_final
+                 lambda a, B: a@B[0][0]+B[0][1], z, params)
     return z
 
 
