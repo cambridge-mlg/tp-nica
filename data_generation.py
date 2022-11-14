@@ -113,8 +113,7 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     zv = z.var(2)
     zv_scaled = vmap(lambda _: _scale_vars(_, noise_factor), in_axes=(1,))(zv)
     x = z+jnp.sqrt(zv_scaled.reshape((1, M, 1)))*jr.normal(key, shape=z.shape)
-    pdb.set_trace()
-    Q = noise_factor*zv.squeeze()*jnp.eye(M)
+    Q = noise_factor*zv_scaled*jnp.eye(M)
     return x, z, s, tau, Q, mixer_params, k_params, dfs
 
 
@@ -156,7 +155,7 @@ def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     zv = z.var(2)
     zv_scaled = vmap(lambda _: _scale_vars(_, noise_factor), in_axes=(1,))(zv)
     x = z+jnp.sqrt(zv_scaled.reshape((1, M, 1)))*jr.normal(key, shape=z.shape)
-    Q = noise_factor*zv.squeeze()*jnp.eye(M)
+    Q = noise_factor*zv_scaled*jnp.eye(M)
     return x, z, s, Q, mixer_params, k_params
 
 
