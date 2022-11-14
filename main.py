@@ -157,8 +157,8 @@ def main():
                               repeat_dfs=args.repeat_dfs)
 
     # check that noise is appropriate level
-    nr = x.var(2).mean(0)/z.var(2).mean(0)
-    print("Noise-ratio avg.: {0:.2f}".format(jnp.mean(nr)))
+    med_nrs = jnp.median(x.var(2) / z.var(2), 0)
+    print("Noise-ratio median.: {0:.2f}".format(jnp.median(med_nrs)))
 
     # measure nonlinearity
     nl_metrics = []
