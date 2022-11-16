@@ -79,10 +79,10 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     key, *k_keys = jr.split(key, N+1)
     if repeat_dfs:
         gamma_keys = [gamma_keys[0]]*len(gamma_keys)
+        dfs = jnp.ones((N,))*tp_df
     if repeat_kernels:
         k_keys = [k_keys[0]]*len(k_keys)
     #dfs = vmap(rdm_df)(jnp.vstack(gamma_keys))
-    dfs = jnp.ones((N,))*tp_df
     if D == 1:
         k_params = vmap(lambda _: rdm_SE_kernel_params(_))(jnp.vstack(k_keys))
     elif D == 2:
