@@ -69,19 +69,19 @@ def parse():
     # inference, training and optimization args
     parser.add_argument('--diag-approx', action='store_true', default=False,
                         help="approx. likelih. factor with diagonal Gaussian")
-    parser.add_argument('--num-s-samples', type=int, default=5,
+    parser.add_argument('--num-s-samples', type=int, default=1,
                         help="num. of samples from q(s|tau) in elbo")
-    parser.add_argument('--num-tau-samples', type=int, default=5,
+    parser.add_argument('--num-tau-samples', type=int, default=1,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--phi-learning-rate', type=float, default=0.28,
+    parser.add_argument('--phi-learning-rate', type=float, default=3e-1,
                         help="learning rate for variational params")
-    parser.add_argument('--theta-learning-rate', type=float, default=0.004,
+    parser.add_argument('--theta-learning-rate', type=float, default=3e-2,
                         help="learning rate for model params")
     parser.add_argument('--minib-size', type=int, default=8,
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")
-    parser.add_argument('--burn-in-len', type=int, default=100,
+    parser.add_argument('--burn-in-len', type=int, default=0,
                         help="number of epochs to keep theta params fixed")
     # set all ICs to have same distribs
     parser.add_argument('--repeat-dfs', action='store_true', default=True,
