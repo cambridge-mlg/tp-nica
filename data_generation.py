@@ -6,12 +6,12 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-
 import pdb
 
-from jax import vmap, lax
+from jax import vmap, lax, jit
 from nn import init_nica_params, nica_mlp
 from kernels import rdm_df, rdm_SE_kernel_params, compute_K, se_kernel_fn
+from functools import partial
 
 import matplotlib.pyplot as plt
 
@@ -70,9 +70,11 @@ def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
     return z, s
 
 
+@partial(jit, static_argnames=( "N", "M", "L", "num_samples", "mu_func",
+    "kernel_func", "repeat_dfs", "repeat_kernels"))
 def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
                     tp_df=2.01, noise_factor=0.15, repeat_layers=False,
-                    repeat_dfs=False, repeat_kernels=False):
+                    repeat_dfs=True, repeat_kernels=True):
     # set-up Gamma prior and GP parameters (used for all samples)
     D = t.shape[-1]
     key, *gamma_keys = jr.split(key, N+1)
@@ -101,6 +103,7 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
                                 dfs, mixer_params), jnp.vstack(sample_keys)
     )
 
+
     # standardize each dim independently so can add apropriate output noise
     def _scale_vars(x, noise_factor):
         N = len(x)
@@ -117,6 +120,8 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     return x, z, s, tau, Q, mixer_params, k_params, dfs
 
 
+@partial(jit, static_argnames=( "N", "M", "L", "num_samples", "mu_func",
+    "kernel_func", "repeat_dfs", "repeat_kernels"))
 def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
                     noise_factor=0.15, repeat_layers=False,
                     repeat_kernels=False):

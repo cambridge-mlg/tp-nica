@@ -82,12 +82,9 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
     if args.GP:
         use_gt_settings = (args.use_gt_nica, args.use_gt_kernel)
-    else:
-        use_gt_settings = (args.use_gt_nica, args.use_gt_kernel, args.use_gt_tau)
-
-    if args.GP:
         theta = (theta_x, theta_k)
     else:
+        use_gt_settings = (args.use_gt_nica, args.use_gt_kernel, args.use_gt_tau)
         theta = (theta_x, theta_k, theta_tau)
 
     # initialize variational parameters (phi) with pseudo-points (tu)
@@ -219,10 +216,10 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         eval_step = make_eval_step(nica_logpx, tp_kernel_fn, t,
                                    nsamples, elbo_fn)
     else:
-        training_step = make_training_step(nica_logpx, tp_kernel_fn, t,
-                                           nsamples, use_gt_settings,
-                                           (theta_optimizer, phi_optimizer),
-                                           args.GP)
+        training_step = make_training_step(
+            nica_logpx, tp_kernel_fn, t ,nsamples, use_gt_settings,
+            (theta_optimizer, phi_optimizer), args.GP
+        )
 
     # set up training
     train_data = x.copy()

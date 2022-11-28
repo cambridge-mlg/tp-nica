@@ -139,13 +139,16 @@ def main():
         raise NotImplementedError
 
     assert args.minib_size <= args.num_data
+    import time
 
     # generate synthetic data
     if args.D == 1:
-        t = gen_1d_locations(args.T)
+        t = gen_1d_locations(args.T).block_until_ready()
     elif args.D == 2:
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
+
+    tic = time.time()
     if args.GP:
         x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
                               args.L_data, args.num_data, mu_fn, k_fn,
@@ -157,7 +160,10 @@ def main():
                               repeat_dfs=args.repeat_dfs)
 
     # check that noise is appropriate level
-    med_nrs = jnp.median(x.var(2) / z.var(2), 0)
+    med_nrs = jnp.median(x.var(2) / z.var(2), 0).block_until_ready()
+    toc = time.time()
+    print(toc-tic)
+
     print("Noise-ratio median.: {0:.2f}".format(jnp.median(med_nrs)))
 
     # measure nonlinearity
