@@ -74,7 +74,7 @@ def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
     "kernel_func", "repeat_dfs", "repeat_kernels"))
 def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
                     tp_df=2.01, noise_factor=0.15, repeat_layers=False,
-                    repeat_dfs=True, repeat_kernels=True):
+                    repeat_dfs=False, repeat_kernels=False):
     # set-up Gamma prior and GP parameters (used for all samples)
     D = t.shape[-1]
     key, *gamma_keys = jr.split(key, N+1)
