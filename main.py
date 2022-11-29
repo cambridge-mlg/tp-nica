@@ -52,7 +52,7 @@ def parse():
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=2,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=1024,
+    parser.add_argument('--num-data', type=int, default=16384,
                         help="total number of data samples to generate")
     parser.add_argument('--L-data', type=int, default=0,
                         help="data gen: number of nonlinear layers; 0 = linear ICA")
@@ -73,9 +73,9 @@ def parse():
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=1,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--phi-learning-rate', type=float, default=3e-1,
+    parser.add_argument('--phi-learning-rate', type=float, default=0.28,
                         help="learning rate for variational params")
-    parser.add_argument('--theta-learning-rate', type=float, default=3e-2,
+    parser.add_argument('--theta-learning-rate', type=float, default=0.004,
                         help="learning rate for model params")
     parser.add_argument('--minib-size', type=int, default=8,
                         help="minibatch size")
@@ -143,7 +143,7 @@ def main():
 
     # generate synthetic data
     if args.D == 1:
-        t = gen_1d_locations(args.T).block_until_ready()
+        t = gen_1d_locations(args.T)
     elif args.D == 2:
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
@@ -161,8 +161,7 @@ def main():
 
     # check that noise is appropriate level
     med_nrs = jnp.median(x.var(2) / z.var(2), 0).block_until_ready()
-    toc = time.time()
-    print(toc-tic)
+    print(time.time()-tic)
 
     print("Noise-ratio median.: {0:.2f}".format(jnp.median(med_nrs)))
 

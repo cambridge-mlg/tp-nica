@@ -121,7 +121,7 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
 
 
 @partial(jit, static_argnames=( "N", "M", "L", "num_samples", "mu_func",
-    "kernel_func", "repeat_dfs", "repeat_kernels"))
+    "kernel_func", "repeat_kernels"))
 def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
                     noise_factor=0.15, repeat_layers=False,
                     repeat_kernels=False):

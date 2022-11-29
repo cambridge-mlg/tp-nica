@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=L0
+#SBATCH --job-name=L0_more
 #SBATCH -M ukko
 #SBATCH -p gpu
-#SBATCH -o L0.txt
+#SBATCH -o L0_more.txt
 #SBATCH -c 2
 #SBATCH -t 23:59:00
-#SBATCH --mem-per-cpu=16G
+#SBATCH --mem-per-cpu=64G
 #SBATCH --gres=gpu:1
-#SBATCH --array=2-6
+#SBATCH --array=1-6
 
 module purge
 module load CUDA
