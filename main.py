@@ -69,9 +69,9 @@ def parse():
     # inference, training and optimization args
     parser.add_argument('--diag-approx', action='store_true', default=False,
                         help="approx. likelih. factor with diagonal Gaussian")
-    parser.add_argument('--num-s-samples', type=int, default=2,
+    parser.add_argument('--num-s-samples', type=int, default=3,
                         help="num. of samples from q(s|tau) in elbo")
-    parser.add_argument('--num-tau-samples', type=int, default=2,
+    parser.add_argument('--num-tau-samples', type=int, default=3,
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--phi-learning-rate', type=float, default=0.28,
                         help="learning rate for variational params")
