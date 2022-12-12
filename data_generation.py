@@ -80,11 +80,11 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     key, *gamma_keys = jr.split(key, N+1)
     key, *k_keys = jr.split(key, N+1)
     if repeat_dfs:
-        gamma_keys = [gamma_keys[0]]*len(gamma_keys)
         dfs = jnp.ones((N,))*tp_df
+    else:
+        dfs = vmap(rdm_df)(jnp.vstack(gamma_keys))
     if repeat_kernels:
         k_keys = [k_keys[0]]*len(k_keys)
-    #dfs = vmap(rdm_df)(jnp.vstack(gamma_keys))
     if D == 1:
         k_params = vmap(lambda _: rdm_SE_kernel_params(_))(jnp.vstack(k_keys))
     elif D == 2:
@@ -125,7 +125,7 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
 @partial(jit, static_argnames=( "N", "M", "L", "num_samples", "mu_func",
     "kernel_func", "repeat_kernels"))
 def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
-                    noise_factor=0.15, repeat_layers=False,
+                    noise_factor=0.1, repeat_layers=False,
                     repeat_kernels=False):
     D = t.shape[-1]
     # set-up GP parameters (used for all samples)
