@@ -137,7 +137,7 @@ def fill_triu(triu_elements, N):
     return U.at[jnp.triu_indices(N)].set(triu_elements)
 
 
-def matching_sources_corr(est_sources, true_sources, method="pearson"):
+def matching_sources_corr(est_sources, true_sources, method="spearman"):
     """Finding matching indices between true and estimated sources.
     Args:
         est_sources (array): data on estimated independent components.
