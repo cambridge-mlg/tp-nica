@@ -148,22 +148,23 @@ def main():
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
 
-    tic = time.time()
-    if args.GP:
-        x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
-                              args.L_data, args.num_data, mu_fn, k_fn,
-                              repeat_kernels=args.repeat_kernels)
-    else:
-        x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
-                              args.L_data, args.num_data, mu_fn, k_fn,
-                              args.tp_df, repeat_kernels=args.repeat_kernels,
-                              repeat_dfs=args.repeat_dfs)
+    mean_nrs = 1.0
+    while mean_nrs < 1.05 or mean_nrs > 1.15:
+        data_key, _ = jr.split(data_key)
+        if args.GP:
+            x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
+                                  args.L_data, args.num_data, mu_fn, k_fn,
+                                  repeat_kernels=args.repeat_kernels)
+        else:
+            x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
+                                  args.L_data, args.num_data, mu_fn, k_fn,
+                                  args.tp_df, repeat_kernels=args.repeat_kernels,
+                                  repeat_dfs=args.repeat_dfs)
 
-    # check that noise is appropriate level
-    med_nrs = jnp.median(x.var(2) / z.var(2), 0).block_until_ready()
-    print(time.time()-tic)
+        # check that noise is appropriate level
+        mean_nrs = jnp.mean(x.var(2) / z.var(2), 0).mean()
+        print("Noise-ratio mean.: {0:.2f}".format(mean_nrs))
 
-    print("Noise-ratio median.: {0:.2f}".format(jnp.median(med_nrs)))
 
     # measure nonlinearity
     nl_metrics = []

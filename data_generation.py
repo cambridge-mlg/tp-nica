@@ -73,7 +73,7 @@ def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
 @partial(jit, static_argnames=( "N", "M", "L", "num_samples", "mu_func",
     "kernel_func", "repeat_dfs", "repeat_kernels"))
 def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
-                    tp_df=2.01, noise_factor=0.15, repeat_layers=False,
+                    tp_df=2.01, noise_factor=0.1, repeat_layers=False,
                     repeat_dfs=False, repeat_kernels=False):
     # set-up Gamma prior and GP parameters (used for all samples)
     D = t.shape[-1]
@@ -105,18 +105,20 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
 
 
     # standardize each dim independently so can add apropriate output noise
-    def _scale_vars(x, noise_factor):
-        N = len(x)
-        denom = jnp.log(x).sum()
-        num_list = [jnp.exp(jnp.log(jnp.delete(x, i)).sum()-denom)
-                    for i in range(N)]
-        return noise_factor*N / jnp.array(num_list).sum()
+    #def _scale_vars(x, noise_factor):
+    #    N = len(x)
+    #    denom = jnp.log(x).sum()
+    #    num_list = [jnp.exp(jnp.log(jnp.delete(x, i)).sum()-denom)
+    #                for i in range(N)]
+    #    return noise_factor*N / jnp.array(num_list).sum()
 
 
-    zv = z.var(2)
-    zv_scaled = vmap(lambda _: _scale_vars(_, noise_factor), in_axes=(1,))(zv)
-    x = z+jnp.sqrt(zv_scaled.reshape((1, M, 1)))*jr.normal(key, shape=z.shape)
-    Q = noise_factor*zv_scaled*jnp.eye(M)
+    #zv = z.var(2)
+    #zv_scaled = vmap(lambda _: _scale_vars(_, noise_factor), in_axes=(1,))(zv)
+    #x = z+jnp.sqrt(zv_scaled.reshape((1, M, 1)))*jr.normal(key, shape=z.shape)
+    #Q = noise_factor*zv_scaled*jnp.eye(M)
+    x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
+    Q = jnp.eye(M)*noise_factor
     return x, z, s, tau, Q, mixer_params, k_params, dfs
 
 
@@ -149,18 +151,20 @@ def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     )
 
     # standardize each dim independently so can add apropriate output noise
-    def _scale_vars(x, noise_factor):
-        N = len(x)
-        denom = jnp.log(x).sum()
-        num_list = [jnp.exp(jnp.log(jnp.delete(x, i)).sum()-denom)
-                    for i in range(N)]
-        return noise_factor*N / jnp.array(num_list).sum()
+    #def _scale_vars(x, noise_factor):
+    #    N = len(x)
+    #    denom = jnp.log(x).sum()
+    #    num_list = [jnp.exp(jnp.log(jnp.delete(x, i)).sum()-denom)
+    #                for i in range(N)]
+    #    return noise_factor*N / jnp.array(num_list).sum()
 
 
-    zv = z.var(2)
-    zv_scaled = vmap(lambda _: _scale_vars(_, noise_factor), in_axes=(1,))(zv)
-    x = z+jnp.sqrt(zv_scaled.reshape((1, M, 1)))*jr.normal(key, shape=z.shape)
-    Q = noise_factor*zv_scaled*jnp.eye(M)
+    #zv = z.var(2)
+    #zv_scaled = vmap(lambda _: _scale_vars(_, noise_factor), in_axes=(1,))(zv)
+    #x = z+jnp.sqrt(zv_scaled.reshape((1, M, 1)))*jr.normal(key, shape=z.shape)
+    #Q = noise_factor*zv_scaled*jnp.eye(M)
+    x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
+    Q = jnp.eye(M)*noise_factor
     return x, z, s, Q, mixer_params, k_params
 
 
