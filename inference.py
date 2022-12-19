@@ -1,4 +1,5 @@
 from jax._src.numpy.lax_numpy import arange
+from jax._src.numpy.linalg import slogdet
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
@@ -11,15 +12,15 @@ from kernels import (
     bound_se_kernel_params,
     squared_euclid_dist_mat
 )
-from utils import custom_solve, comp_K_N, fill_triu, jax_print
+from utils import custom_solve, comp_K_N, fill_tril, jax_print
 from util import *
 from gamma import *
 from gaussian import *
 
 
-def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
+def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
-    J, h = phi_s
+    L, h = phi_s
     N = h.shape[0]
     T = t.shape[0]
     theta_cov = tree_map(lambda _: jnp.exp(_), theta_cov)
@@ -34,84 +35,57 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
     )
 
-
+    # compute covariances
     K = vmap(lambda b: vmap(lambda a:
-        comp_K_N(a, b, cov_fn, theta_cov)
+      comp_K_N(a, b, cov_fn, theta_cov) / tau[:, None]
     )(t))(t)
-
-    def test_fun(i, theta):
-        x, tc = theta
-        fout = vmap(lambda b: vmap(lambda a: comp_K_N(a, b, cov_fn, tc))(x))(x)
-        return theta
-
-    prof = jax_profiler2((t, theta_cov), test_fun, 10000, 4)
-
-    def _bf(carry, x):
-        n, t = x
-        P, N, T = carry
-        P = P.at[t*N+n, n*T+t].set(1.)
-        return (P, N, T), None
-
-    P = jnp.zeros((N*T, N*T))
-    out, _ = scan(lambda a, b: scan(_bf, a, (jnp.arange(N), jnp.repeat(b, N))),
-      (P, N, T), jnp.arange(T))
-    P = out[0]
-
-    def test_fun2(i, theta):
-        x, tc, P = theta
-        K = vmap(lambda tc: vmap(lambda b: vmap(lambda a: cov_fn(a, b, tc))(t))(t))(theta_cov)
-        K = js.linalg.block_diag(*K)
-        fout = P@K@P.T
-        return theta
-
-
-    prof2 = jax_profiler2((t, theta_cov, P), test_fun2, 10000, 4)
-
-
-    K2 = vmap(lambda tc: vmap(lambda b: vmap(lambda a: cov_fn(a, b, tc))(t))(t))(theta_cov)
-    K2 = js.linalg.block_diag(*K2)
-
-
-    #Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
-    #Ksu = vmap(lambda b:vmap(lambda a:
-    #    comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None])(tu))(t)
-    #Ksu = Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N)
-    #kss = vmap(
-    #    lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
-    #    )(theta_cov) / tau[:, None]
-    K2 = vmap(lambda tc:
-              vmap(lambda b: vmap(lambda a: cov_fn(a, b, tc))(t))(t))(theta_cov)
-    K2 = js.linalg.block_diag(*K2)
-    #K3 = P@K2@P.T
-    pdb.set_trace()
+    K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
     # compute parameters for \tilde{q(s|tau)}
-    What = vmap(fill_triu, in_axes=(1, None), out_axes=-1)(What, N)
-    WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
-    L = js.linalg.block_diag(*jnp.moveaxis(
-      jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
-    LK = L@Kuu
-    lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
-    KyyWTy = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
-    mu_s = Ksu @ KyyWTy
-    cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
-    cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
-          in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
-        cov_s, shape=(nsamples, T)), rng)
+    h = h.T.reshape(-1)
+    L_full = vmap(fill_tril, in_axes=(1, None), out_axes=-1)(L, N)
+    J = js.linalg.block_diag(*vmap(lambda a: a@a.T,
+                                      in_axes=-1)(L_full))
+    Jinv = js.linalg.block_diag(*vmap(lambda a: jnp.linalg.inv(a@a.T),
+                                      in_axes=-1)(L_full))
 
-    # compute E_{\tilde{q(s|tau)}}[log_p(x_t|s_t)]
-    Elogpx = jnp.mean(
-        jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
-    )
+    A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
+    pdb.set_trace()
+    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
+        0.5*jnp.linalg.slogdet(K)[1]
+    logZ2 = 0.5*h.T@Jinv@jnp.linalg.inv(Jinv+K)@K@h - 0.5*jnp.linalg.slogdet(
+        Jinv+K)[1] - 0.5*jnp.linalg.slogdet(J)[1]
+    pdb.set_trace()
 
-    # compute KL[q(u)|p(u)]
-    tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
-    h = Kuu@KyyWTy
-    logZ = 0.5*(jnp.dot(WTy.squeeze(), h)
-                -jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
-    KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
-    return Elogpx-KLqpu, s
+
+    #WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
+    #L = js.linalg.block_diag(*jnp.moveaxis(
+    #  jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
+    #LK = L@Kuu
+    #lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
+    #KyyWTy = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
+    #mu_s = Ksu @ KyyWTy
+    #cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
+    #cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
+    #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
+    #s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
+    #    cov_s, shape=(nsamples, T)), rng)
+
+    ## compute E_{\tilde{q(s|tau)}}[log_p(x_t|s_t)]
+    #Elogpx = jnp.mean(
+    #    jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
+    #)
+
+    ## compute KL[q(u)|p(u)]
+    #tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
+    #h = Kuu@KyyWTy
+    #logZ = 0.5*(jnp.dot(WTy.squeeze(), h)
+    #            -jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
+    #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
+    s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
+                jnp.eye(N), shape=(nsamples, T)), key)
+    return jnp.zeros((0,)), s
+                      #Elogpx-KLqpu, s
 
 
 # compute elbo estimate, assumes q(tau) is gamma

@@ -88,13 +88,13 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         theta = (theta_x, theta_k, theta_tau)
 
     # initialize variational parameters (phi)
-    J, key = rngcall(lambda _k: vmap(
+    L, key = rngcall(lambda _k: vmap(
         lambda _: jnp.linalg.cholesky(
             sample_wishart(_, jnp.array(N+1.), 10*jnp.eye(N))
         )[jnp.tril_indices(N)],
         out_axes=-1)(jr.split(_k, T)), key
     )
-    phi_s = (jnp.repeat(J[None, :], n_data, 0), jnp.ones((n_data, N, T)))
+    phi_s = (jnp.repeat(L[None, :], n_data, 0), jnp.ones((n_data, N, T)))
     if args.GP:
         phi = phi_s
     else:

@@ -141,6 +141,18 @@ def fill_triu(triu_elements, N):
     return U.at[jnp.triu_indices(N)].set(triu_elements)
 
 
+@Partial(jit, static_argnames=['N'])
+def fill_tril(tril_elements, N):
+    L = jnp.zeros((N, N))
+    return L.at[jnp.tril_indices(N)].set(tril_elements)
+
+
+
+
+
+
+
+
 def matching_sources_corr(est_sources, true_sources, method="spearman"):
     """Finding matching indices between true and estimated sources.
     Args:
