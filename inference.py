@@ -44,16 +44,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         fout = vmap(lambda b: vmap(lambda a: comp_K_N(a, b, cov_fn, tc))(x))(x)
         return theta
 
-    prof = jax_profiler2((t, theta_cov), test_fun, 1000, 4)
-
-
-
-
-    #P = jnp.zeros((N*T, N*T))
-    #for t in range(T):
-    #    for n in range(N):
-    #        P = P.at[t*N+n, n*T+t].set(1.)
-    #P2 = P
+    prof = jax_profiler2((t, theta_cov), test_fun, 10000, 4)
 
     def _bf(carry, x):
         n, t = x
@@ -66,6 +57,21 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
       (P, N, T), jnp.arange(T))
     P = out[0]
 
+    def test_fun2(i, theta):
+        x, tc, P = theta
+        K = vmap(lambda tc: vmap(lambda b: vmap(lambda a: cov_fn(a, b, tc))(t))(t))(theta_cov)
+        K = js.linalg.block_diag(*K)
+        fout = P@K@P.T
+        return theta
+
+
+    prof2 = jax_profiler2((t, theta_cov, P), test_fun2, 10000, 4)
+
+
+    K2 = vmap(lambda tc: vmap(lambda b: vmap(lambda a: cov_fn(a, b, tc))(t))(t))(theta_cov)
+    K2 = js.linalg.block_diag(*K2)
+
+
     #Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
     #Ksu = vmap(lambda b:vmap(lambda a:
     #    comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None])(tu))(t)
@@ -76,7 +82,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     K2 = vmap(lambda tc:
               vmap(lambda b: vmap(lambda a: cov_fn(a, b, tc))(t))(t))(theta_cov)
     K2 = js.linalg.block_diag(*K2)
-    K3 = P@K2@P.T
+    #K3 = P@K2@P.T
     pdb.set_trace()
 
     # compute parameters for \tilde{q(s|tau)}
