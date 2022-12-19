@@ -1,3 +1,4 @@
+from jax._src.numpy.lax_numpy import arange
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
@@ -10,7 +11,7 @@ from kernels import (
     bound_se_kernel_params,
     squared_euclid_dist_mat
 )
-from utils import custom_solve, jax_print, comp_K_N, fill_triu
+from utils import custom_solve, comp_K_N, fill_triu, jax_print
 from util import *
 from gamma import *
 from gaussian import *
@@ -18,10 +19,11 @@ from gaussian import *
 
 def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
-    What, yhat, tu = phi_s
-    N, n_pseudo = yhat.shape
+    J, h = phi_s
+    N = h.shape[0]
     T = t.shape[0]
     theta_cov = tree_map(lambda _: jnp.exp(_), theta_cov)
+
     # repeat in case the same kernel replicated for all ICs
     theta_cov = tree_map(lambda _: _.repeat(N-theta_cov[0].shape[0]+1),
                          theta_cov)
@@ -31,16 +33,51 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         ls_min=jnp.min(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)]),
         ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
     )
-    Kuu = vmap(lambda b: vmap(lambda a:
-        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None]
-    )(tu))(tu)
-    Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
-    Ksu = vmap(lambda b:vmap(lambda a:
-        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None])(tu))(t)
-    Ksu = Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N)
-    kss = vmap(
-        lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
-        )(theta_cov) / tau[:, None]
+
+
+    K = vmap(lambda b: vmap(lambda a:
+        comp_K_N(a, b, cov_fn, theta_cov)
+    )(t))(t)
+
+    def test_fun(i, theta):
+        x, tc = theta
+        fout = vmap(lambda b: vmap(lambda a: comp_K_N(a, b, cov_fn, tc))(x))(x)
+        return theta
+
+    prof = jax_profiler2((t, theta_cov), test_fun, 1000, 4)
+
+
+
+
+    #P = jnp.zeros((N*T, N*T))
+    #for t in range(T):
+    #    for n in range(N):
+    #        P = P.at[t*N+n, n*T+t].set(1.)
+    #P2 = P
+
+    def _bf(carry, x):
+        n, t = x
+        P, N, T = carry
+        P = P.at[t*N+n, n*T+t].set(1.)
+        return (P, N, T), None
+
+    P = jnp.zeros((N*T, N*T))
+    out, _ = scan(lambda a, b: scan(_bf, a, (jnp.arange(N), jnp.repeat(b, N))),
+      (P, N, T), jnp.arange(T))
+    P = out[0]
+
+    #Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
+    #Ksu = vmap(lambda b:vmap(lambda a:
+    #    comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None])(tu))(t)
+    #Ksu = Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N)
+    #kss = vmap(
+    #    lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
+    #    )(theta_cov) / tau[:, None]
+    K2 = vmap(lambda tc:
+              vmap(lambda b: vmap(lambda a: cov_fn(a, b, tc))(t))(t))(theta_cov)
+    K2 = js.linalg.block_diag(*K2)
+    K3 = P@K2@P.T
+    pdb.set_trace()
 
     # compute parameters for \tilde{q(s|tau)}
     What = vmap(fill_triu, in_axes=(1, None), out_axes=-1)(What, N)

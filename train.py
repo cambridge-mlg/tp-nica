@@ -14,7 +14,7 @@ from jax.tree_util import tree_map
 from kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
 from utils import (
-    rdm_upper_cholesky,
+    sample_wishart,
     matching_sources_corr,
     save_checkpoint,
     load_checkpoint
@@ -31,7 +31,6 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     L = args.L_est
     T = args.T
     n_data = args.num_data
-    n_pseudo = args.num_pseudo
     minib_size = args.minib_size
     num_epochs = args.num_epochs
     theta_lr = args.theta_learning_rate
@@ -42,6 +41,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     else:
         nsamples = (args.num_s_samples, args.num_tau_samples)
         gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
+
     # initialize generative model params (theta)
     if not args.GP:
         theta_tau, key = rngcall(
@@ -87,17 +87,14 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         use_gt_settings = (args.use_gt_nica, args.use_gt_kernel, args.use_gt_tau)
         theta = (theta_x, theta_k, theta_tau)
 
-    # initialize variational parameters (phi) with pseudo-points (tu)
-    tu, key = rngcall(lambda _: vmap(lambda k: jr.choice(k, t,
-            shape=(n_pseudo,), replace=False))(jr.split(_, n_data)), key)
-    W, key = rngcall(lambda _k: vmap(
-        lambda _: rdm_upper_cholesky(_, N)[jnp.triu_indices(N)]*10,
-        out_axes=-1)(jr.split(_k, n_pseudo)), key
+    # initialize variational parameters (phi)
+    J, key = rngcall(lambda _k: vmap(
+        lambda _: jnp.linalg.cholesky(
+            sample_wishart(_, jnp.array(N+1.), 10*jnp.eye(N))
+        )[jnp.tril_indices(N)],
+        out_axes=-1)(jr.split(_k, T)), key
     )
-    if args.diag_approx:
-        W = vmap(lambda _: jnp.diag(_), in_axes=-1, out_axes=-1)(W)
-    phi_s = (jnp.repeat(W[None, :], n_data, 0),
-             jnp.ones(shape=(n_data, N, n_pseudo)), tu)
+    phi_s = (jnp.repeat(J[None, :], n_data, 0), jnp.ones((n_data, N, T)))
     if args.GP:
         phi = phi_s
     else:
@@ -125,7 +122,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings,
                            optimizers, is_gp):
         if is_gp:
-            @jit
+            #@jit
             def gp_training_step(key, theta, phi_n, theta_opt_state,
                                  phi_n_opt_states, x, burn_in):
                 (nvlb, s), g = value_and_grad(avg_neg_gp_elbo, argnums=(1, 2),
@@ -133,22 +130,22 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                                                        kernel_fn, x, t, nsamples)
                 theta_g, phi_n_g = g
 
-                # perform gradient updates
+                # set up gradient updates for theta
                 (theta_opt, phi_opt) = optimizers
                 theta_updates, theta_opt_state = theta_opt.update(
                     theta_g, theta_opt_state, theta)
 
-                # override updates in debug mode
+                # override theta updates in debug mode with gt params
                 use_gt_nica, use_gt_kernel = use_gt_settings
-                grad_override_fun = lambda x: tree_map(lambda _:
-                                                       jnp.zeros(shape=_.shape), x)
+                grad_override_fun = lambda x: tree_map(
+                    lambda _: jnp.zeros(shape=_.shape), x)
                 nica_updates = lax.cond(use_gt_nica, grad_override_fun,
                             lambda x: x, theta_updates[0])
                 kernel_updates = lax.cond(use_gt_kernel, grad_override_fun,
                             lambda x: x, theta_updates[1])
                 theta_updates = (nica_updates, kernel_updates)
 
-                # also durning burn-in
+                # also stop updates during burn-in
                 theta_updates = lax.cond(burn_in, grad_override_fun,
                                          lambda x: x, theta_updates)
 
@@ -160,7 +157,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
             return gp_training_step
         else:
-            @jit
+            #@jit
             def tp_training_step(key, theta, phi_n, theta_opt_state,
                               phi_n_opt_states, x, burn_in):
                 (nvlb, s), g = value_and_grad(avg_neg_tp_elbo, argnums=(1, 2),
@@ -168,15 +165,15 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                                                        kernel_fn, x, t, nsamples)
                 theta_g, phi_n_g = g
 
-                # perform gradient updates
+                # set up gradient updates for theta 
                 (theta_opt, phi_opt) = optimizers
                 theta_updates, theta_opt_state = theta_opt.update(
                     theta_g, theta_opt_state, theta)
 
                 # override updates in debug mode
                 use_gt_nica, use_gt_kernel, use_gt_tau = use_gt_settings
-                grad_override_fun = lambda x: tree_map(lambda _:
-                                                       jnp.zeros(shape=_.shape), x)
+                grad_override_fun = lambda x: tree_map(
+                    lambda _: jnp.zeros(shape=_.shape), x)
                 nica_updates = lax.cond(use_gt_nica, grad_override_fun,
                             lambda x: x, theta_updates[0])
                 kernel_updates = lax.cond(use_gt_kernel, grad_override_fun,
@@ -185,7 +182,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                             lambda x: x, theta_updates[2])
                 theta_updates = (nica_updates, kernel_updates, tau_updates)
 
-                # also durning burn-in
+                # stop updates during burn-in 
                 theta_updates = lax.cond(burn_in, grad_override_fun,
                                          lambda x: x, theta_updates)
 
@@ -234,7 +231,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         elbo_hist = []
     best_elbo = -jnp.inf
     # train for multiple epochs
-    for epoch in range(start_epoch, start_epoch+num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         tic = time.perf_counter()
         shuffle_idx, key = rngcall(jr.permutation, key, n_data)
         shuff_data = train_data[shuffle_idx]

@@ -1,5 +1,6 @@
 import operator
 import jax
+from jax.lax import fori_loop
 import jax.numpy as jnp
 from jax import jit
 from jax.lax import scan
@@ -59,10 +60,23 @@ def cos_1d_mean_fn(x):
 def jax_profiler(theta, state, step, nsteps, nsamples):
     rng = jax.random.PRNGKey(0)
     durations = []
-    f = jax.jit(lambda k: scan(lambda s, k: step(k, theta, s), state,
-                               split(k, nsteps))[1]).lower(rng).compile()
+    #f = jax.jit(lambda _k: scan(lambda s, k: step(k, theta, s), state,
+    #                            split(_k, nsteps))[1]).lower(rng).compile()
+    f = jax.jit(lambda _k: scan(lambda s, k: step(k, theta, s), state,
+                                split(_k, nsteps))[1])
     for i in range(nsamples):
         tstart = perf_counter()
-        f(rng).block_until_ready()
+        jax.block_until_ready(f(rng))
         durations.append((perf_counter()-tstart))
-    return jnp.median(jnp.array(durations)).item()/nsteps
+    return jnp.median(jnp.array(durations[:1])).item()/nsteps
+
+
+def jax_profiler2(theta, step, nsteps, nsamples):
+    rng = jax.random.PRNGKey(0)
+    durations = []
+    for i in range(nsamples):
+        tstart = perf_counter()
+        jax.block_until_ready(
+            jax.jit(fori_loop, static_argnames=['body_fun'])(0, nsteps, step, theta))
+        durations.append((perf_counter()-tstart))
+        return jnp.median(jnp.array(durations)).item()/nsteps

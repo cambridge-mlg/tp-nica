@@ -4,6 +4,7 @@ from jax.scipy.linalg import lu_factor
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
+import jax.debug as jd
 
 import numpy as np
 import scipy as sp
@@ -18,6 +19,12 @@ from jax.lax import cond, scan, dynamic_slice, custom_linear_solve
 from jax.tree_util import Partial
 from jax.experimental.host_callback import id_tap
 from util import tree_get_idx
+from tensorflow_probability.substrates.jax.distributions import WishartTriL
+
+
+def sample_wishart(key, v0, W0):
+    W0_chol = jnp.linalg.cholesky(W0)
+    return WishartTriL(v0, scale_tril=W0_chol).sample(seed=key)
 
 
 def rdm_upper_cholesky(key, dim):
@@ -46,12 +53,8 @@ def reorder_covmat(cov, N, square=True):
 
 
 np.set_printoptions(linewidth=np.inf)
-def array_print(arg, transforms):
-    print(np.array2string(arg))
-
-
 def jax_print(x):
-    id_tap(tap_func=array_print, arg=x)
+    jd.print("{}", x) 
 
 
 def time_print(arg, transform):
@@ -118,6 +121,7 @@ def comp_k_n(t1, t2, n1, n2, cov_fn, theta_cov):
                 t1, t2, tree_get_idx(theta_cov, n1))
 
 
+@partial(jit, static_argnames=['cov_fn'])
 def comp_K_N(t1, t2, cov_fn, theta_cov):
     N = theta_cov[0].shape[0]
     out = jit(vmap(lambda a: vmap(
