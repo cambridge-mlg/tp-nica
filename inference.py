@@ -50,11 +50,11 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
                                       in_axes=-1)(L_full))
 
     A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
-    pdb.set_trace()
     logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
         0.5*jnp.linalg.slogdet(K)[1]
-    logZ2 = 0.5*h.T@Jinv@jnp.linalg.inv(Jinv+K)@K@h - 0.5*jnp.linalg.slogdet(
-        Jinv+K)[1] - 0.5*jnp.linalg.slogdet(J)[1]
+    #pdb.set_trace()
+    #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
+    #    Jinv+K)[1] - 0.5*jnp.linalg.slogdet(J)[1]
     pdb.set_trace()
 
 
