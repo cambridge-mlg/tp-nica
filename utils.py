@@ -1,5 +1,4 @@
 from functools import partial
-from jax.scipy.linalg import lu_factor
 
 import jax.numpy as jnp
 import jax.random as jr
@@ -15,9 +14,15 @@ import cloudpickle
 import pickle
 
 from jax import vmap, jit
-from jax.lax import cond, scan, dynamic_slice, custom_linear_solve
+from jax.lax import cond, scan, dynamic_slice, custom_linear_solve, while_loop
 from jax.tree_util import Partial
 from jax.experimental.host_callback import id_tap
+from jax._src.scipy.sparse.linalg import (
+    _normalize_matvec,
+    _sub,
+    _vdot_real_tree
+)
+
 from util import tree_get_idx
 from tensorflow_probability.substrates.jax.distributions import WishartTriL
 
@@ -54,7 +59,7 @@ def reorder_covmat(cov, N, square=True):
 
 np.set_printoptions(linewidth=np.inf)
 def jax_print(x):
-    jd.print("{}", x) 
+    jd.print("{}", x)
 
 
 def time_print(arg, transform):
@@ -147,12 +152,6 @@ def fill_tril(tril_elements, N):
     return L.at[jnp.tril_indices(N)].set(tril_elements)
 
 
-
-
-
-
-
-
 def matching_sources_corr(est_sources, true_sources, method="spearman"):
     """Finding matching indices between true and estimated sources.
     Args:
@@ -230,6 +229,91 @@ def load_checkpoint(train_args):
     ckpt = pickle.load(open(ckpt_file_path, "rb"))
     hist = pickle.load(open(hist_file_path, "rb"))
     return ckpt, hist
+
+
+def mbcg_solve(A, B, x0=None, *, tol=1e-5, maxiter=None, M=None):
+    def cond_fun(value, tol=tol, maxiter=maxiter):
+        _, R, *_, j = value
+        errs = jnp.sum(R**2, 0)**0.5
+        return jnp.all(errs > tol) and (j < maxiter)
+
+
+    def body_fun(value):
+        U, triDs, R, D, Z, a, b, j = value
+        _V = A(D)
+        _a = (R*Z).sum(0) / (D*_V).sum(0)
+        _U = U+jnp.diag(_a)@D
+        _R = R-jnp.diag(_a)@_V
+        _Z = M(_R)
+        _b = (_Z*_Z).sum(0) / (Z*Z).sum(0)
+        _D = _Z-jnp.diag(_b)@D
+        _triDs = [triDs[i].at[j, j].set(
+            1/_a[i] + cond(j == 0, lambda x, y: 0, lambda x, y: y/x, a[i], b[i])
+        ) for i in range(len(triDs))]
+        _triDs = [cond(j == 0, lambda x, y, z: z,
+            lambda x, y, z: z.at[[j-1, j], [j, j-1]].set(jnp.sqrt(y)/x),
+            _a[i], b[i], triDs[i]) for i in range(len(triDs))]
+        return _U, _triDs, _R, _D, _Z, _a, _b, j+1
+
+
+    n, t = B.shape
+    U0 = jnp.zeros((n, t))
+    R0 = _sub(A(U0), B)
+    Z0 = M(R0)
+    D0 = Z0.copy()
+    triDs0 = [jnp.zeros((maxiter, maxiter)) for _ in range(t)]
+    init_val = (U0, triDs0, R0, D0, Z0, jnp.zeros(t), jnp.zeros(t), 0)
+    U_final, triDs_final, *_ = while_loop(cond_fun, body_fun, init_val)
+    return U_final, triDs_final
+
+
+def pivoted_cholesky(A, tol, max_rank):
+    def cond_fun(value, tol=tol, max_rank=max_rank):
+        A, diag, perm, L, m = value
+        error = jnp.sum(diag[perm[m:]])
+        return (m < max_rank) & (error > tol | m == 0)
+
+    def body_fun(value):
+        A, diag, perm, L, m = value
+        i = jnp.argmax(diag[perm[m:]]) + m
+        perm_m = perm[m]
+        perm_i = perm[i]
+        perm = perm.at[m].set(perm_i).at[i].set(perm_m)
+        max_val = jnp.sqrt(diag[perm[m]])
+        L = L.at[perm[m], m].set(max_val)
+        i_idx = perm[m+1:]
+        L = L.at[i_idx, m].set((A[perm[m], i_idx] -
+                                L[perm[m], :m]@L.T[:m, i_idx])/max_val)
+        diag = diag.at[i_idx].set(diag[i_idx]-L[i_idx, m]**2)
+        return (A, diag, perm, L, m+1)
+
+    diag = jnp.diag(A)
+    perm = jnp.arange(A.shape[0])
+    pchol = jnp.zeros((A.shape[0], max_rank))
+    init_val = (A, diag, perm, pchol, 0)
+    *_, pchol, _ = while_loop(cond_fun, body_fun, init_val)
+    return pchol
+
+
+if __name__ == "__main__":
+    key = jr.PRNGKey(8)
+    Q = jr.normal(key, (8, 8))
+    A = Q.T@Q
+    pdb.set_trace()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 if __name__=="__main__":
     print('nothing here!')

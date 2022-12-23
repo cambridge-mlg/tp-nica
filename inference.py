@@ -7,6 +7,7 @@ import pdb
 
 from jax import vmap, jit, lax
 from jax.tree_util import tree_map, Partial
+from tensorflow_probability.substrates import jax as tfp
 
 from kernels import (
     bound_se_kernel_params,
@@ -52,6 +53,13 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
     logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
         0.5*jnp.linalg.slogdet(K)[1]
+
+
+    # set preconditioners
+
+
+
+
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
     #    Jinv+K)[1] + 0.5*jnp.linalg.slogdet(Jinv)[1]
 
