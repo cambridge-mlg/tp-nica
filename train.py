@@ -234,7 +234,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         elbo_hist = []
     best_elbo = -jnp.inf
     # train for multiple epochs
-    for epoch in range(start_epoch, start_epoch+num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         tic = time.perf_counter()
         shuffle_idx, key = rngcall(jr.permutation, key, n_data)
         shuff_data = train_data[shuffle_idx]
