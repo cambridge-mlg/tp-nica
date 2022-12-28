@@ -267,25 +267,43 @@ def mbcg_solve(A, B, x0=None, *, tol=1e-5, maxiter=None, M=None):
     return U_final, triDs_final
 
 
+@partial(jit, static_argnames=['max_rank'])
 def pivoted_cholesky(A, tol, max_rank):
     def cond_fun(value, tol=tol, max_rank=max_rank):
         A, diag, perm, L, m = value
-        error = jnp.sum(diag[perm[m:]])
-        return (m < max_rank) & (error > tol | m == 0)
+        perm_diag = diag[perm]
+        error = jnp.sum(jnp.where(jnp.arange(perm_diag.shape[0]) >= m,
+                                  perm_diag, 0))
+        return (m < max_rank) & (error > tol)
+
 
     def body_fun(value):
+        # this implementation is bit ugly -- jax doesnt allow dynamic indexing
+        # so had to use masking and jnp.where
         A, diag, perm, L, m = value
-        i = jnp.argmax(diag[perm[m:]]) + m
+        N = diag.shape[0]
+        perm_diag = diag[perm]
+        i = jnp.argmax(jnp.where(jnp.arange(N) >= m, perm_diag, -jnp.inf))
         perm_m = perm[m]
         perm_i = perm[i]
         perm = perm.at[m].set(perm_i).at[i].set(perm_m)
         max_val = jnp.sqrt(diag[perm[m]])
         L = L.at[perm[m], m].set(max_val)
-        i_idx = perm[m+1:]
-        L = L.at[i_idx, m].set((A[perm[m], i_idx] -
-                                L[perm[m], :m]@L.T[:m, i_idx])/max_val)
-        diag = diag.at[i_idx].set(diag[i_idx]-L[i_idx, m]**2)
+        a_row = A[perm[m], :]
+        L = L.at[perm, m].add(
+            jnp.where(jnp.arange(N) >= m+1, a_row[perm], 0)
+        )
+        l_row = L[perm[m], :]
+        l_row = jnp.where(jnp.arange(l_row.shape[0]) < m, l_row, 0)
+        L_sub = l_row @ jnp.where((jnp.arange(N) >= m+1)[:, None],
+                                  L[perm, :], 0).T
+        L = L.at[perm, m].add(-L_sub)
+        L = L.at[perm, m].set(jnp.where(jnp.arange(N)>=m+1, L[perm, m]/max_val,
+                                        L[perm, m]))
+        diag = diag.at[perm].set(jnp.where(jnp.arange(N) >= m+1,
+                                           diag[perm]-L[perm, m]**2, diag))
         return (A, diag, perm, L, m+1)
+
 
     diag = jnp.diag(A)
     perm = jnp.arange(A.shape[0])
@@ -299,21 +317,7 @@ if __name__ == "__main__":
     key = jr.PRNGKey(8)
     Q = jr.normal(key, (8, 8))
     A = Q.T@Q
+
+    pc = pivoted_cholesky(A, 1e-5, 8)
     pdb.set_trace()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-if __name__=="__main__":
-    print('nothing here!')
