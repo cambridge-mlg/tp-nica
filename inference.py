@@ -55,20 +55,17 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 #                                      in_axes=-1)(L_full))
     Jinv = js.linalg.block_diag(*vmap(lambda a: jnp.linalg.inv(a@a.T),
                                       in_axes=-1)(L_full))
+    #Jinv = js.linalg.block_diag(*vmap(lambda a:
+    #    custom_chol_solve(a@a.T, jnp.eye(N), (a, True)), in_axes=-1)(L_full))
 
-    Jinv2 = js.linalg.block_diag(*vmap(lambda a:
-        custom_chol_solve(a@a.T, jnp.eye(N), (a, True)), in_axes=-1)(L_full))
 
-
-    pdb.set_trace()
 #    A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
 #    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
 #        0.5*jnp.linalg.slogdet(K)[1]
 
 
     # set preconditioners
-#    pdb.set_trace()
-
+    P = pivoted_cholesky(Jinv+K, tol=1e-9, max_rank=100)
 
 
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
