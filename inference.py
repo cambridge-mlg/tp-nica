@@ -7,13 +7,19 @@ import pdb
 
 from jax import vmap, jit, lax
 from jax.tree_util import tree_map, Partial
-from tensorflow_probability.substrates import jax as tfp
 
 from kernels import (
     bound_se_kernel_params,
     squared_euclid_dist_mat
 )
-from utils import custom_solve, comp_K_N, fill_tril, jax_print
+from utils import (
+    custom_solve,
+    custom_chol_solve,
+    comp_K_N,
+    fill_tril,
+    jax_print,
+    pivoted_cholesky
+)
 from util import *
 from gamma import *
 from gaussian import *
@@ -45,23 +51,31 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     # compute parameters for \tilde{q(s|tau)}
     h = h.T.reshape(-1)
     L_full = vmap(fill_tril, in_axes=(1, None), out_axes=-1)(L, N)
-    J = js.linalg.block_diag(*vmap(lambda a: a@a.T,
+#    J = js.linalg.block_diag(*vmap(lambda a: a@a.T,
+#                                      in_axes=-1)(L_full))
+    Jinv = js.linalg.block_diag(*vmap(lambda a: jnp.linalg.inv(a@a.T),
                                       in_axes=-1)(L_full))
-    #Jinv = js.linalg.block_diag(*vmap(lambda a: jnp.linalg.inv(a@a.T),
-    #                                  in_axes=-1)(L_full))
 
-    A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
-    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
-        0.5*jnp.linalg.slogdet(K)[1]
+    Jinv2 = js.linalg.block_diag(*vmap(lambda a:
+        custom_chol_solve(a@a.T, jnp.eye(N), (a, True)), in_axes=-1)(L_full))
+
+
+    pdb.set_trace()
+#    A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
+#    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
+#        0.5*jnp.linalg.slogdet(K)[1]
 
 
     # set preconditioners
-
+#    pdb.set_trace()
 
 
 
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
     #    Jinv+K)[1] + 0.5*jnp.linalg.slogdet(Jinv)[1]
+
+#    jax_print(logZ)
+    #jax_print(logZ2)
 
 
     #WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)

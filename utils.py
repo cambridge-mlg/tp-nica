@@ -269,6 +269,8 @@ def mbcg_solve(A, B, x0=None, *, tol=1e-5, maxiter=None, M=None):
 
 @partial(jit, static_argnames=['max_rank'])
 def pivoted_cholesky(A, tol, max_rank):
+    # this implementation is bit ugly -- jax doesnt allow dynamic indexing
+    # so had to use masking and jnp.where
     def cond_fun(value, tol=tol, max_rank=max_rank):
         A, diag, perm, L, m = value
         perm_diag = diag[perm]
@@ -278,8 +280,6 @@ def pivoted_cholesky(A, tol, max_rank):
 
 
     def body_fun(value):
-        # this implementation is bit ugly -- jax doesnt allow dynamic indexing
-        # so had to use masking and jnp.where
         A, diag, perm, L, m = value
         N = diag.shape[0]
         perm_diag = diag[perm]

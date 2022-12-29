@@ -50,7 +50,7 @@ def parse():
                         help="number of latent input locations")
     parser.add_argument('-D', type=int, default=2,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=16384,
+    parser.add_argument('--num-data', type=int, default=1024,
                         help="total number of data samples to generate")
     parser.add_argument('--L-data', type=int, default=0,
                         help="data gen: number of nonlinear layers; 0 = linear ICA")
