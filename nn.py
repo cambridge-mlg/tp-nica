@@ -41,7 +41,7 @@ def xtanh(slope):
     return lambda x: jnp.tanh(x) + slope*x
 
 
-def unif_nica_layer(N, M, key, iter_4_cond=1e4):
+def unif_nica_layer(N, M, key, iter_4_cond=10000):
     def _gen_matrix(N, M, key):
         A = jrandom.uniform(key, (N, M), minval=-2., maxval=2.)
         #A = l2normalize(A)
