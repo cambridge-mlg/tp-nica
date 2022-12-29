@@ -53,10 +53,10 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     L_full = vmap(fill_tril, in_axes=(1, None), out_axes=-1)(L, N)
 #    J = js.linalg.block_diag(*vmap(lambda a: a@a.T,
 #                                      in_axes=-1)(L_full))
-    Jinv = js.linalg.block_diag(*vmap(lambda a: jnp.linalg.inv(a@a.T),
-                                      in_axes=-1)(L_full))
-    #Jinv = js.linalg.block_diag(*vmap(lambda a:
-    #    custom_chol_solve(a@a.T, jnp.eye(N), (a, True)), in_axes=-1)(L_full))
+    #Jinv = js.linalg.block_diag(*vmap(lambda a: jnp.linalg.inv(a@a.T),
+    #                                  in_axes=-1)(L_full))
+    Jinv = js.linalg.block_diag(*vmap(lambda a:
+        custom_chol_solve(a@a.T, jnp.eye(N), (a, True)), in_axes=-1)(L_full))
 
 
 #    A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
