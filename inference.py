@@ -65,7 +65,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
 
     # set preconditioners
-    P = pivoted_cholesky(Jinv+K, tol=1e-9, max_rank=100)
+    P = pivoted_cholesky(Jinv+K, tol=1e-9, max_rank=10)
 
 
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
@@ -101,7 +101,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(nsamples, T)), key)
-    return jnp.zeros((0,)), s
+    return jnp.zeros((0,)), s+lax.stop_gradient(P[0,0])
                       #Elogpx-KLqpu, s
 
 

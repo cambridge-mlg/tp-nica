@@ -272,7 +272,8 @@ def pivoted_cholesky(A, tol, max_rank):
     # this implementation is bit ugly -- jax doesnt allow dynamic indexing
     # so had to use masking and jnp.where
     def cond_fun(value, tol=tol, max_rank=max_rank):
-        A, diag, perm, L, m = value
+        diag, perm, L, m = value
+        del L
         perm_diag = diag[perm]
         error = jnp.sum(jnp.where(jnp.arange(perm_diag.shape[0]) >= m,
                                   perm_diag, 0))
@@ -280,7 +281,7 @@ def pivoted_cholesky(A, tol, max_rank):
 
 
     def body_fun(value):
-        A, diag, perm, L, m = value
+        diag, perm, L, m = value
         N = diag.shape[0]
         perm_diag = diag[perm]
         i = jnp.argmax(jnp.where(jnp.arange(N) >= m, perm_diag, -jnp.inf))
@@ -288,27 +289,24 @@ def pivoted_cholesky(A, tol, max_rank):
         perm_i = perm[i]
         perm = perm.at[m].set(perm_i).at[i].set(perm_m)
         max_val = jnp.sqrt(diag[perm[m]])
-        L = L.at[perm[m], m].set(max_val)
-        a_row = A[perm[m], :]
-        L = L.at[perm, m].add(
-            jnp.where(jnp.arange(N) >= m+1, a_row[perm], 0)
-        )
-        l_row = L[perm[m], :]
-        l_row = jnp.where(jnp.arange(l_row.shape[0]) < m, l_row, 0)
-        L_sub = l_row @ jnp.where((jnp.arange(N) >= m+1)[:, None],
+        l = jnp.zeros((N,)).at[perm[m]].set(max_val)
+        #l = l.at[perm].add(jnp.where(jnp.arange(N) >= m+1, A[perm[m]][perm],0))
+        l_row = jnp.where(jnp.arange(L.shape[1]) < m, L[perm[m], :], 0)
+        l_sub = l_row @ jnp.where((jnp.arange(N) >= m+1)[:, None],
                                   L[perm, :], 0).T
-        L = L.at[perm, m].add(-L_sub)
-        L = L.at[perm, m].set(jnp.where(jnp.arange(N)>=m+1, L[perm, m]/max_val,
-                                        L[perm, m]))
+        l = l.at[perm].add(-l_sub)
+        l = l.at[perm].set(jnp.where(jnp.arange(N)>=m+1, l[perm]/max_val,
+                                        l[perm]))
         diag = diag.at[perm].set(jnp.where(jnp.arange(N) >= m+1,
-                                           diag[perm]-L[perm, m]**2, diag))
-        return (A, diag, perm, L, m+1)
+                                           diag[perm]-l[perm]**2, diag))
+        L = L.at[:, m].set(l) + jnp.sum(A[0, 0])
+        return (diag, perm, L, m+1)
 
 
     diag = jnp.diag(A)
     perm = jnp.arange(A.shape[0])
     pchol = jnp.zeros((A.shape[0], max_rank))
-    init_val = (A, diag, perm, pchol, 0)
+    init_val = (diag, perm, pchol, 0)
     *_, pchol, _ = while_loop(cond_fun, body_fun, init_val)
     return pchol
 
