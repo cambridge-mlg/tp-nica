@@ -290,7 +290,7 @@ def pivoted_cholesky(A, tol, max_rank):
         perm = perm.at[m].set(perm_i).at[i].set(perm_m)
         max_val = jnp.sqrt(diag[perm[m]])
         l = jnp.zeros((N,)).at[perm[m]].set(max_val)
-        #l = l.at[perm].add(jnp.where(jnp.arange(N) >= m+1, A[perm[m]][perm],0))
+        l = l.at[perm].add(jnp.where(jnp.arange(N) >= m+1, A[perm[m]][perm],0))
         l_row = jnp.where(jnp.arange(L.shape[1]) < m, L[perm[m], :], 0)
         l_sub = l_row @ jnp.where((jnp.arange(N) >= m+1)[:, None],
                                   L[perm, :], 0).T
@@ -299,7 +299,7 @@ def pivoted_cholesky(A, tol, max_rank):
                                         l[perm]))
         diag = diag.at[perm].set(jnp.where(jnp.arange(N) >= m+1,
                                            diag[perm]-l[perm]**2, diag))
-        L = L.at[:, m].set(l) + jnp.sum(A[0, 0])
+        L = L.at[:, m].set(l)
         return (diag, perm, L, m+1)
 
 

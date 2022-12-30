@@ -51,12 +51,13 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     # compute parameters for \tilde{q(s|tau)}
     h = h.T.reshape(-1)
     L_full = vmap(fill_tril, in_axes=(1, None), out_axes=-1)(L, N)
-#    J = js.linalg.block_diag(*vmap(lambda a: a@a.T,
-#                                      in_axes=-1)(L_full))
-    #Jinv = js.linalg.block_diag(*vmap(lambda a: jnp.linalg.inv(a@a.T),
+    #J = js.linalg.block_diag(*vmap(lambda a: a@a.T,
     #                                  in_axes=-1)(L_full))
-    Jinv = js.linalg.block_diag(*vmap(lambda a:
-        custom_chol_solve(a@a.T, jnp.eye(N), (a, True)), in_axes=-1)(L_full))
+    #J = js.linalg.block_diag(*jnp.einsum('ijk,ljk->kil', L_full, L_full))
+    #Jinv = jnp.linalg.inv(J)
+    Jinv = vmap(lambda a: jnp.linalg.inv(a@a.T), in_axes=-1)(L_full)
+    #Jinv = vmap(lambda a: custom_chol_solve(a@a.T, jnp.eye(N), (a, True)),
+    #            in_axes=-1)(L_full)
 
 
 #    A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
@@ -65,7 +66,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
 
     # set preconditioners
-    P = pivoted_cholesky(Jinv+K, tol=1e-9, max_rank=10)
+    P = pivoted_cholesky(K+Jinv.sum(), tol=1e-9, max_rank=10)
 
 
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
@@ -101,7 +102,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(nsamples, T)), key)
-    return jnp.zeros((0,)), s+lax.stop_gradient(P[0,0])
+    return jnp.zeros((0,)), s+lax.stop_gradient(P.sum())
                       #Elogpx-KLqpu, s
 
 
