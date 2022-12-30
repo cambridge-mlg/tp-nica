@@ -197,6 +197,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
     # define evaluation step
     def make_eval_step(logpx, kernel_fn, t, nsamples, elbo_fn):
+        @jit
         def eval_step(key, theta, phi_n, x):
             (nvlb, s)  = elbo_fn(key, theta, phi_n, logpx,
                                       kernel_fn, x, t, nsamples)
@@ -224,6 +225,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     if args.resume_ckpt:
         start_epoch = ckpt_epoch+1
         if args.eval_only:
+            start_epoch = 0
             num_epochs = 1
     else:
         start_epoch = 0
