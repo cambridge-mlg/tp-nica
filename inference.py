@@ -18,12 +18,14 @@ from utils import (
     comp_K_N,
     fill_tril,
     jax_print,
-    pivoted_cholesky
+    pivoted_cholesky,
+    mbcg_solve
 )
 from util import *
 from gamma import *
 from gaussian import *
 
+from functools import partial
 
 def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
@@ -46,27 +48,22 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     K = vmap(lambda b: vmap(lambda a:
       comp_K_N(a, b, cov_fn, theta_cov) / tau[:, None]
     )(t))(t)
-    K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
     # compute parameters for \tilde{q(s|tau)}
     h = h.T.reshape(-1)
     L_full = vmap(fill_tril, in_axes=(1, None), out_axes=-1)(L, N)
-    #J = js.linalg.block_diag(*vmap(lambda a: a@a.T,
-    #                                  in_axes=-1)(L_full))
-    #J = js.linalg.block_diag(*jnp.einsum('ijk,ljk->kil', L_full, L_full))
-    #Jinv = jnp.linalg.inv(J)
-    Jinv = vmap(lambda a: jnp.linalg.inv(a@a.T), in_axes=-1)(L_full)
-    #Jinv = vmap(lambda a: custom_chol_solve(a@a.T, jnp.eye(N), (a, True)),
-    #            in_axes=-1)(L_full)
-
+    J = vmap(jnp.matmul, in_axes=(-1, -1))(L_full, L_full.swapaxes(0, 1))
+#    Jinv = vmap(lambda a: js.linalg.cho_solve((a, True), jnp.eye(N)),
+#                in_axes=-1)(L_full)
+#    K_Jinv = K.at[jnp.arange(T), jnp.arange(T)].add(Jinv).swapaxes(1, 2).reshape(N*T, N*T)
+    K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
 #    A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
 #    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
 #        0.5*jnp.linalg.slogdet(K)[1]
 
-
     # set preconditioners
-    P = pivoted_cholesky(K+Jinv.sum(), tol=1e-9, max_rank=10)
+    P = pivoted_cholesky(K, tol=1e-9, max_rank=10)
 
 
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
