@@ -14,11 +14,13 @@ from kernels import (
 )
 from utils import (
     custom_solve,
-    custom_chol_solve,
+    custom_cho_solve,
     comp_K_N,
     fill_tril,
     jax_print,
     pivoted_cholesky,
+    solve_precond_plus_block_diag,
+    solve_precond_plus_diag,
     mbcg_solve
 )
 from util import *
@@ -63,8 +65,14 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 #        0.5*jnp.linalg.slogdet(K)[1]
 
     # set preconditioners
-    P = pivoted_cholesky(K, tol=1e-9, max_rank=10)
+    P_k = pivoted_cholesky(K, tol=1e-9, max_rank=3)
+    PinvK = solve_precond_plus_block_diag(P_k, J, K)
+    DinvK = solve_precond_plus_diag(P_k, vmap(jnp.diag)(J).reshape(-1), K)
 
+    #dbg
+    Jinv = jnp.linalg.inv(js.linalg.block_diag(*J))
+    PinvK2 = jnp.linalg.inv((1/vmap(jnp.diag)(J).reshape(-1)) *jnp.eye(Jinv.shape[0]) + P_k@P_k.T)@K
+    pdb.set_trace()
 
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
     #    Jinv+K)[1] + 0.5*jnp.linalg.slogdet(Jinv)[1]

@@ -113,10 +113,10 @@ def custom_tril_solve(u, b):
     return custom_linear_solve(matvec, b, _solve, _trans_solve)
 
 
-def custom_chol_solve(a, b, chol_factor):
+def custom_cho_solve(a, b, cho_factor):
     def _solve(matvec, x):
-        return js.linalg.cho_solve(chol_factor, x)
-    matvec = partial(jnp.dot, a)
+        return js.linalg.cho_solve(cho_factor, x)
+    matvec = partial(jnp.matmul, a)
     return custom_linear_solve(matvec, b, _solve, symmetric=True)
 
 
@@ -309,6 +309,31 @@ def pivoted_cholesky(A, tol, max_rank):
     init_val = (diag, perm, pchol, 0)
     *_, pchol, _ = while_loop(cond_fun, body_fun, init_val)
     return pchol
+
+
+def solve_precond_plus_block_diag(L, D, B):
+    # D must be a batch of block diagonal matrices
+    DB = vmap(jnp.matmul)(D, B.reshape(D.shape[0], -1, B.shape[-1])).reshape(
+        -1, B.shape[-1])
+    DL = vmap(jnp.matmul)(D, L.reshape(D.shape[0], -1, L.shape[-1])).reshape(
+        -1, L.shape[-1])
+    A = jnp.eye(L.shape[1])+L.T@DL
+    cho_factor = js.linalg.cho_factor(A)
+    woodbury_inv = custom_cho_solve(A, L.T@DB, cho_factor)
+    return DB - DL@woodbury_inv
+
+
+def solve_precond_plus_diag(L, d, B):
+    # B must be a batch of block diagonal matrices
+    dB = d[:, None]*B
+    dL = d[:, None]*L
+    A = jnp.eye(L.shape[1])+L.T@dL
+    cho_factor = js.linalg.cho_factor(A)
+    woodbury_inv = custom_cho_solve(A, L.T@dB, cho_factor)
+    return dB - dL@woodbury_inv
+
+
+
 
 
 if __name__ == "__main__":
