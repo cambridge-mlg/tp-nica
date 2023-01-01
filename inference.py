@@ -55,25 +55,27 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     h = h.T.reshape(-1)
     L_full = vmap(fill_tril, in_axes=(1, None), out_axes=-1)(L, N)
     J = vmap(jnp.matmul, in_axes=(-1, -1))(L_full, L_full.swapaxes(0, 1))
-#    Jinv = vmap(lambda a: js.linalg.cho_solve((a, True), jnp.eye(N)),
-#                in_axes=-1)(L_full)
-#    K_Jinv = K.at[jnp.arange(T), jnp.arange(T)].add(Jinv).swapaxes(1, 2).reshape(N*T, N*T)
+    Jinv = vmap(js.linalg.cho_solve, in_axes=((-1, None), None))(
+        (L_full, True), jnp.eye(N))
+    K_Jinv = K.at[jnp.arange(T), jnp.arange(T)].add(Jinv).swapaxes(1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
-
 #    A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
 #    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
 #        0.5*jnp.linalg.slogdet(K)[1]
 
-    # set preconditioners
-    P_k = pivoted_cholesky(K, tol=1e-9, max_rank=3)
-    PinvK = solve_precond_plus_block_diag(P_k, J, K)
-    DinvK = solve_precond_plus_diag(P_k, vmap(jnp.diag)(J).reshape(-1), K)
+    # set preconditioners and func to calculate its inverse matrix product
+    P_k = pivoted_cholesky(K, tol=1e-9, max_rank=10)
+    Pinv_fun = lambda _: solve_precond_plus_block_diag(P_k, J, _)
+    #Pinv_fun = lambda _: solve_precond_plus_diag(
+    #    P_k, vmap(jnp.diag)(J).reshape(-1), _)
 
-    #dbg
-    Jinv = jnp.linalg.inv(js.linalg.block_diag(*J))
-    PinvK2 = jnp.linalg.inv((1/vmap(jnp.diag)(J).reshape(-1)) *jnp.eye(Jinv.shape[0]) + P_k@P_k.T)@K
-    pdb.set_trace()
+    # run mbcg
+    A_fun = partial(jnp.matmul, K_Jinv)
+    out = mbcg_solve(A_fun, K@h, maxiter=20, M=Pinv_fun)
 
+
+#    Jinv2 = js.linalg.block_diag(*Jinv)
+#    test = jnp.linalg.inv(Jinv2+K)@(K@h)
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
     #    Jinv+K)[1] + 0.5*jnp.linalg.slogdet(Jinv)[1]
 
@@ -107,7 +109,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(nsamples, T)), key)
-    return jnp.zeros((0,)), s+lax.stop_gradient(P.sum())
+    return jnp.zeros((0,)), s+lax.stop_gradient(out[0].sum())+out[1][0].sum()
                       #Elogpx-KLqpu, s
 
 

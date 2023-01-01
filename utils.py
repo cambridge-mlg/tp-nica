@@ -27,6 +27,11 @@ from util import tree_get_idx
 from tensorflow_probability.substrates.jax.distributions import WishartTriL
 
 
+# some lambdas
+_id_fun = lambda _: _
+_reshape_vec_2d = lambda _: jnp.reshape(_, (-1, 1))
+
+
 def sample_wishart(key, v0, W0):
     W0_chol = jnp.linalg.cholesky(W0)
     return WishartTriL(v0, scale_tril=W0_chol).sample(seed=key)
@@ -231,38 +236,41 @@ def load_checkpoint(train_args):
     return ckpt, hist
 
 
+#@partial(jit, static_argnames=['A', 'M', 'maxiter'])
 def mbcg_solve(A, B, x0=None, *, tol=1e-5, maxiter=None, M=None):
-    def cond_fun(value, tol=tol, maxiter=maxiter):
-        _, R, *_, j = value
+    def cond_fun(value):
+        *_, R, j = value
         errs = jnp.sum(R**2, 0)**0.5
-        return jnp.all(errs > tol) and (j < maxiter)
+        return jnp.all(errs > tol) & (j < maxiter)
 
 
     def body_fun(value):
-        U, triDs, R, D, Z, a, b, j = value
+        U, triDs, D, Z, a, b, R, j = value
         _V = A(D)
         _a = (R*Z).sum(0) / (D*_V).sum(0)
-        _U = U+jnp.diag(_a)@D
-        _R = R-jnp.diag(_a)@_V
+        _U = U + _a.reshape(1, -1)*D
+        _R = R - _a.reshape(1, -1)*_V
         _Z = M(_R)
         _b = (_Z*_Z).sum(0) / (Z*Z).sum(0)
-        _D = _Z-jnp.diag(_b)@D
+        _D = _Z - _b.reshape(1, -1)*D
         _triDs = [triDs[i].at[j, j].set(
-            1/_a[i] + cond(j == 0, lambda x, y: 0, lambda x, y: y/x, a[i], b[i])
+            1/_a[i] + cond(j == 0, lambda x, y: 0., jnp.divide, b[i], a[i])
         ) for i in range(len(triDs))]
         _triDs = [cond(j == 0, lambda x, y, z: z,
             lambda x, y, z: z.at[[j-1, j], [j, j-1]].set(jnp.sqrt(y)/x),
             _a[i], b[i], triDs[i]) for i in range(len(triDs))]
-        return _U, _triDs, _R, _D, _Z, _a, _b, j+1
+        _triDs = triDs
+        return _U, _triDs, _D, _Z, _a, _b, _R, j+1
 
 
+    B = B.reshape(B.shape[0], -1)
     n, t = B.shape
     U0 = jnp.zeros((n, t))
-    R0 = _sub(A(U0), B)
+    R0 = _sub(B, A(U0))
     Z0 = M(R0)
     D0 = Z0.copy()
-    triDs0 = [jnp.zeros((maxiter, maxiter)) for _ in range(t)]
-    init_val = (U0, triDs0, R0, D0, Z0, jnp.zeros(t), jnp.zeros(t), 0)
+    trids0 = [jnp.zeros((maxiter, maxiter)) for _ in range(t)]
+    init_val = (U0, trids0, D0, Z0, jnp.zeros(t), jnp.zeros(t), R0, 0)
     U_final, triDs_final, *_ = while_loop(cond_fun, body_fun, init_val)
     return U_final, triDs_final
 
