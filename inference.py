@@ -64,18 +64,19 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 #        0.5*jnp.linalg.slogdet(K)[1]
 
     # set preconditioners and func to calculate its inverse matrix product
-    P_k = pivoted_cholesky(K, tol=1e-9, max_rank=10)
+    P_k = pivoted_cholesky(K, tol=1e-9, max_rank=100)
     Pinv_fun = lambda _: solve_precond_plus_block_diag(P_k, J, _)
     #Pinv_fun = lambda _: solve_precond_plus_diag(
     #    P_k, vmap(jnp.diag)(J).reshape(-1), _)
 
     # run mbcg
     A_fun = partial(jnp.matmul, K_Jinv)
-    out = mbcg_solve(A_fun, K@h, maxiter=20, M=Pinv_fun)
+    out = mbcg_solve(A_fun, K@h, maxiter=K.shape[0], M=Pinv_fun)
 
 
-#    Jinv2 = js.linalg.block_diag(*Jinv)
-#    test = jnp.linalg.inv(Jinv2+K)@(K@h)
+    Jinv2 = js.linalg.block_diag(*Jinv)
+    test = jnp.linalg.inv(Jinv2+K)@(K@h)
+    pdb.set_trace()
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
     #    Jinv+K)[1] + 0.5*jnp.linalg.slogdet(Jinv)[1]
 

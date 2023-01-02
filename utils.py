@@ -237,10 +237,11 @@ def load_checkpoint(train_args):
 
 
 #@partial(jit, static_argnames=['A', 'M', 'maxiter'])
-def mbcg_solve(A, B, x0=None, *, tol=1e-5, maxiter=None, M=None):
+def mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     def cond_fun(value):
         *_, R, j = value
         errs = jnp.sum(R**2, 0)**0.5
+        jax_print((j, errs))
         return jnp.all(errs > tol) & (j < maxiter)
 
 
@@ -251,8 +252,8 @@ def mbcg_solve(A, B, x0=None, *, tol=1e-5, maxiter=None, M=None):
         _U = U + _a.reshape(1, -1)*D
         _R = R - _a.reshape(1, -1)*_V
         _Z = M(_R)
-        _b = (_Z*_Z).sum(0) / (Z*Z).sum(0)
-        _D = _Z - _b.reshape(1, -1)*D
+        _b = (_R*_Z).sum(0) / (R*Z).sum(0)
+        _D = _Z + _b.reshape(1, -1)*D
         _triDs = [triDs[i].at[j, j].set(
             1/_a[i] + cond(j == 0, lambda x, y: 0., jnp.divide, b[i], a[i])
         ) for i in range(len(triDs))]
