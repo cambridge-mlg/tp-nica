@@ -29,7 +29,6 @@ from tensorflow_probability.substrates.jax.distributions import WishartTriL
 
 # some lambdas
 _identity = lambda x: x
-#_reshape_vec_2d = lambda x: jnp.reshape(x, (-1, 1))
 
 
 def sample_wishart(key, v0, W0):
@@ -37,42 +36,9 @@ def sample_wishart(key, v0, W0):
     return WishartTriL(v0, scale_tril=W0_chol).sample(seed=key)
 
 
-def rdm_upper_cholesky(key, dim):
-    P = jr.orthogonal(key, dim)
-    key, _ = jr.split(key)
-    Q = jnp.diag(1/jr.uniform(key, shape=(dim,)))
-    precision_mat = jnp.dot(P.T, jnp.dot(Q, P))
-    L = jnp.linalg.cholesky(precision_mat)
-    return L.T
-
-
-def reorder_covmat(cov, N, square=True):
-    T_l, T_r = tuple(jnp.int64(_/N) for _ in cov.shape)
-    P = jnp.zeros((cov.shape[0], cov.shape[0]))
-    for t in range(T_l):
-        for n in range(N):
-            P = P.at[t*N+n, n*T_l+t].set(1.)
-    if square:
-        P2 = P
-    elif not square:
-        P2 = jnp.zeros((cov.shape[1], cov.shape[1]))
-        for t in range(T_r):
-            for n in range(N):
-                P2 = P2.at[t*N+n, n*T_r+t].set(1.)
-    return jnp.dot(P, jnp.dot(cov, P2.T))
-
-
 np.set_printoptions(linewidth=np.inf)
 def jax_print(x):
     jd.print("{}", x)
-
-
-def time_print(arg, transform):
-    print(time.time())
-
-
-def jax_time(x):
-    id_tap(tap_func=time_print, arg=x)
 
 
 def cho_invmp(x, y):
@@ -91,7 +57,7 @@ def lu_inv(x):
     return js.linalg.lu_solve(js.linalg.lu_factor(x), jnp.eye(x.shape[0]))
 
 
-def custom_solve(a, b, lu_factor):
+def custom_lu_solve(a, b, lu_factor):
     def _solve(matvec, x):
         return js.linalg.lu_solve(lu_factor, x)
     def _trans_solve(vecmat, x):
@@ -138,11 +104,6 @@ def comp_K_N(t1, t2, cov_fn, theta_cov):
         lambda b: comp_k_n(t1, t2, a, b, cov_fn, theta_cov)
                          )(jnp.arange(N))))(jnp.arange(N))
     return out
-
-
-@Partial(jit, static_argnames=['N', 'T'])
-def get_diag_blocks(A, N, T):
-    return vmap(lambda i: dynamic_slice(A, (i*N, i*N), (N, N)))(jnp.arange(T))
 
 
 @Partial(jit, static_argnames=['N'])
@@ -245,7 +206,7 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
 
 
     def body_fun(value):
-        U, triDs, D, Z, a, b, R, j = value
+        U, D, Z, a, b, R, j = value
         _V = A(D)
         _a = (R*Z).sum(0) / (D*_V).sum(0)
         _U = U + _a.reshape(1, -1)*D
@@ -253,30 +214,23 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
         _Z = M(_R)
         _b = (_R*_Z).sum(0) / (R*Z).sum(0)
         _D = _Z + _b.reshape(1, -1)*D
-        _triDs = [triDs[i].at[j, j].set(
-            1/_a[i] + cond(j == 0, lambda x, y: 0., jnp.divide, b[i], a[i])
-        ) for i in range(len(triDs))]
-        _triDs = [cond(j == 0, lambda x, y, z: z,
-            lambda x, y, z: z.at[[j-1, j], [j, j-1]].set(jnp.sqrt(y)/x),
-            _a[i], b[i], triDs[i]) for i in range(len(triDs))]
-        return _U, _triDs, _D, _Z, _a, _b, _R, j+1
+        return _U, _D, _Z, _a, _b, _R, j+1
 
 
     B = B.reshape(B.shape[0], -1)
     n, t = B.shape
-    x0 = x0.reshape(x0.shape[0], -1)
     R0 = _sub(B, A(x0))
     Z0 = M(R0)
     D0 = Z0.copy()
-    trids0 = [jnp.zeros((maxiter, maxiter)) for _ in range(t)]
-    init_val = (x0, trids0, D0, Z0, jnp.zeros(t), jnp.zeros(t), R0, 0)
-    U_final, triDs_final, *_ = while_loop(cond_fun, body_fun, init_val)
-    return U_final, triDs_final
+    init_val = (x0, D0, Z0, jnp.zeros(t), jnp.zeros(t), R0, 0)
+    U_final, *_ = while_loop(cond_fun, body_fun, init_val)
+    return U_final
 
 
 def mbcg(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     # modifying https://jax.readthedocs.io/en/latest/_modules/jax/_src/\
     #scipy/sparse/linalg.html#cg
+    # Note: assume A is symmetric
     if x0 is None:
         x0 = tree_map(jnp.zeros_like, B)
 
@@ -290,9 +244,9 @@ def mbcg(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
         M = _identity
 
     mbcg_solve = partial(_mbcg_solve, x0=x0, tol=tol, maxiter=maxiter, M=M)
-    x = custom_linear_solve(A, B, solve=mbcg_solve, transpose_solve=mbcg_solve,
-                            symmetric=True)
-    return x
+    x = custom_linear_solve(A, B, solve=mbcg_solve, symmetric=True,
+                            has_aux=False)
+    return x#, tri_diags
 
 
 @partial(jit, static_argnames=['max_rank'])
@@ -359,9 +313,6 @@ def solve_precond_plus_diag(L, d, B):
     cho_factor = js.linalg.cho_factor(A)
     woodbury_inv = custom_cho_solve(A, L.T@dB, cho_factor)
     return dB - dL@woodbury_inv
-
-
-
 
 
 if __name__ == "__main__":

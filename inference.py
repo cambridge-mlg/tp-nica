@@ -13,7 +13,7 @@ from kernels import (
     squared_euclid_dist_mat
 )
 from utils import (
-    custom_solve,
+    custom_lu_solve,
     custom_cho_solve,
     comp_K_N,
     fill_tril,
@@ -34,7 +34,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     L, h = phi_s
     N = h.shape[0]
     T = t.shape[0]
-    theta_cov = tree_map(lambda _: jnp.exp(_), theta_cov)
+    theta_cov = tree_map(jnp.exp, theta_cov)
 
     # repeat in case the same kernel replicated for all ICs
     theta_cov = tree_map(lambda _: _.repeat(N-theta_cov[0].shape[0]+1),
@@ -51,6 +51,13 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
       comp_K_N(a, b, cov_fn, theta_cov) / tau[:, None]
     )(t))(t)
 
+
+    #K = vmap(lambda b: vmap(partial(
+    #    comp_K_N, t2=b, cov_fn=cov_fn, theta_cov=theta_cov))(t))(t)
+
+
+
+
     # compute parameters for \tilde{q(s|tau)}
     h = h.T.reshape(-1)
     L_full = vmap(fill_tril, in_axes=(1, None), out_axes=-1)(L, N)
@@ -64,14 +71,13 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 #        0.5*jnp.linalg.slogdet(K)[1]
 
     # set preconditioners and func to calculate its inverse matrix product
-    P_k = pivoted_cholesky(K, tol=1e-9, max_rank=100)
+    P_k = pivoted_cholesky(K, tol=1e-9, max_rank=500)
     Pinv_fun = lambda _: solve_precond_plus_block_diag(P_k, J, _)
-    #Pinv_fun = lambda _: solve_precond_plus_diag(
-    #    P_k, vmap(jnp.diag)(J).reshape(-1), _)
 
     # run mbcg
     A_fun = partial(jnp.matmul, K_Jinv)
-    out = mbcg(A_fun, K@h, maxiter=K.shape[0], M=Pinv_fun)
+    out = mbcg(A_fun, (K@h).reshape(K.shape[0], -1), tol=1.,
+               maxiter=K.shape[0], M=Pinv_fun)
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
     #    Jinv+K)[1] + 0.5*jnp.linalg.slogdet(Jinv)[1]
 
@@ -105,7 +111,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(nsamples, T)), key)
-    return jnp.zeros((0,)), s+lax.stop_gradient(out[0].sum())+out[1][0].sum()
+    return jnp.zeros((0,)), s+out.sum()
                       #Elogpx-KLqpu, s
 
 
@@ -119,7 +125,7 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     # in case df param is replicated to be same for all ICs
     theta_tau = theta_tau.repeat(N-theta_tau.shape[0]+1)
     # to avoid numerical issues
-    phi_tau = tree_map(lambda _: jnp.exp(_), phi_tau)
+    phi_tau = tree_map(jnp.exp, phi_tau)
     tau, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau),
                        (nsamples_tau, *phi_tau[0].shape))
     kl = jnp.sum(
@@ -195,8 +201,8 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t, nsamples, elbo_fn):
     Calculate average negative elbo over training samples
     """
     vlb, s = vmap(lambda a, b, c: elbo_fn(
-        a, theta, b, logpx, cov_fn, c, t, nsamples))(jr.split(rng, x.shape[0]),
-                                                     phi_n, x)
+        a, theta, b, logpx, cov_fn, c, t, nsamples))(
+            jr.split(rng, x.shape[0]),  phi_n, x)
     return -vlb.mean(), s
 
 
