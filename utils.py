@@ -13,9 +13,9 @@ import os
 import cloudpickle
 import pickle
 
-from jax import vmap, jit
+from jax import vmap, jit, device_put
 from jax.lax import cond, scan, dynamic_slice, custom_linear_solve, while_loop
-from jax.tree_util import Partial
+from jax.tree_util import Partial, tree_map
 from jax.experimental.host_callback import id_tap
 from jax._src.scipy.sparse.linalg import (
     _normalize_matvec,
@@ -28,8 +28,8 @@ from tensorflow_probability.substrates.jax.distributions import WishartTriL
 
 
 # some lambdas
-_id_fun = lambda _: _
-_reshape_vec_2d = lambda _: jnp.reshape(_, (-1, 1))
+_identity = lambda x: x
+#_reshape_vec_2d = lambda x: jnp.reshape(x, (-1, 1))
 
 
 def sample_wishart(key, v0, W0):
@@ -237,11 +237,10 @@ def load_checkpoint(train_args):
 
 
 #@partial(jit, static_argnames=['A', 'M', 'maxiter'])
-def mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
+def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     def cond_fun(value):
         *_, R, j = value
         errs = jnp.sum(R**2, 0)**0.5
-        jax_print((j, errs))
         return jnp.all(errs > tol) & (j < maxiter)
 
 
@@ -260,20 +259,40 @@ def mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
         _triDs = [cond(j == 0, lambda x, y, z: z,
             lambda x, y, z: z.at[[j-1, j], [j, j-1]].set(jnp.sqrt(y)/x),
             _a[i], b[i], triDs[i]) for i in range(len(triDs))]
-        _triDs = triDs
         return _U, _triDs, _D, _Z, _a, _b, _R, j+1
 
 
     B = B.reshape(B.shape[0], -1)
     n, t = B.shape
-    U0 = jnp.zeros((n, t))
-    R0 = _sub(B, A(U0))
+    x0 = x0.reshape(x0.shape[0], -1)
+    R0 = _sub(B, A(x0))
     Z0 = M(R0)
     D0 = Z0.copy()
     trids0 = [jnp.zeros((maxiter, maxiter)) for _ in range(t)]
-    init_val = (U0, trids0, D0, Z0, jnp.zeros(t), jnp.zeros(t), R0, 0)
+    init_val = (x0, trids0, D0, Z0, jnp.zeros(t), jnp.zeros(t), R0, 0)
     U_final, triDs_final, *_ = while_loop(cond_fun, body_fun, init_val)
     return U_final, triDs_final
+
+
+def mbcg(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
+    # modifying https://jax.readthedocs.io/en/latest/_modules/jax/_src/\
+    #scipy/sparse/linalg.html#cg
+    if x0 is None:
+        x0 = tree_map(jnp.zeros_like, B)
+
+    B, x0 = device_put((B, x0))
+
+    if maxiter is None:
+        size = sum(bi.size for bi in tree_leaves(B))
+        maxiter = 10*size
+
+    if M is None:
+        M = _identity
+
+    mbcg_solve = partial(_mbcg_solve, x0=x0, tol=tol, maxiter=maxiter, M=M)
+    x = custom_linear_solve(A, B, solve=mbcg_solve, transpose_solve=mbcg_solve,
+                            symmetric=True)
+    return x
 
 
 @partial(jit, static_argnames=['max_rank'])

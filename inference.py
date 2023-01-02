@@ -5,7 +5,7 @@ import jax.random as jr
 import jax.scipy as js
 import pdb
 
-from jax import vmap, jit, lax
+from jax import vmap, jit, lax, device_put
 from jax.tree_util import tree_map, Partial
 
 from kernels import (
@@ -21,7 +21,7 @@ from utils import (
     pivoted_cholesky,
     solve_precond_plus_block_diag,
     solve_precond_plus_diag,
-    mbcg_solve
+    mbcg
 )
 from util import *
 from gamma import *
@@ -71,12 +71,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
     # run mbcg
     A_fun = partial(jnp.matmul, K_Jinv)
-    out = mbcg_solve(A_fun, K@h, maxiter=K.shape[0], M=Pinv_fun)
-
-
-    Jinv2 = js.linalg.block_diag(*Jinv)
-    test = jnp.linalg.inv(Jinv2+K)@(K@h)
-    pdb.set_trace()
+    out = mbcg(A_fun, K@h, maxiter=K.shape[0], M=Pinv_fun)
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
     #    Jinv+K)[1] + 0.5*jnp.linalg.slogdet(Jinv)[1]
 
