@@ -5,7 +5,7 @@ import jax.random as jr
 import jax.scipy as js
 import pdb
 
-from jax import vmap, jit, lax, device_put
+from jax import vmap, jit, lax, device_put, block_until_ready
 from jax.tree_util import tree_map, Partial
 
 from kernels import (
@@ -28,6 +28,7 @@ from gamma import *
 from gaussian import *
 
 from functools import partial
+from time import perf_counter
 
 def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
@@ -71,13 +72,16 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 #        0.5*jnp.linalg.slogdet(K)[1]
 
     # set preconditioners and func to calculate its inverse matrix product
-    P_k = pivoted_cholesky(K, tol=1e-9, max_rank=500)
+    tic = perf_counter()
+    P_k = pivoted_cholesky(K, tol=1e-9, max_rank=5)
     Pinv_fun = lambda _: solve_precond_plus_block_diag(P_k, J, _)
 
     # run mbcg
     A_fun = partial(jnp.matmul, K_Jinv)
+    tic = perf_counter()
     out = mbcg(A_fun, (K@h).reshape(K.shape[0], -1), tol=1.,
-               maxiter=K.shape[0], M=Pinv_fun)
+               maxiter=20, M=Pinv_fun)
+
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
     #    Jinv+K)[1] + 0.5*jnp.linalg.slogdet(Jinv)[1]
 
@@ -111,7 +115,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(nsamples, T)), key)
-    return jnp.zeros((0,)), s+out.sum()
+    return jnp.zeros((0,)), s+P_k.sum()+out.sum()
                       #Elogpx-KLqpu, s
 
 

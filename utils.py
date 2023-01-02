@@ -249,7 +249,6 @@ def mbcg(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     return x#, tri_diags
 
 
-@partial(jit, static_argnames=['max_rank'])
 def pivoted_cholesky(A, tol, max_rank):
     # this implementation is bit ugly -- jax doesnt allow dynamic indexing
     # so had to use masking and jnp.where
