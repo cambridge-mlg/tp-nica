@@ -14,7 +14,7 @@ from jax.tree_util import tree_map
 from kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
 from utils import (
-    rdm_upper_cholesky,
+    sample_wishart,
     matching_sources_corr,
     save_checkpoint,
     load_checkpoint
@@ -53,7 +53,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
     if args.D == 1:
         theta_k, key = rngcall(
-            lambda _k: vmap(lambda _: rdm_SE_kernel_params(_))(jr.split(_k, N)),
+            lambda _k: vmap(rdm_SE_kernel_params)(jr.split(_k, N)),
             key
         )
     elif args.D == 2:
@@ -62,7 +62,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 _, min_lscale=4., max_lscale=10.))(jr.split(_k, N)),
             key
         )
-    theta_k = tree_map(lambda _: jnp.log(_), theta_k)
+    theta_k = tree_map(jnp.log, theta_k)
     if args.repeat_kernels:
         theta_k = tree_map(lambda _: _[:1], theta_k)
 
@@ -76,7 +76,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     if args.use_gt_nica:
         theta_x = (gt_mixer_params, jnp.log(jnp.diag(gt_Q)))
     if args.use_gt_kernel:
-        theta_k = tree_map(lambda _:  jnp.log(_), gt_kernel_params)
+        theta_k = tree_map(jnp.log, gt_kernel_params)
     if args.use_gt_tau and not args.GP:
         theta_tau = jnp.log(gt_tau)
 
@@ -90,12 +90,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     # initialize variational parameters (phi) with pseudo-points (tu)
     tu, key = rngcall(lambda _: vmap(lambda k: jr.choice(k, t,
             shape=(n_pseudo,), replace=False))(jr.split(_, n_data)), key)
-    W, key = rngcall(lambda _k: vmap(
-        lambda _: rdm_upper_cholesky(_, N)[jnp.triu_indices(N)]*10,
-        out_axes=-1)(jr.split(_k, n_pseudo)), key
+    W, key = rngcall(
+        lambda _k: vmap(lambda _: jnp.linalg.cholesky(
+            sample_wishart(_, jnp.array(N+1.), 10*jnp.eye(N))
+        )[jnp.tril_indices(N)], out_axes=-1)(jr.split(_k, n_pseudo)), key
     )
-    if args.diag_approx:
-        W = vmap(lambda _: jnp.diag(_), in_axes=-1, out_axes=-1)(W)
     phi_s = (jnp.repeat(W[None, :], n_data, 0),
              jnp.ones(shape=(n_data, N, n_pseudo)), tu)
     if args.GP:

@@ -16,7 +16,7 @@ from gamma import *
 from gaussian import *
 
 
-def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
+def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
@@ -54,8 +54,8 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
     cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
-        cov_s, shape=(nsamples, T)), rng)
+    s, key = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
+        cov_s, shape=(nsamples, T)), key)
 
     # compute E_{\tilde{q(s|tau)}}[log_p(x_t|s_t)]
     Elogpx = jnp.mean(
@@ -72,7 +72,7 @@ def structured_elbo_s(rng, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
 
 # compute elbo estimate, assumes q(tau) is gamma
-def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
+def structured_elbo(key, theta, phi, logpx, cov_fn, x, t, nsamples):
     nsamples_s, nsamples_tau = nsamples
     theta_tau = theta[2]
     theta_tau = 2.+jnp.exp(theta_tau)
@@ -81,20 +81,20 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     # in case df param is replicated to be same for all ICs
     theta_tau = theta_tau.repeat(N-theta_tau.shape[0]+1)
     # to avoid numerical issues
-    phi_tau = tree_map(lambda _: jnp.exp(_), phi_tau)
-    tau, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau),
+    phi_tau = tree_map(jnp.exp, phi_tau)
+    tau, key = rngcall(gamma_sample, key, gamma_natparams_fromstandard(phi_tau),
                        (nsamples_tau, *phi_tau[0].shape))
     kl = jnp.sum(
         gamma_kl(
             gamma_natparams_fromstandard(phi_tau),
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0)
     vlb_s, s = vmap(lambda _: structured_elbo_s(
-        rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples_s))(tau)
+        key, theta, phi_s, logpx, cov_fn, x, t, _, nsamples_s))(tau)
     return jnp.mean(vlb_s, 0) - kl, s
 
 
 #@jit
-def gp_elbo(rng, theta, phi_s, logpx, cov_fn, x, t, nsamples):
+def gp_elbo(key, theta, phi_s, logpx, cov_fn, x, t, nsamples):
     theta_x, theta_cov = theta[:2]
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
@@ -135,8 +135,8 @@ def gp_elbo(rng, theta, phi_s, logpx, cov_fn, x, t, nsamples):
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
     #cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
     #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
-        cov_s, shape=(nsamples, T)), rng)
+    s, key = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
+        cov_s, shape=(nsamples, T)), key)
 
     # compute E_{\tilde{q(s)}}[log_p(x_t|s_t)]
     Elogpx = jnp.mean(
@@ -152,12 +152,12 @@ def gp_elbo(rng, theta, phi_s, logpx, cov_fn, x, t, nsamples):
     return Elogpx-KLqpu, s
 
 
-def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t, nsamples, elbo_fn):
+def avg_neg_elbo(key, theta, phi_n, logpx, cov_fn, x, t, nsamples, elbo_fn):
     """
     Calculate average negative elbo over training samples
     """
     vlb, s = vmap(lambda a, b, c: elbo_fn(
-        a, theta, b, logpx, cov_fn, c, t, nsamples))(jr.split(rng, x.shape[0]),
+        a, theta, b, logpx, cov_fn, c, t, nsamples))(jr.split(key, x.shape[0]),
                                                      phi_n, x)
     return -vlb.mean(), s
 

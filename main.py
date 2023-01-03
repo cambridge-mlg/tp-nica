@@ -149,22 +149,28 @@ def main():
         t = gen_2d_locations(args.T)
 
     mean_nrs = 1.0
+    noise_factor = 0.1
     while mean_nrs < 1.05 or mean_nrs > 1.15:
         data_key, _ = jr.split(data_key)
         if args.GP:
             x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
                                   args.L_data, args.num_data, mu_fn, k_fn,
+                                  noise_factor=noise_factor,
                                   repeat_kernels=args.repeat_kernels)
         else:
             x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
                                   args.L_data, args.num_data, mu_fn, k_fn,
                                   args.tp_df, repeat_kernels=args.repeat_kernels,
+                                  noise_factor=noise_factor,
                                   repeat_dfs=args.repeat_dfs)
 
         # check that noise is appropriate level
         mean_nrs = jnp.mean(x.var(2) / z.var(2), 0).mean()
         print("Noise-ratio mean.: {0:.2f}".format(mean_nrs))
-
+        if mean_nrs < 1.05:
+            noise_factor = 1.5*noise_factor
+        elif mean_nrs > 1.15:
+            noise_factor = 0.5*noise_factor
 
     # measure nonlinearity
     nl_metrics = []
