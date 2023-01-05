@@ -147,7 +147,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                             lambda x: x, theta_updates[1])
                 theta_updates = (nica_updates, kernel_updates)
 
-                # also durning burn-in
+                # also during burn-in
                 theta_updates = lax.cond(burn_in, grad_override_fun,
                                          lambda x: x, theta_updates)
 
