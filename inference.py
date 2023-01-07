@@ -10,7 +10,13 @@ from kernels import (
     bound_se_kernel_params,
     squared_euclid_dist_mat
 )
-from utils import custom_solve, jax_print, comp_K_N, fill_triu
+from utils import (
+    custom_lu_solve,
+    jax_print,
+    fill_triu,
+    K_N_diag,
+    K_TN_blocks
+)
 from util import *
 from gamma import *
 from gaussian import *
@@ -21,7 +27,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
     T = t.shape[0]
-    theta_cov = tree_map(lambda _: jnp.exp(_), theta_cov)
+    theta_cov = tree_map(jnp.exp, theta_cov)
     # repeat in case the same kernel replicated for all ICs
     theta_cov = tree_map(lambda _: _.repeat(N-theta_cov[0].shape[0]+1),
                          theta_cov)
@@ -31,16 +37,16 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         ls_min=jnp.min(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)]),
         ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
     )
-    Kuu = vmap(lambda b: vmap(lambda a:
-        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None]
-    )(tu))(tu)
+
+    #Kuu = K_TN_blocks(tu, tu, cov_fn, theta_cov, tau)
+    Kuu = cov_fn(tu, tu)
     Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
-    Ksu = vmap(lambda b:vmap(lambda a:
-        comp_K_N(a, b, cov_fn, theta_cov)/tau[:, None])(tu))(t)
+    #Ksu = K_TN_blocks(t, tu, cov_fn, theta_cov, tau)
+    Ksu = cov_fn(t, tu)
     Ksu = Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N)
-    kss = vmap(
-        lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
-        )(theta_cov) / tau[:, None]
+    kss = vmap(K_N_diag, in_axes=(0, 0, None, None, None))(
+       t, t, cov_fn, theta_cov, tau)
+    kss = vmap(jnp.diag)(kss).T
 
     # compute parameters for \tilde{q(s|tau)}
     What = vmap(fill_triu, in_axes=(1, None), out_axes=-1)(What, N)
@@ -49,9 +55,9 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
       jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
     LK = L@Kuu
     lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
-    KyyWTy = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
+    KyyWTy = custom_lu_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
     mu_s = Ksu @ KyyWTy
-    cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
+    cov_solve = custom_lu_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
     cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
     s, key = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
@@ -99,7 +105,7 @@ def gp_elbo(key, theta, phi_s, logpx, cov_fn, x, t, nsamples):
     What, yhat, tu = phi_s
     N, n_pseudo = yhat.shape
     T = t.shape[0]
-    theta_cov = tree_map(lambda _: jnp.exp(_), theta_cov)
+    theta_cov = tree_map(jnp.exp, theta_cov)
     # repeat in case the same kernel replicated for all ICs
     theta_cov = tree_map(lambda _: _.repeat(N-theta_cov[0].shape[0]+1),
                          theta_cov)
@@ -127,10 +133,10 @@ def gp_elbo(key, theta, phi_s, logpx, cov_fn, x, t, nsamples):
       jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
     LK = L@Kuu
     lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
-    KyyWTy = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
+    KyyWTy = custom_lu_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
     #KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
     mu_s = Ksu @ KyyWTy
-    cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
+    cov_solve = custom_lu_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
     cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
           in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
     #cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,

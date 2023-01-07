@@ -24,7 +24,7 @@ from util import rngcall, tree_get_idx
 from inference import avg_neg_tp_elbo, avg_neg_gp_elbo
 
 
-def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
+def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     # unpack useful args
     N = args.N
     M = args.M
@@ -201,8 +201,8 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     def make_eval_step(logpx, kernel_fn, t, nsamples, elbo_fn):
         @jit
         def eval_step(key, theta, phi_n, x):
-            (nvlb, s)  = elbo_fn(key, theta, phi_n, logpx,
-                                      kernel_fn, x, t, nsamples)
+            (nvlb, s)  = elbo_fn(key, theta, phi_n, logpx, kernel_fn,
+                                 x, t, nsamples)
             return nvlb, s
         return eval_step
 
@@ -213,11 +213,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             elbo_fn = avg_neg_gp_elbo
         else:
             elbo_fn = avg_neg_tp_elbo
-        eval_step = make_eval_step(nica_logpx, tp_kernel_fn, t,
+        eval_step = make_eval_step(nica_logpx, kernel_fn, t,
                                    nsamples, elbo_fn)
     else:
         training_step = make_training_step(
-            nica_logpx, tp_kernel_fn, t ,nsamples, use_gt_settings,
+            nica_logpx, kernel_fn, t ,nsamples, use_gt_settings,
             (theta_optimizer, phi_optimizer), args.GP
         )
 

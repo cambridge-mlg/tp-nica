@@ -6,6 +6,7 @@ from jax.lax import scan
 from jax.random import split
 from jax.tree_util import tree_map
 
+from functools import partial
 from time import perf_counter
 
 # batch utils
