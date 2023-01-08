@@ -16,7 +16,8 @@ from utils import (
     jax_print,
     fill_tril,
     K_N_diag,
-    K_TN_blocks
+    K_TN_blocks,
+    quad_form
 )
 from util import *
 from gamma import *
@@ -68,23 +69,11 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
     # compute KL[q(u)|p(u)]
     h = Kuu.reshape(-1, Kuu.shape[-1])@Kyy_m
-
-    Kyy = custom_trans_lu_solve(Jyy, Kuu.reshape(-1, Kuu.shape[-1]), lu_fact)
-    LKyy = jnp.matmul(L, Kyy.reshape(n_pseudo, N, n_pseudo, N).swapaxes(1, 2)[
-        jnp.arange(n_pseudo), jnp.arange(n_pseudo)])
-    tr = jnp.trace(LKyy, axis1=1, axis2=2).sum()
-
-    LKyy2 = js.linalg.block_diag(*L)@Kyy
-    tr2 = jnp.trace(LKyy2)
-
-    tr3 = jnp.trace(custom_trans_lu_solve(Jyy, LK.T, lu_fact).T)
-    pdb.set_trace()
-
-
-
     logZ = 0.5*(jnp.dot(m.T.reshape(-1), h) - jnp.linalg.slogdet(Jyy)[1])
-
-    KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
+    tr = jnp.trace(custom_trans_lu_solve(Jyy, LK.T, lu_fact).T)
+    h = h.reshape(n_pseudo, -1)
+    KLqpu = -0.5*(tr + vmap(quad_form)(h, L).sum()) + jnp.dot(
+        m.T.reshape(-1), h.reshape(-1)) - logZ
     return Elogpx-KLqpu, s
 
 

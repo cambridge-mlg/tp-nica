@@ -159,7 +159,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
             return gp_training_step
         else:
-            #@jit
+            @jit
             def tp_training_step(key, theta, phi_n, theta_opt_state,
                               phi_n_opt_states, x, burn_in):
                 (nvlb, s), g = value_and_grad(avg_neg_tp_elbo, argnums=(1, 2),

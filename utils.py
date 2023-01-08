@@ -25,6 +25,10 @@ from util import tree_get_idx
 _identity = lambda x: x
 
 
+def quad_form(x, A):
+    return jnp.dot(x, jnp.matmul(A, x))
+
+
 np.set_printoptions(linewidth=np.inf)
 def array_print(arg, transforms):
     print(np.array2string(arg))
