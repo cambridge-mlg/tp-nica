@@ -21,7 +21,6 @@ from utils import (
 )
 from util import *
 from gamma import *
-from gaussian import *
 
 
 def approx_cov(kss_diag_t, Ksu_t, Kyy_L):
@@ -162,10 +161,12 @@ def avg_neg_elbo(key, theta, phi_n, logpx, cov_fn, x, t, nsamples, elbo_fn):
     """
     Calculate average negative elbo over training samples
     """
-    vlb, s = vmap(lambda a, b, c: elbo_fn(
-        a, theta, b, logpx, cov_fn, c, t, nsamples))(jr.split(key, x.shape[0]),
-                                                     phi_n, x)
+    vlb, s = vmap(elbo_fn, (0, None, 0, None, None, 0, None, None))(
+        jr.split(key, x.shape[0]), theta, phi_n, logpx, cov_fn, x, t, nsamples)
     return -vlb.mean(), s
+
+
+
 
 
 avg_neg_tp_elbo = Partial(avg_neg_elbo, elbo_fn=structured_elbo)

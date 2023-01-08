@@ -15,7 +15,7 @@ import pickle
 
 from jax import vmap, jit
 from jax.lax import cond, scan, dynamic_slice, custom_linear_solve
-from jax.tree_util import Partial
+from jax.tree_util import Partial, tree_map
 from jax.experimental.host_callback import id_tap
 from tensorflow_probability.substrates.jax.distributions import WishartTriL
 
@@ -23,6 +23,7 @@ from util import tree_get_idx
 
 # some lambdas
 _identity = lambda x: x
+tree_zeros_like = partial(tree_map, jnp.zeros_like)
 
 
 def quad_form(x, A):

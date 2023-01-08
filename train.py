@@ -15,6 +15,8 @@ from kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
 from utils import (
     sample_wishart,
+    tree_zeros_like,
+    _identity,
     matching_sources_corr,
     save_checkpoint,
     load_checkpoint
@@ -139,17 +141,15 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
 
                 # override updates in debug mode
                 use_gt_nica, use_gt_kernel = use_gt_settings
-                grad_override_fun = lambda x: tree_map(lambda _:
-                                                       jnp.zeros(shape=_.shape), x)
-                nica_updates = lax.cond(use_gt_nica, grad_override_fun,
-                            lambda x: x, theta_updates[0])
-                kernel_updates = lax.cond(use_gt_kernel, grad_override_fun,
-                            lambda x: x, theta_updates[1])
+                nica_updates = lax.cond(use_gt_nica, tree_zeros_like,
+                            _identity, theta_updates[0])
+                kernel_updates = lax.cond(use_gt_kernel, tree_zeros_like,
+                            _identity, theta_updates[1])
                 theta_updates = (nica_updates, kernel_updates)
 
                 # also during burn-in
-                theta_updates = lax.cond(burn_in, grad_override_fun,
-                                         lambda x: x, theta_updates)
+                theta_updates = lax.cond(burn_in, tree_zeros_like,
+                                         _identity, theta_updates)
 
                 # perform gradient updates
                 theta = optax.apply_updates(theta, theta_updates)
@@ -174,19 +174,17 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
 
                 # override updates in debug mode
                 use_gt_nica, use_gt_kernel, use_gt_tau = use_gt_settings
-                grad_override_fun = lambda x: tree_map(lambda _:
-                                                       jnp.zeros(shape=_.shape), x)
-                nica_updates = lax.cond(use_gt_nica, grad_override_fun,
-                            lambda x: x, theta_updates[0])
-                kernel_updates = lax.cond(use_gt_kernel, grad_override_fun,
-                            lambda x: x, theta_updates[1])
-                tau_updates = lax.cond(use_gt_tau, grad_override_fun,
-                            lambda x: x, theta_updates[2])
+                nica_updates = lax.cond(use_gt_nica, tree_zeros_like,
+                            _identity, theta_updates[0])
+                kernel_updates = lax.cond(use_gt_kernel, tree_zeros_like,
+                            _identity, theta_updates[1])
+                tau_updates = lax.cond(use_gt_tau, tree_zeros_like,
+                            _identity, theta_updates[2])
                 theta_updates = (nica_updates, kernel_updates, tau_updates)
 
                 # also durning burn-in
-                theta_updates = lax.cond(burn_in, grad_override_fun,
-                                         lambda x: x, theta_updates)
+                theta_updates = lax.cond(burn_in, tree_zeros_like,
+                                         _identity, theta_updates)
 
                 # perform gradient updates
                 theta = optax.apply_updates(theta, theta_updates)

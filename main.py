@@ -79,7 +79,7 @@ def parse():
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")
-    parser.add_argument('--burn-in-len', type=int, default=0,
+    parser.add_argument('--burn-in-len', type=int, default=100,
                         help="number of epochs to keep theta params fixed")
     # set all ICs to have same distribs
     parser.add_argument('--repeat-dfs', action='store_true', default=False,
