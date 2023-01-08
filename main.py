@@ -67,8 +67,6 @@ def parse():
     parser.add_argument('--GP', action='store_true', default=False,
                         help="generate and train from GP latents instead of TP")
     # inference, training and optimization args
-    parser.add_argument('--diag-approx', action='store_true', default=False,
-                        help="approx. likelih. factor with diagonal Gaussian")
     parser.add_argument('--num-s-samples', type=int, default=3,
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=3,

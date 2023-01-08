@@ -72,6 +72,15 @@ def custom_lu_solve(a, b, lu_factor):
     return custom_linear_solve(matvec, b, _solve, _trans_solve)
 
 
+def custom_trans_lu_solve(a, b, lu_factor):
+    def _solve(matvec, x):
+        return js.linalg.lu_solve(lu_factor, x)
+    def _trans_solve(vecmat, x):
+        return js.linalg.lu_solve(lu_factor, x, trans=1)
+    matvec = partial(jnp.matmul, a.T)
+    return custom_linear_solve(matvec, b, _trans_solve, _solve)
+
+
 def custom_triu_solve(u, b):
     def _solve(matvec, x):
         return js.linalg.solve_triangular(u, x)
@@ -104,10 +113,10 @@ def K_N_diag(x, y, cov_fn, theta_cov, scaler):
 
 
 def K_TN_blocks(x, y, cov_fn, theta_cov, scaler):
-    K_fn = partial(K_N_diag, cov_fn=cov_fn, theta_cov=theta_cov, scaler=scaler)
     return vmap(vmap(K_N_diag, in_axes=(None, 0, None, None, None)),
                 in_axes=(0, None, None, None, None))(x, y, cov_fn, theta_cov,
                                                      scaler)
+
 
 @Partial(jit, static_argnames=['N'])
 def fill_triu(triu_elements, N):
@@ -118,7 +127,7 @@ def fill_triu(triu_elements, N):
 @Partial(jit, static_argnames=['N'])
 def fill_tril(tril_elements, N):
     L = jnp.zeros((N, N))
-    return U.at[jnp.tril_indices(N)].set(tril_elements)
+    return L.at[jnp.tril_indices(N)].set(tril_elements)
 
 
 def matching_sources_corr(est_sources, true_sources, method="spearman"):

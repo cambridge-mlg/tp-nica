@@ -12,8 +12,9 @@ from kernels import (
 )
 from utils import (
     custom_lu_solve,
+    custom_trans_lu_solve,
     jax_print,
-    fill_triu,
+    fill_tril,
     K_N_diag,
     K_TN_blocks
 )
@@ -22,10 +23,14 @@ from gamma import *
 from gaussian import *
 
 
+def approx_cov(kss_diag_t, Ksu_t, Kyy_L):
+    return kss_diag_t-Ksu_t@Kyy_L@Ksu_t.T
+
+
 def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     theta_x, theta_cov = theta[:2]
-    What, yhat, tu = phi_s
-    N, n_pseudo = yhat.shape
+    W, m, tu = phi_s
+    N, n_pseudo = m.shape
     T = t.shape[0]
     theta_cov = tree_map(jnp.exp, theta_cov)
     # repeat in case the same kernel replicated for all ICs
@@ -38,41 +43,47 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
     )
 
-    #Kuu = K_TN_blocks(tu, tu, cov_fn, theta_cov, tau)
-    Kuu = cov_fn(tu, tu)
-    Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
-    #Ksu = K_TN_blocks(t, tu, cov_fn, theta_cov, tau)
-    Ksu = cov_fn(t, tu)
-    Ksu = Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N)
+    Kuu = K_TN_blocks(tu, tu, cov_fn, theta_cov, tau)
+    Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo, N, -1)
+    Ksu = K_TN_blocks(t, tu, cov_fn, theta_cov, tau)
+    Ksu = Ksu.swapaxes(1, 2).reshape(T, N, -1)
     kss = vmap(K_N_diag, in_axes=(0, 0, None, None, None))(
        t, t, cov_fn, theta_cov, tau)
-    kss = vmap(jnp.diag)(kss).T
 
     # compute parameters for \tilde{q(s|tau)}
-    What = vmap(fill_triu, in_axes=(1, None), out_axes=-1)(What, N)
-    WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
-    L = js.linalg.block_diag(*jnp.moveaxis(
-      jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
-    LK = L@Kuu
-    lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
-    KyyWTy = custom_lu_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
-    mu_s = Ksu @ KyyWTy
-    cov_solve = custom_lu_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
-    cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
-          in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    s, key = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
-        cov_s, shape=(nsamples, T)), key)
+    W = vmap(fill_tril, in_axes=(1, None))(W, N)
+    L = jnp.matmul(W, W.swapaxes(1, 2))
+    LK = jnp.matmul(L, Kuu).reshape(-1, Kuu.shape[-1])
+    Jyy = jnp.eye(LK.shape[0])+LK
+    lu_fact = js.linalg.lu_factor(Jyy)
+    Kyy_m = custom_lu_solve(Jyy, m.T.reshape(-1), lu_fact)
+    mu_s = jnp.matmul(Ksu, Kyy_m)
+    Kyy_L = custom_lu_solve(Jyy, js.linalg.block_diag(*L), lu_fact)
+    cov_s = vmap(approx_cov, in_axes=(0, 0, None))(kss, Ksu, Kyy_L)
+    s = jr.multivariate_normal(key, mu_s, cov_s, shape=(nsamples, T))
 
     # compute E_{\tilde{q(s|tau)}}[log_p(x_t|s_t)]
-    Elogpx = jnp.mean(
-        jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
-    )
+    Elogpx = jnp.sum(vmap(vmap(logpx, (1, 0, None)), (None, 0, None))(
+            x, s, theta_x), 1).mean()
 
     # compute KL[q(u)|p(u)]
-    tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
-    h = Kuu@KyyWTy
-    logZ = 0.5*(jnp.dot(WTy.squeeze(), h)
-                -jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
+    h = Kuu.reshape(-1, Kuu.shape[-1])@Kyy_m
+
+    Kyy = custom_trans_lu_solve(Jyy, Kuu.reshape(-1, Kuu.shape[-1]), lu_fact)
+    LKyy = jnp.matmul(L, Kyy.reshape(n_pseudo, N, n_pseudo, N).swapaxes(1, 2)[
+        jnp.arange(n_pseudo), jnp.arange(n_pseudo)])
+    tr = jnp.trace(LKyy, axis1=1, axis2=2).sum()
+
+    LKyy2 = js.linalg.block_diag(*L)@Kyy
+    tr2 = jnp.trace(LKyy2)
+
+    tr3 = jnp.trace(custom_trans_lu_solve(Jyy, LK.T, lu_fact).T)
+    pdb.set_trace()
+
+
+
+    logZ = 0.5*(jnp.dot(m.T.reshape(-1), h) - jnp.linalg.slogdet(Jyy)[1])
+
     KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     return Elogpx-KLqpu, s
 
