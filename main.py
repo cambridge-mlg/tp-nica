@@ -1,9 +1,9 @@
 import os
-#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
 from matplotlib import projections
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse

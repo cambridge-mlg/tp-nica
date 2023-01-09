@@ -71,7 +71,7 @@ def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
 @partial(jit, static_argnames=( "N", "M", "L", "num_samples", "mu_func",
     "kernel_func", "repeat_dfs", "repeat_kernels"))
 def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
-                    tp_df=2.01, noise_factor=0.1, repeat_layers=False,
+                    tp_df=2.01, noise_factor=0.15, repeat_layers=False,
                     repeat_dfs=False, repeat_kernels=False):
     # set-up Gamma prior and GP parameters (used for all samples)
     D = t.shape[-1]
@@ -98,6 +98,8 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     sample_fun = lambda _: sample_tpnica(_, t, mu_func, kernel_func, k_params,
             dfs, mixer_params)
     z, s, tau = lax.map(sample_fun, jnp.vstack(sample_keys))
+
+    # add noise
     x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
     Q = jnp.eye(M)*noise_factor
     return x, z, s, tau, Q, mixer_params, k_params, dfs
@@ -106,7 +108,7 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
 @partial(jit, static_argnames=( "N", "M", "L", "num_samples", "mu_func",
                                "kernel_func", "repeat_kernels"))
 def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
-                    noise_factor=0.1, repeat_layers=False,
+                    noise_factor=0.15, repeat_layers=False,
                     repeat_kernels=False):
     D = t.shape[-1]
     # set-up GP parameters (used for all samples)
@@ -128,6 +130,8 @@ def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     sample_fun = lambda _: sample_gpnica(_, t, mu_func, kernel_func, k_params,
                                          mixer_params)
     z, s = lax.map(sample_fun, jnp.vstack(sample_keys))
+
+    # add noise
     x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
     Q = jnp.eye(M)*noise_factor
     return x, z, s, Q, mixer_params, k_params

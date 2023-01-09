@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=unique_kernels_theta
+#SBATCH --job-name=tp_head
 #SBATCH -M ukko
-#SBATCH -p gpu,gpu-long
-#SBATCH -o unique_kernels_theta.txt
+#SBATCH -p gpu
+#SBATCH -o tp_head.txt
 #SBATCH -c 2
 #SBATCH -t 23:59:00
-#SBATCH --mem-per-cpu=64G
+#SBATCH --mem-per-cpu=16G
 #SBATCH --gres=gpu:1
 #SBATCH --array=1-4
 
@@ -14,4 +14,4 @@ module load CUDA
 module load cuDNN
 conda activate tpnica
 
-srun --unbuffered python main.py --headless -D1 --num-data 1024 --data-seed $SLURM_ARRAY_TASK_ID --resume-ckpt
+srun --unbuffered python main.py --headless -N6 -M12 -T1024 --num-pseudo 50 -D1 --num-data 1024 --L-est 0 --L-data 0 --num-s-samples 3 --num-tau-samples 3 --data-seed $SLURM_ARRAY_TASK_ID --theta-learning-rate 0.004 --phi-learning-rate 0.28 --burn-in-len 100 --minib-size 8

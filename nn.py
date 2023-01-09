@@ -53,9 +53,7 @@ def unif_nica_layer(N, M, key, iter_4_cond=10000):
     A, conds = vmap(_gen_matrix, (None, None, 0))(N, M, keys)
     target_cond = jnp.percentile(conds, 25)
     target_idx = jnp.argmin(jnp.abs(conds-target_cond))
-    # NOTE: bias has been fixed to zero for now:
-    b = jrandom.uniform(jrandom.split(keys[-1])[0], (M,), minval=0., maxval=0.)
-    return A[target_idx], b
+    return A[target_idx]
 
 
 def init_nica_params(key, N, M, nonlin_layers, repeat_layers):
@@ -77,15 +75,15 @@ def nica_mlp(params, s, activation='xtanh', slope=0.01):
     """Forward-pass of mixing function.
     """
     def _fwd_pass(z, params_list):
-        for A, b in params_list[:-1]:
-            z = act(z@A)+b
-        return z@params_list[-1][0]+params_list[-1][1]
+        for A in params_list[:-1]:
+            z = act(z@A)
+        return z@params_list[-1]
 
 
     act = xtanh(slope) # add option to switch to smoothleakyrelu
     z = s
     z = lax.cond(len(params) > 1, lambda a, B: _fwd_pass(a, B),
-                 lambda a, B: a@B[0][0]+B[0][1], z, params)
+                 lambda a, B: a@B[0], z, params)
     return z
 
 
