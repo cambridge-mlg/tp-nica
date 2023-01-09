@@ -120,6 +120,7 @@ def parse():
 
 def main():
     args = parse()
+    print("Args: ", args)
 
     # set prng keys
     data_key = jr.PRNGKey(args.data_seed)
@@ -146,37 +147,26 @@ def main():
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
 
-    mean_nrs = 1.0
-    noise_factor = 0.1
-    while mean_nrs < 1.05 or mean_nrs > 1.15:
-        data_key, _ = jr.split(data_key)
-        if args.GP:
-            x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
+    if args.GP:
+        x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
                                   args.L_data, args.num_data, mu_fn, k_fn,
-                                  noise_factor=noise_factor,
                                   repeat_kernels=args.repeat_kernels)
-        else:
-            x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
+    else:
+        x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
                                   args.L_data, args.num_data, mu_fn, k_fn,
                                   args.tp_df, repeat_kernels=args.repeat_kernels,
-                                  noise_factor=noise_factor,
                                   repeat_dfs=args.repeat_dfs)
 
-        # check that noise is appropriate level
-        mean_nrs = jnp.mean(x.var(2) / z.var(2), 0).mean()
-        print("Noise-ratio mean.: {0:.2f}".format(mean_nrs))
-        if mean_nrs < 1.05:
-            noise_factor = 1.5*noise_factor
-        elif mean_nrs > 1.15:
-            noise_factor = 0.5*noise_factor
+    # check that noise is appropriate level
+    mean_nrs = jnp.mean(x.var(2) / z.var(2), 0).mean()
+    print("Noise-ratio mean.: {0:.2f}".format(mean_nrs))
 
     # measure nonlinearity
     nl_metrics = []
     for i in range(args.num_data):
         nl_metrics.append(LR().fit(s[i, :, :].T, z[i, :, :].T).score(
             s[i, :, :].T, z[i, :, :].T))
-    print("Linearity (R2): {0:.2f}".format(
-        jnp.median((jnp.array(nl_metrics)))))
+    print("Linearity (R2): {0:.2f}".format(jnp.median((jnp.array(nl_metrics)))))
 
     # just to plot data for now:
     #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))

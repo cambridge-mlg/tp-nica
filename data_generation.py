@@ -59,7 +59,7 @@ def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
 
 def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
     # sample each IC as a GP
-    N = mixer_params[0][0].shape[0]
+    N = mixer_params[0].shape[0]
     key, *s_key = jr.split(key, N+1)
     sample_fun = lambda _a, _b: sample_gp(_a, t, gp_mu_fn, gp_k_fn, _b)
     s = vmap(sample_fun)(jnp.vstack(s_key), gp_k_params)
@@ -100,8 +100,12 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     z, s, tau = lax.map(sample_fun, jnp.vstack(sample_keys))
 
     # add noise
-    x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
-    Q = jnp.eye(M)*noise_factor
+    #x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
+    #Q = jnp.eye(M)*noise_factor
+    z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(
+        axis=(2,), keepdims=True).mean(0, keepdims=True)
+    x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
+    Q = noise_factor*jnp.eye(M)
     return x, z, s, tau, Q, mixer_params, k_params, dfs
 
 
@@ -132,8 +136,12 @@ def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     z, s = lax.map(sample_fun, jnp.vstack(sample_keys))
 
     # add noise
-    x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
-    Q = jnp.eye(M)*noise_factor
+    #x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
+    #Q = jnp.eye(M)*noise_factor
+    z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(
+        axis=(2,), keepdims=True).mean(0, keepdims=True)
+    x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
+    Q = noise_factor*jnp.eye(M)
     return x, z, s, Q, mixer_params, k_params
 
 
