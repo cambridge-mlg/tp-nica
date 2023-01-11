@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=tp_head_nobias
+#SBATCH --job-name=tp_head_multi
 #SBATCH -M ukko
 #SBATCH -p gpu
-#SBATCH -o tp_head_nobias.txt
+#SBATCH -o tp_head_multi.txt
 #SBATCH -c 2
 #SBATCH -t 23:59:00
 #SBATCH --mem-per-cpu=16G
