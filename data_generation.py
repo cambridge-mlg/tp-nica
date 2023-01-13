@@ -50,8 +50,9 @@ def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
     # sample each IC as a t-process
     N = df.shape[0]
     key, *s_key = jr.split(key, N+1)
-    sample_fun = lambda a, b, c: sample_tprocess(a, t, gp_mu_fn, gp_k_fn, b, c)
-    s, tau = vmap(sample_fun)(jnp.vstack(s_key), gp_k_params, df)
+    sample_fun = lambda _: sample_tprocess(_[0], t, gp_mu_fn, gp_k_fn,
+                                           _[1], _[2])
+    s, tau = lax.map(sample_fun, (jnp.vstack(s_key), gp_k_params, df))
     # mix the ICs
     z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
     return z, s, tau
@@ -61,8 +62,8 @@ def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
     # sample each IC as a GP
     N = mixer_params[0].shape[0]
     key, *s_key = jr.split(key, N+1)
-    sample_fun = lambda _a, _b: sample_gp(_a, t, gp_mu_fn, gp_k_fn, _b)
-    s = vmap(sample_fun)(jnp.vstack(s_key), gp_k_params)
+    sample_fun = lambda _: sample_gp(_[0], t, gp_mu_fn, gp_k_fn, _[1])
+    s = lax.map(sample_fun, (jnp.vstack(s_key), gp_k_params))
     # mix the ICs
     z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
     return z, s
