@@ -50,9 +50,9 @@ def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
     # sample each IC as a t-process
     N = df.shape[0]
     key, *s_key = jr.split(key, N+1)
-    s, tau = vmap(
-        lambda _a, _b, _c: sample_tprocess(_a, t, gp_mu_fn, gp_k_fn, _b, _c)
-    )(jnp.vstack(s_key), gp_k_params, df)
+    sample_fun = lambda _: sample_tprocess(_[0], t, gp_mu_fn, gp_k_fn,
+                                           _[1], _[2])
+    s, tau = lax.map(sample_fun, (jnp.vstack(s_key), gp_k_params, df))
     # mix the ICs
     z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
     return z, s, tau
@@ -62,9 +62,8 @@ def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
     # sample each IC as a GP
     N = mixer_params[0][0].shape[0]
     key, *s_key = jr.split(key, N+1)
-    s = vmap(
-        lambda _a, _b: sample_gp(_a, t, gp_mu_fn, gp_k_fn, _b)
-    )(jnp.vstack(s_key), gp_k_params)
+    sample_fun = lambda _: sample_gp(_[0], t, gp_mu_fn, gp_k_fn, _[1])
+    s = lax.map(sample_fun, (jnp.vstack(s_key), gp_k_params))
     # mix the ICs
     z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
     return z, s
@@ -73,7 +72,7 @@ def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
 @partial(jit, static_argnames=( "N", "M", "L", "num_samples", "mu_func",
     "kernel_func", "repeat_dfs", "repeat_kernels"))
 def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
-                    tp_df=2.01, noise_factor=0.1, repeat_layers=False,
+                    tp_df=2.01, noise_factor=0.15, repeat_layers=False,
                     repeat_dfs=False, repeat_kernels=False):
     # set-up Gamma prior and GP parameters (used for all samples)
     D = t.shape[-1]
@@ -86,11 +85,10 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     if repeat_kernels:
         k_keys = [k_keys[0]]*len(k_keys)
     if D == 1:
-        k_params = vmap(lambda _: rdm_SE_kernel_params(_))(jnp.vstack(k_keys))
+        k_params = vmap(rdm_SE_kernel_params)(jnp.vstack(k_keys))
     elif D == 2:
-        k_params = vmap(
-            lambda _: rdm_SE_kernel_params(_, min_lscale=4., max_lscale=10.)
-        )(jnp.vstack(k_keys))
+        k_params = vmap(rdm_SE_kernel_params, in_axes=(0, None, None))(
+           jnp.vstack(k_keys), 4., 10.)
 
     # initialize mixing function parameters
     key, mlp_key = jr.split(key, 2)
@@ -98,10 +96,9 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
 
     # sample ICs and their mixtures
     key, *sample_keys = jr.split(key, num_samples+1)
-    z, s, tau = lax.map(
-        lambda _: sample_tpnica(_, t, mu_func, kernel_func, k_params,
-                                dfs, mixer_params), jnp.vstack(sample_keys)
-    )
+    sample_fun = lambda _: sample_tpnica(_, t, mu_func, kernel_func, k_params,
+            dfs, mixer_params)
+    z, s, tau = lax.map(sample_fun, jnp.vstack(sample_keys))
 
     # add output noise 
     x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
@@ -110,9 +107,9 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
 
 
 @partial(jit, static_argnames=( "N", "M", "L", "num_samples", "mu_func",
-    "kernel_func", "repeat_kernels"))
+                                "kernel_func", "repeat_kernels"))
 def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
-                    noise_factor=0.1, repeat_layers=False,
+                    noise_factor=0.15, repeat_layers=False,
                     repeat_kernels=False):
     D = t.shape[-1]
     # set-up GP parameters (used for all samples)
@@ -120,11 +117,10 @@ def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     if repeat_kernels:
         k_keys = [k_keys[0]]*len(k_keys)
     if D == 1:
-        k_params = vmap(lambda _: rdm_SE_kernel_params(_))(jnp.vstack(k_keys))
+        k_params = vmap(rdm_SE_kernel_params)(jnp.vstack(k_keys))
     elif D == 2:
-        k_params = vmap(
-            lambda _: rdm_SE_kernel_params(_, min_lscale=4., max_lscale=10.)
-        )(jnp.vstack(k_keys))
+        k_params = vmap(rdm_SE_kernel_params, in_axes=(0, None, None))(
+            jnp.vstack(k_keys), 4., 10.)
 
     # initialize mixing function parameters
     key, mlp_key = jr.split(key, 2)
@@ -132,10 +128,9 @@ def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
 
     # sample ICs and their mixtures
     key, *sample_keys = jr.split(key, num_samples+1)
-    z, s = lax.map(
-        lambda _: sample_gpnica(_, t, mu_func, kernel_func, k_params,
-                                mixer_params), jnp.vstack(sample_keys)
-    )
+    sample_fun = lambda _: sample_gpnica(_, t, mu_func, kernel_func, k_params,
+                                         mixer_params)
+    z, s = lax.map(sample_fun, jnp.vstack(sample_keys))
 
     # add output noise
     x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
