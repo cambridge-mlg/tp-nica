@@ -14,8 +14,12 @@ from kernels import (
 )
 from utils import (
     custom_lu_solve,
+    custom_tril_solve,
     custom_cho_solve,
     comp_K_N,
+    K_N_diag,
+    K_TN_blocks,
+    quad_form,
     fill_tril,
     jax_print,
     pivoted_cholesky,
@@ -31,9 +35,10 @@ from functools import partial
 from time import perf_counter
 
 def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
+    n_s_samples, _, max_precond_rank, max_cg_iters, n_probe_vecs = nsamples
     theta_x, theta_cov = theta[:2]
-    L, h = phi_s
-    N = h.shape[0]
+    W, m = phi_s
+    N = m.shape[0]
     T = t.shape[0]
     theta_cov = tree_map(jnp.exp, theta_cov)
 
@@ -47,41 +52,46 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
     )
 
-    # compute covariances
-    K = vmap(lambda b: vmap(lambda a:
-      comp_K_N(a, b, cov_fn, theta_cov) / tau[:, None]
-    )(t))(t)
+    # compute covariance
+    K = K_TN_blocks(t, t, cov_fn, theta_cov, tau)
 
-
-    #K = vmap(lambda b: vmap(partial(
-    #    comp_K_N, t2=b, cov_fn=cov_fn, theta_cov=theta_cov))(t))(t)
-
-
-
-
-    # compute parameters for \tilde{q(s|tau)}
-    h = h.T.reshape(-1)
-    L_full = vmap(fill_tril, in_axes=(1, None), out_axes=-1)(L, N)
-    J = vmap(jnp.matmul, in_axes=(-1, -1))(L_full, L_full.swapaxes(0, 1))
-    Jinv = vmap(js.linalg.cho_solve, in_axes=((-1, None), None))(
-        (L_full, True), jnp.eye(N))
-    K_Jinv = K.at[jnp.arange(T), jnp.arange(T)].add(Jinv).swapaxes(1, 2).reshape(N*T, N*T)
+    #1: compute parameters for \tilde{q(s|tau)}
+    m = m.T.reshape(-1)
+    W = vmap(fill_tril, in_axes=(1, None))(W, N)
+    W_inv = vmap(custom_tril_solve, (0, None))(W, jnp.eye(N))
+    L = jnp.matmul(W, W.swapaxes(1, 2))
+    Linv = jnp.matmul(W_inv.swapaxes(1, 2), W_inv)
+    KL_inv = K.at[jnp.arange(T),
+                  jnp.arange(T)].add(Linv).swapaxes(1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
-#    A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
+
+    # set preconditioners and func to calculate its inverse matrix product
+    Kp = pivoted_cholesky(K, tol=1e-9, max_rank=max_precond_rank)
+    Pinv_fun = lambda _: solve_precond_plus_block_diag(Kp, L, _)
+
+    pdb.set_trace()
+
+    # run mbcg
+    key, zk_key, zl_key = jr.split(key, 3)
+    z_K = Kp @ jr.normal(zk_key, (Kp.shape[1], n_probe_vecs))
+    z_Linv = W_inv @ jr.normal(zl_key, (T, W_inv.shape[1], n_probe_vecs))
+    z = z_K + z_Linv.reshape(-1, n_probe_vecs)
+    B = jnp.hstack(((K@m)[:, None], z))
+    A_fun = partial(jnp.matmul, KL_inv)
+    out = mbcg(A_fun, B, tol=1., maxiter=max_cg_iters, M=Pinv_fun)
+
+
+
+
+
+    #A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
 #    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
 #        0.5*jnp.linalg.slogdet(K)[1]
 
     # set preconditioners and func to calculate its inverse matrix product
-    tic = perf_counter()
-    P_k = pivoted_cholesky(K, tol=1e-9, max_rank=5)
-    Pinv_fun = lambda _: solve_precond_plus_block_diag(P_k, J, _)
-
+    #    #
     # run mbcg
-    A_fun = partial(jnp.matmul, K_Jinv)
-    tic = perf_counter()
-    out = mbcg(A_fun, (K@h).reshape(K.shape[0], -1), tol=1.,
-               maxiter=20, M=Pinv_fun)
-
+    #A_fun = partial(jnp.matmul, K_Jinv)
     #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
     #    Jinv+K)[1] + 0.5*jnp.linalg.slogdet(Jinv)[1]
 
@@ -114,14 +124,14 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #            -jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
-                jnp.eye(N), shape=(nsamples, T)), key)
-    return jnp.zeros((0,)), s+P_k.sum()+out.sum()
+                jnp.eye(N), shape=(n_s_samples, T)), key)
+    return jnp.zeros((0,)), s+Jinv.sum()
                       #Elogpx-KLqpu, s
 
 
 # compute elbo estimate, assumes q(tau) is gamma
 def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
-    nsamples_s, nsamples_tau = nsamples
+    _, nsamples_tau, *_ = nsamples
     theta_tau = theta[2]
     theta_tau = 2.+jnp.exp(theta_tau)
     phi_s, phi_tau = phi[:2]
@@ -137,7 +147,7 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
             gamma_natparams_fromstandard(phi_tau),
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0)
     vlb_s, s = vmap(lambda _: structured_elbo_s(
-        rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples_s))(tau)
+        rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples))(tau)
     return jnp.mean(vlb_s, 0) - kl, s
 
 

@@ -29,11 +29,15 @@ from tensorflow_probability.substrates.jax.distributions import WishartTriL
 
 # some lambdas
 _identity = lambda x: x
-
+tree_zeros_like = partial(tree_map, jnp.zeros_like)
 
 def sample_wishart(key, v0, W0):
     W0_chol = jnp.linalg.cholesky(W0)
     return WishartTriL(v0, scale_tril=W0_chol).sample(seed=key)
+
+
+def quad_form(x, A):
+    return jnp.dot(x, jnp.matmul(A, x))
 
 
 np.set_printoptions(linewidth=np.inf)
@@ -62,7 +66,7 @@ def custom_lu_solve(a, b, lu_factor):
         return js.linalg.lu_solve(lu_factor, x)
     def _trans_solve(vecmat, x):
         return js.linalg.lu_solve(lu_factor, x, trans=1)
-    matvec = partial(jnp.dot, a)
+    matvec = partial(jnp.matmul, a)
     return custom_linear_solve(matvec, b, _solve, _trans_solve)
 
 
@@ -71,7 +75,7 @@ def custom_triu_solve(u, b):
         return js.linalg.solve_triangular(u, x)
     def _trans_solve(vecmat, x):
         return js.linalg.solve_triangular(u, x, trans=1)
-    matvec = partial(jnp.dot, u)
+    matvec = partial(jnp.matmul, u)
     return custom_linear_solve(matvec, b, _solve, _trans_solve)
 
 
@@ -93,17 +97,28 @@ def custom_cho_solve(a, b, cho_factor):
 
 def comp_k_n(t1, t2, n1, n2, cov_fn, theta_cov):
     return cond(n1==n2, lambda a, b, c: cov_fn(a, b, c),
-                lambda a, b, c: jnp.array(0.),
-                t1, t2, tree_get_idx(theta_cov, n1))
+                lambda a, b, c: jnp.array(0.), t1, t2, tree_get_idx(theta_cov, n1))
 
 
 @partial(jit, static_argnames=['cov_fn'])
 def comp_K_N(t1, t2, cov_fn, theta_cov):
     N = theta_cov[0].shape[0]
-    out = jit(vmap(lambda a: vmap(
+    out = vmap(lambda a: vmap(
         lambda b: comp_k_n(t1, t2, a, b, cov_fn, theta_cov)
-                         )(jnp.arange(N))))(jnp.arange(N))
+    )(jnp.arange(N)))(jnp.arange(N))
     return out
+
+
+def K_N_diag(x, y, cov_fn, theta_cov, scaler):
+    N = theta_cov[0].shape[0]
+    scaled_diag = vmap(cov_fn, in_axes=(None, None, 0))(x, y, theta_cov)/scaler
+    return jnp.diag(scaled_diag)
+
+
+def K_TN_blocks(x, y, cov_fn, theta_cov, scaler):
+    return vmap(vmap(K_N_diag, in_axes=(None, 0, None, None, None)),
+                in_axes=(0, None, None, None, None))(x, y, cov_fn, theta_cov,
+                                                     scaler)
 
 
 @Partial(jit, static_argnames=['N'])
@@ -202,7 +217,8 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     def cond_fun(value):
         *_, R, j = value
         errs = jnp.sum(R**2, 0)**0.5
-        return jnp.all(errs > tol) & (j < maxiter)
+        jax_print((j, errs))
+        return jnp.any(errs > tol) & (j < maxiter)
 
 
     def body_fun(value):
@@ -288,8 +304,8 @@ def pivoted_cholesky(A, tol, max_rank):
     perm = jnp.arange(A.shape[0])
     pchol = jnp.zeros((A.shape[0], max_rank))
     init_val = (diag, perm, pchol, 0)
-    *_, pchol, _ = while_loop(cond_fun, body_fun, init_val)
-    return pchol
+    *_, pchol, m = while_loop(cond_fun, body_fun, init_val)
+    return pchol[:, :m]
 
 
 def solve_precond_plus_block_diag(L, D, B):
@@ -318,7 +334,15 @@ if __name__ == "__main__":
     key = jr.PRNGKey(8)
     Q = jr.normal(key, (8, 8))
     A = Q.T@Q
+    B = jr.normal(jr.split(key)[1], (8, 3))
 
-    pc = pivoted_cholesky(A, 1e-5, 8)
+    pc = pivoted_cholesky(A, 1e-9, 8)
+
+    Pinv_fun = lambda _: solve_precond_plus_diag(pc, 0.01*jnp.ones(pc.shape[0]), _)
+    A_fun = partial(jnp.matmul, A)
+    out = mbcg(A_fun, B, tol=0.1, maxiter=1000, M=Pinv_fun)
+
+
+
     pdb.set_trace()
 

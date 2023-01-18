@@ -14,6 +14,8 @@ from jax.tree_util import tree_map
 from kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
 from utils import (
+    _identity,
+    tree_zeros_like,
     sample_wishart,
     matching_sources_corr,
     save_checkpoint,
@@ -24,7 +26,7 @@ from util import rngcall, tree_get_idx
 from inference import avg_neg_tp_elbo, avg_neg_gp_elbo
 
 
-def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
+def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     # unpack useful args
     N = args.N
     M = args.M
@@ -39,7 +41,9 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         nsamples = args.num_s_samples
         gt_Q, gt_mixer_params, gt_kernel_params = params
     else:
-        nsamples = (args.num_s_samples, args.num_tau_samples)
+        nsamples = (args.num_s_samples, args.num_tau_samples,
+                    args.max_precond_rank, args.max_cg_iters,
+                    args.num_probe_vectors)
         gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
     # initialize generative model params (theta)
@@ -53,16 +57,15 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
     if args.D == 1:
         theta_k, key = rngcall(
-            lambda _k: vmap(lambda _: rdm_SE_kernel_params(_))(jr.split(_k, N)),
+            lambda _k: vmap(rdm_SE_kernel_params)(jr.split(_k, N)),
             key
         )
     elif args.D == 2:
         theta_k, key = rngcall(
-            lambda _k: vmap(lambda _: rdm_SE_kernel_params(
-                _, min_lscale=4., max_lscale=10.))(jr.split(_k, N)),
-            key
+            lambda _k: vmap(rdm_SE_kernel_params, in_axes=(0, None, None))(
+                jr.split(_k, N), 4., 10.), key
         )
-    theta_k = tree_map(lambda _: jnp.log(_), theta_k)
+    theta_k = tree_map(jnp.log, theta_k)
     if args.repeat_kernels:
         theta_k = tree_map(lambda _: _[:1], theta_k)
 
@@ -76,7 +79,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
     if args.use_gt_nica:
         theta_x = (gt_mixer_params, jnp.log(jnp.diag(gt_Q)))
     if args.use_gt_kernel:
-        theta_k = tree_map(lambda _:  jnp.log(_), gt_kernel_params)
+        theta_k = tree_map(jnp.log, gt_kernel_params)
     if args.use_gt_tau and not args.GP:
         theta_tau = jnp.log(gt_tau)
 
@@ -88,13 +91,13 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
         theta = (theta_x, theta_k, theta_tau)
 
     # initialize variational parameters (phi)
-    L, key = rngcall(lambda _k: vmap(
+    W, key = rngcall(lambda _k: vmap(
         lambda _: jnp.linalg.cholesky(
             sample_wishart(_, jnp.array(N+1.), 10*jnp.eye(N))
         )[jnp.tril_indices(N)],
         out_axes=-1)(jr.split(_k, T)), key
     )
-    phi_s = (jnp.repeat(L[None, :], n_data, 0), jnp.ones((n_data, N, T)))
+    phi_s = (jnp.repeat(W[None, :], n_data, 0), jnp.ones((n_data, N, T)))
     if args.GP:
         phi = phi_s
     else:
@@ -137,17 +140,15 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
                 # override theta updates in debug mode with gt params
                 use_gt_nica, use_gt_kernel = use_gt_settings
-                grad_override_fun = lambda x: tree_map(
-                    lambda _: jnp.zeros(shape=_.shape), x)
-                nica_updates = lax.cond(use_gt_nica, grad_override_fun,
-                            lambda x: x, theta_updates[0])
-                kernel_updates = lax.cond(use_gt_kernel, grad_override_fun,
-                            lambda x: x, theta_updates[1])
+                nica_updates = lax.cond(use_gt_nica, tree_zeros_like,
+                            _identity, theta_updates[0])
+                kernel_updates = lax.cond(use_gt_kernel, tree_zeros_like,
+                            _identity, theta_updates[1])
                 theta_updates = (nica_updates, kernel_updates)
 
                 # also stop updates during burn-in
-                theta_updates = lax.cond(burn_in, grad_override_fun,
-                                         lambda x: x, theta_updates)
+                theta_updates = lax.cond(burn_in, tree_zeros_like,
+                                         _identity, theta_updates)
 
                 # perform gradient updates
                 theta = optax.apply_updates(theta, theta_updates)
@@ -157,7 +158,7 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
                 return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
             return gp_training_step
         else:
-            @jit
+            #@jit
             def tp_training_step(key, theta, phi_n, theta_opt_state,
                               phi_n_opt_states, x, burn_in):
                 (nvlb, s), g = value_and_grad(avg_neg_tp_elbo, argnums=(1, 2),
@@ -172,19 +173,17 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
 
                 # override updates in debug mode
                 use_gt_nica, use_gt_kernel, use_gt_tau = use_gt_settings
-                grad_override_fun = lambda x: tree_map(
-                    lambda _: jnp.zeros(shape=_.shape), x)
-                nica_updates = lax.cond(use_gt_nica, grad_override_fun,
-                            lambda x: x, theta_updates[0])
-                kernel_updates = lax.cond(use_gt_kernel, grad_override_fun,
-                            lambda x: x, theta_updates[1])
-                tau_updates = lax.cond(use_gt_tau, grad_override_fun,
-                            lambda x: x, theta_updates[2])
+                nica_updates = lax.cond(use_gt_nica, tree_zeros_like,
+                            _identity, theta_updates[0])
+                kernel_updates = lax.cond(use_gt_kernel, tree_zeros_like,
+                            _identity, theta_updates[1])
+                tau_updates = lax.cond(use_gt_tau, tree_zeros_like,
+                            _identity, theta_updates[2])
                 theta_updates = (nica_updates, kernel_updates, tau_updates)
 
                 # stop updates during burn-in 
-                theta_updates = lax.cond(burn_in, grad_override_fun,
-                                         lambda x: x, theta_updates)
+                theta_updates = lax.cond(burn_in, tree_zeros_like,
+                                         _identity, theta_updates)
 
                 # perform gradient updates
                 theta = optax.apply_updates(theta, theta_updates)
@@ -211,11 +210,11 @@ def train(x, z, s, t, tp_mean_fn, tp_kernel_fn, params, args, key):
             elbo_fn = avg_neg_gp_elbo
         else:
             elbo_fn = avg_neg_tp_elbo
-        eval_step = make_eval_step(nica_logpx, tp_kernel_fn, t,
+        eval_step = make_eval_step(nica_logpx, kernel_fn, t,
                                    nsamples, elbo_fn)
     else:
         training_step = make_training_step(
-            nica_logpx, tp_kernel_fn, t ,nsamples, use_gt_settings,
+            nica_logpx, kernel_fn, t ,nsamples, use_gt_settings,
             (theta_optimizer, phi_optimizer), args.GP
         )
 

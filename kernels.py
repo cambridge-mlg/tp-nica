@@ -7,7 +7,7 @@ import pdb
 from jax import vmap, jit
 from jax import lax
 from jax.tree_util import Partial
-from utils import jax_print
+from utils import jax_print, _identity
 
 
 @jit
@@ -17,14 +17,14 @@ def squared_euclid_dist(x, y):
 
 @jit
 def squared_euclid_dist_mat(x):
-    return vmap(lambda _x: vmap(lambda _y: squared_euclid_dist(_x, _y))(x))(x)
+    return vmap(vmap(squared_euclid_dist, (None, 0)), (0, None))(x, x)
 
 
 @jit
 def se_kernel_fn(x, y, params):
     sigma, lscale = params
     k = sigma**2 * jnp.exp(-0.5*squared_euclid_dist(x, y) / lscale**2)
-    return lax.cond(jnp.all(x == y), lambda _: _ + 1e-5, lambda _: _, k)
+    return lax.cond(jnp.all(x == y), lambda _: _ + 1e-5, _identity, k)
 
 
 def bound_se_kernel_params(params, sigma_min=1e-3, ls_min=1, ls_max=900):
@@ -35,8 +35,7 @@ def bound_se_kernel_params(params, sigma_min=1e-3, ls_min=1, ls_max=900):
 
 
 def compute_K(x, kernel_fn, params):
-    k_fun = Partial(kernel_fn, params=params)
-    return vmap(lambda _x: vmap(lambda _y: k_fun(_x, _y))(x))(x)
+    return vmap(vmap(kernel_fn, (None, 0, None)), (0, None, None))(x, x, params)
 
 
 def rdm_SE_kernel_params(key, min_lscale=25., max_lscale=100.,

@@ -1,9 +1,9 @@
 import os
-#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
 from matplotlib import projections
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -65,11 +65,15 @@ def parse():
     parser.add_argument('--GP', action='store_true', default=False,
                         help="generate and train from GP latents instead of TP")
     # inference, training and optimization args
-    parser.add_argument('--diag-approx', action='store_true', default=False,
-                        help="approx. likelih. factor with diagonal Gaussian")
     parser.add_argument('--num-s-samples', type=int, default=3,
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=3,
+                        help="num. of samples from q(tau) in elbo")
+    parser.add_argument('--max-precond-rank', type=int, default=5,
+                        help="num. of samples from q(tau) in elbo")
+    parser.add_argument('--max-cg-iters', type=int, default=20,
+                        help="num. of samples from q(tau) in elbo")
+    parser.add_argument('--num-probe-vectors', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--phi-learning-rate', type=float, default=0.28,
                         help="learning rate for variational params")
@@ -79,7 +83,7 @@ def parse():
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")
-    parser.add_argument('--burn-in-len', type=int, default=0,
+    parser.add_argument('--burn-in-len', type=int, default=100,
                         help="number of epochs to keep theta params fixed")
     # set all ICs to have same distribs
     parser.add_argument('--repeat-dfs', action='store_true', default=False,
@@ -175,8 +179,7 @@ def main():
     for i in range(args.num_data):
         nl_metrics.append(LR().fit(s[i, :, :].T, z[i, :, :].T).score(
             s[i, :, :].T, z[i, :, :].T))
-    print("Linearity (R2): {0:.2f}".format(
-        jnp.median((jnp.array(nl_metrics)))))
+    print("Linearity (R2): {0:.2f}".format(jnp.median((jnp.array(nl_metrics)))))
 
     # just to plot data for now:
     #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))
