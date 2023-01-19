@@ -217,8 +217,7 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     def cond_fun(value):
         *_, R, j = value
         errs = jnp.sum(R**2, 0)**0.5
-        return jnp.any(errs > tol) & (j < maxiter)
-
+        return (j < maxiter)# & jnp.any(errs > tol)
 
     def body_fun(value):
         U, D, Z, a, b, R, j = value
@@ -242,7 +241,7 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     return U_final
 
 
-def mbcg(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
+def mbcg(A, B, x0=None, *, tol=0.0, maxiter=None, M=None):
     # modifying https://jax.readthedocs.io/en/latest/_modules/jax/_src/\
     #scipy/sparse/linalg.html#cg
     # Note: assume A is symmetric
@@ -274,7 +273,7 @@ def pivoted_cholesky(A, max_rank, tol=0.0):
         perm_diag = diag[perm]
         error = jnp.sum(jnp.where(jnp.arange(perm_diag.shape[0]) >= m,
                                   perm_diag, 0))
-        return (m < max_rank) & (error > tol)
+        return (m < max_rank)# & (error > tol)
 
 
     def body_fun(value):

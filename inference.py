@@ -80,7 +80,6 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     B = jnp.hstack(((K@m)[:, None], z))
     A_fun = partial(jnp.matmul, KL_inv)
     out = mbcg(A_fun, B, tol=1e-9, maxiter=max_cg_iters, M=Pinv_fun)
-    pdb.set_trace()
 
 
 
@@ -127,7 +126,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(n_s_samples, T)), key)
-    return jnp.zeros((0,)), s+Jinv.sum()
+    return jnp.zeros((0,)), s+out.sum()
                       #Elogpx-KLqpu, s
 
 
