@@ -94,8 +94,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     W, key = rngcall(lambda _k: vmap(
         lambda _: jnp.linalg.cholesky(
             sample_wishart(_, jnp.array(N+1.), 10*jnp.eye(N))
-        )[jnp.tril_indices(N)],
-        out_axes=-1)(jr.split(_k, T)), key
+        )[jnp.tril_indices(N)], out_axes=-1)(jr.split(_k, T)), key
     )
     phi_s = (jnp.repeat(W[None, :], n_data, 0), jnp.ones((n_data, N, T)))
     if args.GP:
@@ -158,7 +157,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
             return gp_training_step
         else:
-            @jit
+            #@jit
             def tp_training_step(key, theta, phi_n, theta_opt_state,
                               phi_n_opt_states, x, burn_in):
                 (nvlb, s), g = value_and_grad(avg_neg_tp_elbo, argnums=(1, 2),

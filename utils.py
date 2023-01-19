@@ -219,8 +219,9 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
         errs = jnp.sum(R**2, 0)**0.5
         return (j < maxiter)# & jnp.any(errs > tol)
 
+
     def body_fun(value):
-        U, D, Z, a, b, R, j = value
+        U, a_all, b_all, D, Z, a, b,  R, j = value
         _V = A(D)
         _a = (R*Z).sum(0) / (D*_V).sum(0)
         _U = U + _a.reshape(1, -1)*D
@@ -228,17 +229,26 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
         _Z = M(_R)
         _b = (_R*_Z).sum(0) / (R*Z).sum(0)
         _D = _Z + _b.reshape(1, -1)*D
-        return _U, _D, _Z, _a, _b, _R, j+1
+        _a_all = a_all.at[j].set(_a[1:])
+        _b_all = b_all.at[j].set(_b[1:])
+        return _U, _a_all, _b_all, _D, _Z, _a, _b, _R, j+1
 
 
     B = B.reshape(B.shape[0], -1)
     n, t = B.shape
+    a_all = jnp.zeros((maxiter, t-1))
+    b_all = jnp.zeros((maxiter, t-1))
     R0 = _sub(B, A(x0))
     Z0 = M(R0)
     D0 = Z0.copy()
-    init_val = (x0, D0, Z0, jnp.zeros(t), jnp.zeros(t), R0, 0)
-    U_final, *_ = while_loop(cond_fun, body_fun, init_val)
-    return U_final
+    init_val = (x0, a_all, b_all, D0, Z0, jnp.zeros(t), jnp.zeros(t), R0, 0)
+    U_final, alphas, betas, *_ = while_loop(cond_fun, body_fun, init_val)
+    ba = jnp.vstack((jnp.zeros((1, t-1)), betas[:-1]/alphas[:-1]))
+    Ts = vmap(jnp.diag, in_axes=(1,), out_axes=-1)(1/alphas + ba)
+    Ts_off = vmap(lambda _: jnp.diag(_, k=1), in_axes=(1,), out_axes=-1)(
+        jnp.sqrt(ba[1:]))
+    Ts = Ts + Ts_off + Ts_off.swapaxes(0, 1)
+    return U_final, Ts
 
 
 def mbcg(A, B, x0=None, *, tol=0.0, maxiter=None, M=None):
@@ -258,9 +268,9 @@ def mbcg(A, B, x0=None, *, tol=0.0, maxiter=None, M=None):
         M = _identity
 
     mbcg_solve = partial(_mbcg_solve, x0=x0, tol=tol, maxiter=maxiter, M=M)
-    x = custom_linear_solve(A, B, solve=mbcg_solve, symmetric=True,
-                            has_aux=False)
-    return x#, tri_diags
+    x, Ts = custom_linear_solve(A, B, solve=mbcg_solve, symmetric=True,
+                                has_aux=True)
+    return x, Ts
 
 
 def pivoted_cholesky(A, max_rank, tol=0.0):
@@ -335,11 +345,11 @@ if __name__ == "__main__":
     A = Q.T@Q
     B = jr.normal(jr.split(key)[1], (8, 3))
 
-    pc = pivoted_cholesky(A, 1e-9, 8)
+    pc = pivoted_cholesky(A, 8, 1e-9)
 
     Pinv_fun = lambda _: solve_precond_plus_diag(pc, 0.01*jnp.ones(pc.shape[0]), _)
     A_fun = partial(jnp.matmul, A)
-    out = mbcg(A_fun, B, tol=1e-30, maxiter=53, M=Pinv_fun)
+    out = mbcg(A_fun, B, tol=1e-30, maxiter=50, M=Pinv_fun)
 
     jax_print(jnp.abs(jnp.linalg.inv(A)@B - out).sum())
 

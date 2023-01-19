@@ -61,12 +61,12 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     W_inv = vmap(custom_tril_solve, (0, None))(W, jnp.eye(N))
     L = jnp.matmul(W, W.swapaxes(1, 2))
     Linv = jnp.matmul(W_inv.swapaxes(1, 2), W_inv)
-    KL_inv = K.at[jnp.arange(T),
-                  jnp.arange(T)].add(Linv).swapaxes(1, 2).reshape(N*T, N*T)
+    J = K.at[jnp.arange(T), jnp.arange(T)].add(Linv).swapaxes(
+        1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
     # set preconditioners and func to calculate its inverse matrix product
-    Kp = pivoted_cholesky(K, tol=1e-9, max_rank=max_precond_rank)
+    Kp = pivoted_cholesky(K, max_rank=max_precond_rank)
     Pinv_fun = lambda _: solve_precond_plus_block_diag(Kp, L, _)
 
     # sample probe vectors with preconditioner covariance 
@@ -78,12 +78,9 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
     # set up an run mbcg
     B = jnp.hstack(((K@m)[:, None], z))
-    A_fun = partial(jnp.matmul, KL_inv)
-    out = mbcg(A_fun, B, tol=1e-9, maxiter=max_cg_iters, M=Pinv_fun)
-
-
-
-
+    A_fun = partial(jnp.matmul, J)
+    solves, Ts = mbcg(A_fun, B, maxiter=max_cg_iters, M=Pinv_fun)
+    pdb.set_trace()
 
     #A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
 #    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
