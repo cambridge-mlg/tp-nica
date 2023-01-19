@@ -38,7 +38,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     n_s_samples, _, max_precond_rank, max_cg_iters, n_probe_vecs = nsamples
     theta_x, theta_cov = theta[:2]
     W, m = phi_s
-    N = m.shape[0]
+    N = m.shape[1]
     T = t.shape[0]
     theta_cov = tree_map(jnp.exp, theta_cov)
 
@@ -56,8 +56,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     K = K_TN_blocks(t, t, cov_fn, theta_cov, tau)
 
     #1: compute parameters for \tilde{q(s|tau)}
-    m = m.T.reshape(-1)
-    W = vmap(fill_tril, in_axes=(1, None))(W, N)
+    W = vmap(fill_tril, in_axes=(0, None))(W, N)
     W_inv = vmap(custom_tril_solve, (0, None))(W, jnp.eye(N))
     L = jnp.matmul(W, W.swapaxes(1, 2))
     Linv = jnp.matmul(W_inv.swapaxes(1, 2), W_inv)
@@ -77,10 +76,16 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     z = z_K + z_Linv.reshape(-1, n_probe_vecs)
 
     # set up an run mbcg
-    B = jnp.hstack(((K@m)[:, None], z))
+    B = jnp.hstack((K@m.reshape(-1, 1), z))
     A_fun = partial(jnp.matmul, J)
     solves, Ts = mbcg(A_fun, B, maxiter=max_cg_iters, M=Pinv_fun)
+
+    # compute quadratic form term of normalizer
+    JinvKm = solves[:, 0]
+    Linvm = vmap(jnp.matmul)(Linv, m).reshape(-1)
+    quad_term = jnp.sum(Linvm*JinvKm) / 2
     pdb.set_trace()
+
 
     #A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
 #    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \

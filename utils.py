@@ -244,10 +244,9 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     init_val = (x0, a_all, b_all, D0, Z0, jnp.zeros(t), jnp.zeros(t), R0, 0)
     U_final, alphas, betas, *_ = while_loop(cond_fun, body_fun, init_val)
     ba = jnp.vstack((jnp.zeros((1, t-1)), betas[:-1]/alphas[:-1]))
-    Ts = vmap(jnp.diag, in_axes=(1,), out_axes=-1)(1/alphas + ba)
-    Ts_off = vmap(lambda _: jnp.diag(_, k=1), in_axes=(1,), out_axes=-1)(
-        jnp.sqrt(ba[1:]))
-    Ts = Ts + Ts_off + Ts_off.swapaxes(0, 1)
+    Ts = vmap(jnp.diag, in_axes=(1,))(1/alphas + ba)
+    Ts_off = vmap(lambda _: jnp.diag(_, k=1), in_axes=(1,))(jnp.sqrt(ba[1:]))
+    Ts = Ts + Ts_off + Ts_off.swapaxes(1, 2)
     return U_final, Ts
 
 
