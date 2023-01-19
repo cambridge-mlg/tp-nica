@@ -265,10 +265,11 @@ def mbcg(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     return x#, tri_diags
 
 
-def pivoted_cholesky(A, tol, max_rank):
+def pivoted_cholesky(A, max_rank, tol=0.0):
     # this implementation is bit ugly -- jax doesnt allow dynamic indexing
     # so had to use masking and jnp.where
-    def cond_fun(value, tol=tol, max_rank=max_rank):
+    # also had to set tol=0.0 as otherwise reach issues wiht dynamic slicign
+    def cond_fun(value, max_rank=max_rank, tol=tol):
         diag, perm, L, m = value
         del L
         perm_diag = diag[perm]
@@ -305,7 +306,7 @@ def pivoted_cholesky(A, tol, max_rank):
     pchol = jnp.zeros((A.shape[0], max_rank))
     init_val = (diag, perm, pchol, 0)
     *_, pchol, m = while_loop(cond_fun, body_fun, init_val)
-    return pchol[:, :m]
+    return pchol
 
 
 def solve_precond_plus_block_diag(L, D, B):
@@ -340,9 +341,9 @@ if __name__ == "__main__":
 
     Pinv_fun = lambda _: solve_precond_plus_diag(pc, 0.01*jnp.ones(pc.shape[0]), _)
     A_fun = partial(jnp.matmul, A)
-    out = mbcg(A_fun, B, tol=0.1, maxiter=1000, M=Pinv_fun)
+    out = mbcg(A_fun, B, tol=1e-30, maxiter=53, M=Pinv_fun)
 
-
+    jax_print(jnp.abs(jnp.linalg.inv(A)@B - out).sum())
 
     pdb.set_trace()
 
