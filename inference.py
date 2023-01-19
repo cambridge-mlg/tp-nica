@@ -69,16 +69,18 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     Kp = pivoted_cholesky(K, tol=1e-9, max_rank=max_precond_rank)
     Pinv_fun = lambda _: solve_precond_plus_block_diag(Kp, L, _)
 
-    # run mbcg
+    # sample probe vectors with preconditioner covariance 
     key, zk_key, zl_key = jr.split(key, 3)
     z_K = Kp @ jr.normal(zk_key, (Kp.shape[1], n_probe_vecs))
     z_Linv = W_inv.swapaxes(1, 2) @ jr.normal(zl_key, (T, W_inv.shape[1],
                                                        n_probe_vecs))
     z = z_K + z_Linv.reshape(-1, n_probe_vecs)
-    pdb.set_trace()
+
+    # set up an run mbcg
     B = jnp.hstack(((K@m)[:, None], z))
     A_fun = partial(jnp.matmul, KL_inv)
-    out = mbcg(A_fun, B, tol=1., maxiter=max_cg_iters, M=Pinv_fun)
+    out = mbcg(A_fun, B, tol=1e-9, maxiter=max_cg_iters, M=Pinv_fun)
+    pdb.set_trace()
 
 
 

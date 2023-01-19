@@ -217,7 +217,6 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     def cond_fun(value):
         *_, R, j = value
         errs = jnp.sum(R**2, 0)**0.5
-        jax_print((j, errs))
         return jnp.any(errs > tol) & (j < maxiter)
 
 
