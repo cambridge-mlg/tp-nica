@@ -69,9 +69,9 @@ def parse():
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=3,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--max-precond-rank', type=int, default=6000,
+    parser.add_argument('--max-precond-rank', type=int, default=5,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--max-cg-iters', type=int, default=10,
+    parser.add_argument('--max-cg-iters', type=int, default=20,
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--num-probe-vectors', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")

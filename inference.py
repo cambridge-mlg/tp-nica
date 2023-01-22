@@ -58,7 +58,6 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #1: compute parameters for \tilde{q(s|tau)}
     W = vmap(fill_tril, in_axes=(0, None))(W, N)
     W_inv = vmap(custom_tril_solve, (0, None))(W, jnp.eye(N))
-    L = jnp.matmul(W, W.swapaxes(1, 2))
     Linv = jnp.matmul(W_inv.swapaxes(1, 2), W_inv)
     J = K.at[jnp.arange(T), jnp.arange(T)].add(Linv).swapaxes(
         1, 2).reshape(N*T, N*T)
@@ -74,6 +73,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     z_Linv = W_inv.swapaxes(1, 2) @ jr.normal(zl_key, (T, W_inv.shape[1],
                                                        n_probe_vecs))
     z = z_K + z_Linv.reshape(-1, n_probe_vecs)
+    z = z / jnp.linalg.norm(z, 2, axis=0, keepdims=True)
 
     # set up an run mbcg
     B = jnp.hstack((K@m.reshape(-1, 1), z))
@@ -81,11 +81,14 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     solves, Ts = mbcg(A_fun, B, maxiter=max_cg_iters, M=Pinv_fun)
 
     # compute quadratic form term of normalizer
-    JinvKm = solves[:, 0]
-    Linvm = vmap(jnp.matmul)(Linv, m).reshape(-1)
-    quad_term = jnp.sum(Linvm*JinvKm) / 2
-    pdb.set_trace()
+    #JinvKm = solves[:, 0]
+    #Linvm = vmap(jnp.matmul)(Linv, m).reshape(-1)
+    #quad_term = Linvm@JinvKm / 2
 
+    ## compute logdet terms of normalizer
+    #ew, eV = jnp.linalg.eigh(Ts)
+    #E_delta_tr = N*T * jnp.sum(jnp.log(ew) * eV[:, 0, :]**2, 1).mean()
+    #pdb.set_trace()
 
     #A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
 #    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
@@ -128,7 +131,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(n_s_samples, T)), key)
-    return jnp.zeros((0,)), s+out.sum()
+    return jnp.zeros((0,)), s+solves.sum()
                       #Elogpx-KLqpu, s
 
 
