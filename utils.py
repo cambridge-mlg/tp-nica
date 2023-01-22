@@ -316,16 +316,18 @@ def pivoted_cholesky(A, max_rank, tol=0.0):
     return pchol
 
 
-def solve_precond_plus_block_diag(L, D, B):
+def solve_precond_plus_block_cho(L, W, B):
     # D must be a batch of block diagonal matrices
-    DB = vmap(jnp.matmul)(D, B.reshape(D.shape[0], -1, B.shape[-1])).reshape(
-        -1, B.shape[-1])
-    DL = vmap(jnp.matmul)(D, L.reshape(D.shape[0], -1, L.shape[-1])).reshape(
-        -1, L.shape[-1])
-    A = jnp.eye(L.shape[1])+L.T@DL
+    WtB = jnp.matmul(W.swapaxes(1, 2), B.reshape(
+        W.shape[0], -1, B.shape[-1])).reshape(-1, B.shape[-1])
+    WtL = jnp.matmul(W.swapaxes(1, 2), L.reshape(
+        W.shape[0], -1, L.shape[-1])).reshape(-1, L.shape[-1])
+    LtW = WtL.T
+    A = jnp.eye(L.shape[1]) + LtW @ WtL
     cho_factor = js.linalg.cho_factor(A)
-    woodbury_inv = custom_cho_solve(A, L.T@DB, cho_factor)
-    return DB - DL@woodbury_inv
+    woodbury_inv = custom_cho_solve(A, LtW @ WtB, cho_factor)
+    return jnp.matmul(W, (WtB - WtL@woodbury_inv).reshape(
+        W.shape[0], -1, WtB.shape[-1])).reshape(-1, WtB.shape[-1])
 
 
 def solve_precond_plus_diag(L, d, B):

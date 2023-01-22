@@ -23,7 +23,7 @@ from utils import (
     fill_tril,
     jax_print,
     pivoted_cholesky,
-    solve_precond_plus_block_diag,
+    solve_precond_plus_block_cho,
     solve_precond_plus_diag,
     mbcg
 )
@@ -65,7 +65,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
     # set preconditioners and func to calculate its inverse matrix product
     Kp = pivoted_cholesky(K, max_rank=max_precond_rank)
-    Pinv_fun = lambda _: solve_precond_plus_block_diag(Kp, L, _)
+    Pinv_fun = lambda _: solve_precond_plus_block_cho(Kp, W, _)
 
     # sample probe vectors with preconditioner covariance 
     key, zk_key, zl_key = jr.split(key, 3)
@@ -77,6 +77,8 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
     # set up an run mbcg
     B = jnp.hstack((K@m.reshape(-1, 1), z))
+
+
     A_fun = partial(jnp.matmul, J)
     solves, Ts = mbcg(A_fun, B, maxiter=max_cg_iters, M=Pinv_fun)
 
