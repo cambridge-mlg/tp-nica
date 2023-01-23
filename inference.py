@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
+import jax.debug as jdb
 import pdb
 
 from jax import vmap, jit, lax
@@ -69,7 +70,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     # compute KL[q(u)|p(u)]
     h = Kuu.reshape(-1, Kuu.shape[-1])@Kyy_m
     logZ = 0.5*(jnp.dot(m.T.reshape(-1), h) - jnp.linalg.slogdet(Jyy)[1])
-    tr = jnp.trace(custom_trans_lu_solve(Jyy, LK.T, lu_fact).T)
+    tr = jnp.trace(Kuu.reshape(-1, Kuu.shape[-1])@Kyy_L)
     h = h.reshape(n_pseudo, -1)
     KLqpu = -0.5*(tr + vmap(quad_form)(h, L).sum()) + jnp.dot(
         m.T.reshape(-1), h.reshape(-1)) - logZ

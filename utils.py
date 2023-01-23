@@ -4,6 +4,7 @@ from jax.scipy.linalg import lu_factor
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
+import jax.debug as jd
 
 import numpy as np
 import scipy as sp
@@ -36,8 +37,7 @@ def array_print(arg, transforms):
 
 
 def jax_print(x):
-    id_tap(tap_func=array_print, arg=x)
-
+    jd.print("{}", x)
 
 def time_print(arg, transform):
     print(time.time())
