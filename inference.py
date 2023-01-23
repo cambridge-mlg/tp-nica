@@ -23,7 +23,7 @@ from utils import (
     fill_tril,
     jax_print,
     pivoted_cholesky,
-    solve_precond_plus_block_cho,
+    make_pinv_block_cho_version,
     solve_precond_plus_diag,
     mbcg
 )
@@ -64,12 +64,12 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
     # set preconditioners and func to calculate its inverse matrix product
-    Kp = pivoted_cholesky(K, max_rank=max_precond_rank)
-    Pinv_fun = lambda _: solve_precond_plus_block_cho(Kp, W, _)
+    P_K_lower = pivoted_cholesky(K, max_rank=max_precond_rank)
+    Pinv_fun, LtWWtL = make_pinv_block_cho_version(P_K_lower, W)
 
     # sample probe vectors with preconditioner covariance 
     key, zk_key, zl_key = jr.split(key, 3)
-    z_K = Kp @ jr.normal(zk_key, (Kp.shape[1], n_probe_vecs))
+    z_K = P_K_lower @ jr.normal(zk_key, (P_K_lower.shape[1], n_probe_vecs))
     z_Linv = W_inv.swapaxes(1, 2) @ jr.normal(zl_key, (T, W_inv.shape[1],
                                                        n_probe_vecs))
     z = z_K + z_Linv.reshape(-1, n_probe_vecs)
@@ -77,20 +77,20 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
     # set up an run mbcg
     B = jnp.hstack((K@m.reshape(-1, 1), z))
-
-
     A_fun = partial(jnp.matmul, J)
     solves, Ts = mbcg(A_fun, B, maxiter=max_cg_iters, M=Pinv_fun)
 
     # compute quadratic form term of normalizer
-    #JinvKm = solves[:, 0]
-    #Linvm = vmap(jnp.matmul)(Linv, m).reshape(-1)
-    #quad_term = Linvm@JinvKm / 2
+    JinvKm = solves[:, 0]
+    Linvm = vmap(jnp.matmul)(Linv, m).reshape(-1)
+    quad_term = 0.5 * Linvm@JinvKm
 
     ## compute logdet terms of normalizer
-    #ew, eV = jnp.linalg.eigh(Ts)
-    #E_delta_tr = N*T * jnp.sum(jnp.log(ew) * eV[:, 0, :]**2, 1).mean()
-    #pdb.set_trace()
+    ew, eV = jnp.linalg.eigh(Ts)
+    E_tr_delta_log = N*T * jnp.sum(jnp.log(ew) * eV[:, 0, :]**2, 1).mean()
+    logdet_P_K = jnp.linalg.slogdet(LtWWtL+jnp.eye(LtWWtL.shape[0]))[1]
+    logdet = -0.5*logdet_P_K-0.5*E_tr_delta_log
+    pdb.set_trace()
 
     #A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
 #    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
