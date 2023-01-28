@@ -344,6 +344,26 @@ def solve_precond_plus_diag(L, d, B):
     return dB - dL@woodbury_inv
 
 
+def _get_fsai_row(key, n, A, g_i, max_s):
+    non_zero_idx = jr.choice(key, A.shape[1], shape=(max_s,), replace=False)
+    non_zero_idx = jnp.unique(jnp.concatenate((non_zero_idx, jnp.array([n]))),
+                              size=max_s)
+    A_sub = A[non_zero_idx][:, non_zero_idx]
+    m_i = A_sub.shape[0]
+    g_nz = js.linalg.solve(A_sub, jnp.eye(m_i)[-1], assume_a='pos')
+    g_nz = g_nz / jnp.sqrt(g_nz[m_i])
+    return g_i.at[non_zero_idx].set(g_nz)
+
+
+def fsai(key, K, max_s):
+    g_i = jnp.zeros(K.shape[1])
+    g = vmap(_get_fsai_row, (0, 0, None, None, None))(jr.split(key, K.shape[0]),
+      jnp.arange(K.shape[0]), K, g_i, max_s)
+    return g
+
+
+
+
 if __name__ == "__main__":
     key = jr.PRNGKey(8)
     Q = jr.normal(key, (8, 8))

@@ -1,8 +1,8 @@
-from jax._src.numpy.lax_numpy import arange
-from jax._src.numpy.linalg import slogdet
+from jax.numpy.linalg import slogdet
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
+import jax.debug as jdb
 import pdb
 
 from jax import vmap, jit, lax, device_put, block_until_ready
@@ -25,7 +25,8 @@ from utils import (
     pivoted_cholesky,
     make_pinv_block_cho_version,
     solve_precond_plus_diag,
-    mbcg
+    mbcg,
+    fsai
 )
 from util import *
 from gamma import *
@@ -63,6 +64,10 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
+    out = fsai(key, K, 10)
+    #fsai(key, K, max_s=10)
+
+
     # set preconditioners and func to calculate its inverse matrix product
     P_K_lower = pivoted_cholesky(K, max_rank=max_precond_rank)
     Pinv_fun, LtWWtL = make_pinv_block_cho_version(P_K_lower, W)
@@ -90,7 +95,6 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     E_tr_delta_log = N*T * jnp.sum(jnp.log(ew) * eV[:, 0, :]**2, 1).mean()
     logdet_P_K = jnp.linalg.slogdet(LtWWtL+jnp.eye(LtWWtL.shape[0]))[1]
     logdet = -0.5*logdet_P_K-0.5*E_tr_delta_log
-    pdb.set_trace()
 
     #A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
 #    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
@@ -133,7 +137,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(n_s_samples, T)), key)
-    return jnp.zeros((0,)), s+solves.sum()
+    return jnp.zeros((0,)), s+solves.sum()+out.sum()
                       #Elogpx-KLqpu, s
 
 
