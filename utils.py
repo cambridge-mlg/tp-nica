@@ -357,9 +357,10 @@ def _get_fsai_row(key, n, A, g_i, max_s):
 
 def fsai(key, K, max_s):
     g_i = jnp.zeros(K.shape[1])
-    g = vmap(_get_fsai_row, (0, 0, None, None, None))(jr.split(key, K.shape[0]),
+    G = vmap(_get_fsai_row, (0, 0, None, None, None))(jr.split(key, K.shape[0]),
       jnp.arange(K.shape[0]), K, g_i, max_s)
-    return g
+    triu_idx = jnp.triu_indices_from(G, k=1)
+    return G.at[triu_idx].set(0)
 
 
 
