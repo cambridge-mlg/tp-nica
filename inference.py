@@ -64,7 +64,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
-    out = fsai(key, K, 100)
+    out = fsai(key, K, 10)
     #fsai(key, K, max_s=10)
     pdb.set_trace()
 

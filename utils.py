@@ -30,6 +30,7 @@ from tensorflow_probability.substrates.jax.distributions import WishartTriL
 # some lambdas
 _identity = lambda x: x
 tree_zeros_like = partial(tree_map, jnp.zeros_like)
+eye_like = lambda x: jnp.eye(x.shape[0])
 
 def sample_wishart(key, v0, W0):
     W0_chol = jnp.linalg.cholesky(W0)
@@ -344,23 +345,29 @@ def solve_precond_plus_diag(L, d, B):
     return dB - dL@woodbury_inv
 
 
-def _get_fsai_row(key, n, A, g_i, max_s):
-    non_zero_idx = jr.choice(key, A.shape[1], shape=(max_s,), replace=False)
-    non_zero_idx = jnp.unique(jnp.concatenate((non_zero_idx, jnp.array([n]))),
-                              size=max_s)
-    A_sub = A[non_zero_idx][:, non_zero_idx]
-    m_i = A_sub.shape[0]
-    g_nz = js.linalg.solve(A_sub, jnp.eye(m_i)[-1], assume_a='pos')
-    g_nz = g_nz / jnp.sqrt(g_nz[m_i])
-    return g_i.at[non_zero_idx].set(g_nz)
+#def _get_nz_row(key, ev, num_nz):
+#    nz_idx = jr.choice(key, ev.shape[0], shape=(num_nz,), replace=False)
+#    ev = ev.at[nz_idx].set(1)
+#    #non_zero_idx = jnp.unique(jnp.concatenate((non_zero_idx, jnp.array([n]))),
+#    #                          size=max_s)
+#    #A_sub = A[non_zero_idx][:, non_zero_idx]
+#    #m_i = A_sub.shape[0]
+#    #g_nz = js.linalg.solve(A_sub, jnp.eye(m_i)[-1], assume_a='pos')
+#    #g_nz = g_nz / jnp.sqrt(g_nz[m_i])
+#    return ev #g_i.at[non_zero_idx].set(g_nz)
+#
+#
+#def _get_g_row(nz_vec, A, g_i):
+#    pdb.set_trace()
+#    return 0
 
 
-def fsai(key, K, max_s):
-    g_i = jnp.zeros(K.shape[1])
-    G = vmap(_get_fsai_row, (0, 0, None, None, None))(jr.split(key, K.shape[0]),
-      jnp.arange(K.shape[0]), K, g_i, max_s)
-    triu_idx = jnp.triu_indices_from(G, k=1)
-    return G.at[triu_idx].set(0)
+
+def fsai(key, A, num_iter, nz_max, tau, epsilon, G0=None, Minv=None):
+    cond(G0 == None, lambda x: jnp.eye(A.shape[0]),
+         lambda x: (1/jnp.diag(x)) @ x, G0)
+
+    return 0
 
 
 
