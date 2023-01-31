@@ -13,7 +13,7 @@ import os
 import cloudpickle
 import pickle
 
-from jax import vmap, jit, device_put
+from jax import vmap, jit, device_put, grad
 from jax.lax import cond, scan, dynamic_slice, custom_linear_solve, while_loop
 from jax.tree_util import Partial, tree_map
 from jax.experimental.host_callback import id_tap
@@ -362,12 +362,23 @@ def solve_precond_plus_diag(L, d, B):
 #    return 0
 
 
+def _calc_g_i(g_i_old, A):
+    phi_grad = grad(quad_form)(g_i_old, A)
+    pdb.set_trace()
+    return g_i
+
 
 def fsai(key, A, num_iter, nz_max, tau, epsilon, G0=None, Minv=None):
-    cond(G0 == None, lambda x: jnp.eye(A.shape[0]),
-         lambda x: (1/jnp.diag(x)) @ x, G0)
+    if G0 == None:
+        G0_tilde = jnp.eye(A.shape[0])
+    else:
+        G0_tilde = (1/jnp.diag(G0))[:, None] * G0
 
-    return 0
+    if Minv == None:
+        Minv = jnp.eye(A.shape[0])
+
+    G = vmap(_calc_g_i, (0, None))(G0_tilde, A)
+    return G
 
 
 
