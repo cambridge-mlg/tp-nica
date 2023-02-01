@@ -3,7 +3,7 @@ from functools import partial
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
-import jax.debug as jd
+import jax.debug as jdb
 
 import numpy as np
 import scipy as sp
@@ -43,7 +43,7 @@ def quad_form(x, A):
 
 np.set_printoptions(linewidth=np.inf)
 def jax_print(x):
-    jd.print("{}", x)
+    jdb.print("{}", x)
 
 
 def cho_invmp(x, y):
@@ -345,30 +345,35 @@ def solve_precond_plus_diag(L, d, B):
     return dB - dL@woodbury_inv
 
 
-#def _get_nz_row(key, ev, num_nz):
-#    nz_idx = jr.choice(key, ev.shape[0], shape=(num_nz,), replace=False)
-#    ev = ev.at[nz_idx].set(1)
-#    #non_zero_idx = jnp.unique(jnp.concatenate((non_zero_idx, jnp.array([n]))),
-#    #                          size=max_s)
-#    #A_sub = A[non_zero_idx][:, non_zero_idx]
-#    #m_i = A_sub.shape[0]
-#    #g_nz = js.linalg.solve(A_sub, jnp.eye(m_i)[-1], assume_a='pos')
-#    #g_nz = g_nz / jnp.sqrt(g_nz[m_i])
-#    return ev #g_i.at[non_zero_idx].set(g_nz)
-#
-#
-#def _get_g_row(nz_vec, A, g_i):
-#    pdb.set_trace()
-#    return 0
+def fsai(A, num_iter, nz_max=10, tau=1e-2, eps=1e-5, G0=None, Minv=None):
+    def _G_i_cond_fun(value):
+        k, g_i, Minv, init_phi = value
+        return (k < num_iter) & (quad_form(g_i, A) < eps*init_phi)
 
 
-def _calc_g_i(g_i_old, A):
-    phi_grad = grad(quad_form)(g_i_old, A)
-    pdb.set_trace()
-    return g_i
+    def _G_i_update_fun(value):
+        k, g_i_old, Minv, phi_init = value
+        phi_grad = grad(quad_form)(g_i_old, A)
+        p = jnp.matmul(Minv, phi_grad)
+        alpha = -jnp.dot(phi_grad, p) / quad_form(p, A)
+        g_i_new = g_i_old + alpha*phi_grad
+        g_i_new = jnp.where(g_i_new > tau*jnp.linalg.norm(g_i_new), g_i_new, 0)
+        _sort = g_i_new.argsort()
+        ranks = jnp.zeros_like(_sort)
+        ranks = ranks.at[_sort].set(jnp.arange(_sort.shape[0]))
+        g_i_new = jnp.where(ranks > jnp.max(ranks)-nz_max, g_i_new, 0)
+        return (k+1, g_i_new, Minv, phi_init)
 
 
-def fsai(key, A, num_iter, nz_max, tau, epsilon, G0=None, Minv=None):
+    def _calc_G_i(G0_i, Minv):
+        k = 0
+        phi_init = quad_form(G0_i, A)
+        init_val = (k, G0_i, Minv, phi_init)
+        Gk_i = while_loop(_G_i_cond_fun, _G_i_update_fun, init_val)
+        d_ii = quad_form(Gk_i, A)**-0.5
+        return d_ii*Gk_i
+
+
     if G0 == None:
         G0_tilde = jnp.eye(A.shape[0])
     else:
@@ -377,7 +382,7 @@ def fsai(key, A, num_iter, nz_max, tau, epsilon, G0=None, Minv=None):
     if Minv == None:
         Minv = jnp.eye(A.shape[0])
 
-    G = vmap(_calc_g_i, (0, None))(G0_tilde, A)
+    G = vmap(_calc_G_i, (0, None))(G0_tilde, Minv)
     return G
 
 
