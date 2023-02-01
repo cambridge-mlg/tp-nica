@@ -1,3 +1,4 @@
+from jax._src.lax.lax import stop_gradient
 from jax.numpy.linalg import slogdet
 import jax.numpy as jnp
 import jax.random as jr
@@ -64,7 +65,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
-    out = fsai(K, 100)
+    out = stop_gradient(fsai(K, 100))
     pdb.set_trace()
 
     # set preconditioners and func to calculate its inverse matrix product

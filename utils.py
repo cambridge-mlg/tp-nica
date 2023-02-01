@@ -14,7 +14,7 @@ import cloudpickle
 import pickle
 
 from jax import vmap, jit, device_put, grad
-from jax.lax import cond, scan, dynamic_slice, custom_linear_solve, while_loop
+from jax.lax import cond, custom_linear_solve, while_loop
 from jax.tree_util import Partial, tree_map
 from jax.experimental.host_callback import id_tap
 from jax._src.scipy.sparse.linalg import (
