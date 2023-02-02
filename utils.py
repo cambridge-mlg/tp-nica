@@ -13,10 +13,9 @@ import os
 import cloudpickle
 import pickle
 
-from jax import vmap, jit, device_put, grad
+from jax import vmap, jit, device_put, grad, lax
 from jax.lax import cond, custom_linear_solve, while_loop
 from jax.tree_util import Partial, tree_map
-from jax.experimental.host_callback import id_tap
 from jax._src.scipy.sparse.linalg import (
     _normalize_matvec,
     _sub,
@@ -345,31 +344,41 @@ def solve_precond_plus_diag(L, d, B):
     return dB - dL@woodbury_inv
 
 
-def fsai(A, num_iter, nz_max=10, tau=1e-2, eps=1e-5, G0=None, Minv=None):
+def fsai(A, num_iter, nz_max=10, tau=1e-9, eps=1e-5, G0=None, Minv=None):
+    if Minv == None:
+        Minv = jnp.eye(A.shape[0])
+
+
     def _G_i_cond_fun(value):
-        k, g_i, Minv, init_phi = value
-        return (k < num_iter) & (quad_form(g_i, A) < eps*init_phi)
+        k, i, g_i, init_phi = value
+        jax_print((k, quad_form(g_i,A)))
+        return (k < num_iter) & (quad_form(g_i, A) > eps*init_phi)
 
 
     def _G_i_update_fun(value):
-        k, g_i_old, Minv, phi_init = value
-        phi_grad = grad(quad_form)(g_i_old, A)
+        k, i, g_i_old, phi_init = value
+        n = A.shape[1]
+        phi_grad = jnp.where(jnp.arange(n) < i, grad(quad_form)(g_i_old, A), 0)
         p = jnp.matmul(Minv, phi_grad)
         alpha = -jnp.dot(phi_grad, p) / quad_form(p, A)
-        g_i_new = g_i_old + alpha*phi_grad
-        g_i_new = jnp.where(g_i_new > tau*jnp.linalg.norm(g_i_new), g_i_new, 0)
-        _sort = g_i_new.argsort()
+        g_i_new = g_i_old + alpha*phi_grad 
+        offdia_norm = jnp.linalg.norm(jnp.where(jnp.arange(n) < i, g_i_new, 0))
+        g_i_new = jnp.where((jnp.abs(g_i_new) > tau*offdia_norm) |
+                            (jnp.arange(n) == i), g_i_new, 0)
+        _sort = jnp.abs(g_i_new).argsort()
         ranks = jnp.zeros_like(_sort)
-        ranks = ranks.at[_sort].set(jnp.arange(_sort.shape[0]))
-        g_i_new = jnp.where(ranks > jnp.max(ranks)-nz_max, g_i_new, 0)
-        return (k+1, g_i_new, Minv, phi_init)
+        ranks = ranks.at[_sort].set(jnp.arange(n))
+        g_i_new = jnp.where((ranks > jnp.max(ranks)-nz_max) |
+                            (jnp.arange(n) == i), g_i_new, 0)
+        return (k+1, i, g_i_new, phi_init)
 
 
-    def _calc_G_i(G0_i, Minv):
+    def _calc_G_i(value):
+        i, G0_i = value
         k = 0
         phi_init = quad_form(G0_i, A)
-        init_val = (k, G0_i, Minv, phi_init)
-        Gk_i = while_loop(_G_i_cond_fun, _G_i_update_fun, init_val)
+        init_val = (k, i, G0_i, phi_init)
+        k, i, Gk_i, *_ = while_loop(_G_i_cond_fun, _G_i_update_fun, init_val)
         d_ii = quad_form(Gk_i, A)**-0.5
         return d_ii*Gk_i
 
@@ -379,10 +388,7 @@ def fsai(A, num_iter, nz_max=10, tau=1e-2, eps=1e-5, G0=None, Minv=None):
     else:
         G0_tilde = (1/jnp.diag(G0))[:, None] * G0
 
-    if Minv == None:
-        Minv = jnp.eye(A.shape[0])
-
-    G = vmap(_calc_G_i, (0, None))(G0_tilde, Minv)
+    G = lax.map(_calc_G_i, (jnp.arange(A.shape[0]), G0_tilde))
     return G
 
 
