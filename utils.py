@@ -14,7 +14,7 @@ import cloudpickle
 import pickle
 
 from jax import vmap, jit, device_put, grad, lax
-from jax.lax import cond, custom_linear_solve, while_loop
+from jax.lax import cond, custom_linear_solve, while_loop, top_k, scan
 from jax.tree_util import Partial, tree_map
 from jax._src.scipy.sparse.linalg import (
     _normalize_matvec,
@@ -344,42 +344,69 @@ def solve_precond_plus_diag(L, d, B):
     return dB - dL@woodbury_inv
 
 
-def fsai(A, num_iter, nz_max=10, tau=1e-9, eps=1e-5, G0=None, Minv=None):
+def naive_top_k(data, k):
+    """Top k implementation built with argmax. Since lax.top_k is slow.
+    Adapted from: https://github.com/google/jax/issues/9940
+    Faster for smaller k."""
+
+    def top_1(data):
+        idx = jnp.argmax(data)
+        value = data[idx]
+        data = data.at[idx].set(-jnp.inf)
+        return data, value, idx
+
+    def scannable_top_1(carry, unused):
+        data = carry
+        data, value, indice = top_1(data)
+        return data, (value, indice)
+
+    data, (values, indices) = scan(scannable_top_1, data, (), k)
+    return values.T, indices.T
+
+
+def fsai(A, num_iter, nz_max=10, eps=1e-8, G0=None, Minv=None):
     if Minv == None:
         Minv = jnp.eye(A.shape[0])
 
 
     def _G_i_cond_fun(value):
         k, i, g_i, init_phi = value
-        jax_print((k, quad_form(g_i,A)))
-        return (k < num_iter) & (quad_form(g_i, A) > eps*init_phi)
+        idx = naive_top_k(jnp.abs(g_i), nz_max)[1]
+        return (k < num_iter) & (quad_form(g_i[idx], A[idx][:, idx])
+                                 > eps*init_phi)
 
 
     def _G_i_update_fun(value):
         k, i, g_i_old, phi_init = value
         n = A.shape[1]
-        phi_grad = jnp.where(jnp.arange(n) < i, grad(quad_form)(g_i_old, A), 0)
-        p = jnp.matmul(Minv, phi_grad)
-        alpha = -jnp.dot(phi_grad, p) / quad_form(p, A)
-        g_i_new = g_i_old + alpha*phi_grad 
-        offdia_norm = jnp.linalg.norm(jnp.where(jnp.arange(n) < i, g_i_new, 0))
-        g_i_new = jnp.where((jnp.abs(g_i_new) > tau*offdia_norm) |
-                            (jnp.arange(n) == i), g_i_new, 0)
-        _sort = jnp.abs(g_i_new).argsort()
-        ranks = jnp.zeros_like(_sort)
-        ranks = ranks.at[_sort].set(jnp.arange(n))
-        g_i_new = jnp.where((ranks > jnp.max(ranks)-nz_max) |
-                            (jnp.arange(n) == i), g_i_new, 0)
+        idx = naive_top_k(jnp.abs(g_i_old), nz_max)[1]
+        phi_grad = jnp.where(jnp.arange(n) < i, 2*A[idx].T @ g_i_old[idx], 0)
+        if Minv == None:
+            p = phi_grad
+        else:
+            idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
+            p = jnp.matmul(Minv[:, idx], phi_grad[idx])
+        # below alpha calculated approximately only
+        idx = naive_top_k(jnp.abs(p), nz_max)[1]
+        alpha = -jnp.dot(phi_grad[idx], p[idx])/quad_form(p[idx], A[idx][:,idx])
+        alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
+        g_i_new = g_i_old + alpha*phi_grad
+        idx = naive_top_k(jnp.abs(p), nz_max)[1]
+        g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
+        # below done just in case diag falls out of top_k (?shouldnt happen) 
+        g_i = g_i_new.at[i].set(g_i_new[i])
         return (k+1, i, g_i_new, phi_init)
 
 
     def _calc_G_i(value):
         i, G0_i = value
         k = 0
-        phi_init = quad_form(G0_i, A)
+        idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
+        phi_init = quad_form(G0_i[idx], A[idx][:, idx])
         init_val = (k, i, G0_i, phi_init)
         k, i, Gk_i, *_ = while_loop(_G_i_cond_fun, _G_i_update_fun, init_val)
-        d_ii = quad_form(Gk_i, A)**-0.5
+        idx = naive_top_k(Gk_i, nz_max)[1]
+        d_ii = quad_form(Gk_i[idx], A[idx][:, idx])**-0.5
         return d_ii*Gk_i
 
 
@@ -388,7 +415,7 @@ def fsai(A, num_iter, nz_max=10, tau=1e-9, eps=1e-5, G0=None, Minv=None):
     else:
         G0_tilde = (1/jnp.diag(G0))[:, None] * G0
 
-    G = lax.map(_calc_G_i, (jnp.arange(A.shape[0]), G0_tilde))
+    G = vmap(_calc_G_i)((jnp.arange(A.shape[0]), G0_tilde))
     return G
 
 
