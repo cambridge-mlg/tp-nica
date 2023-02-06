@@ -14,7 +14,14 @@ import cloudpickle
 import pickle
 
 from jax import vmap, jit, device_put, grad, lax
-from jax.lax import cond, custom_linear_solve, while_loop, top_k, scan
+from jax.lax import (
+    cond,
+    custom_linear_solve,
+    while_loop,
+    top_k,
+    scan,
+    fori_loop
+)
 from jax.tree_util import Partial, tree_map
 from jax._src.scipy.sparse.linalg import (
     _normalize_matvec,
@@ -369,42 +376,35 @@ def fsai(A, num_iter, nz_max=10, eps=1e-8, G0=None, Minv=None):
         Minv = jnp.eye(A.shape[0])
 
 
-    def _G_i_cond_fun(value):
-        k, i, g_i, init_phi = value
-        idx = naive_top_k(jnp.abs(g_i), nz_max)[1]
-        return (k < num_iter) & (quad_form(g_i[idx], A[idx][:, idx])
-                                 > eps*init_phi)
-
-
-    def _G_i_update_fun(value):
-        k, i, g_i_old, phi_init = value
+    def _G_i_update_fun(k, value):
+        i, g_i_old = value
         n = A.shape[1]
-        idx = naive_top_k(jnp.abs(g_i_old), nz_max)[1]
-        phi_grad = jnp.where(jnp.arange(n) < i, 2*A[idx].T @ g_i_old[idx], 0)
-        if Minv == None:
-            p = phi_grad
-        else:
-            idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
-            p = jnp.matmul(Minv[:, idx], phi_grad[idx])
-        # below alpha calculated approximately only
-        idx = naive_top_k(jnp.abs(p), nz_max)[1]
-        alpha = -jnp.dot(phi_grad[idx], p[idx])/quad_form(p[idx], A[idx][:,idx])
-        alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
-        g_i_new = g_i_old + alpha*phi_grad
-        idx = naive_top_k(jnp.abs(p), nz_max)[1]
-        g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
-        # below done just in case diag falls out of top_k (?shouldnt happen) 
-        g_i = g_i_new.at[i].set(g_i_new[i])
-        return (k+1, i, g_i_new, phi_init)
+        #idx = naive_top_k(jnp.abs(g_i_old), nz_max)[1]
+        phi_grad = jnp.where(jnp.arange(n) < i, 2*A[:nz_max].T @
+                             g_i_old[:nz_max], 0)
+        #phi_grad = 2*A[idx].T @ g_i_old[idx]
+        ##if Minv == None:
+        ##    p = phi_grad
+        ##else:
+        ##    idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
+        ##    p = jnp.matmul(Minv[:, idx], phi_grad[idx])
+        ### below alpha calculated approximately only
+        ##idx = naive_top_k(jnp.abs(p), nz_max)[1]
+        ##alpha = -jnp.dot(phi_grad[idx], p[idx])/quad_form(p[idx], A[idx][:,idx])
+        ##alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
+        ##g_i_new = g_i_old + alpha*phi_grad
+        ##idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
+        ##g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
+        ### below done just in case diag falls out of top_k (?shouldnt happen) 
+        ##g_i = g_i_new.at[i].set(g_i_new[i])
+        return (i, g_i_old+phi_grad)
 
 
     def _calc_G_i(value):
         i, G0_i = value
-        k = 0
         idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
-        phi_init = quad_form(G0_i[idx], A[idx][:, idx])
-        init_val = (k, i, G0_i, phi_init)
-        k, i, Gk_i, *_ = while_loop(_G_i_cond_fun, _G_i_update_fun, init_val)
+        init_val = (i, G0_i)
+        i, Gk_i, *_ = fori_loop(0, num_iter, _G_i_update_fun, init_val)
         idx = naive_top_k(Gk_i, nz_max)[1]
         d_ii = quad_form(Gk_i[idx], A[idx][:, idx])**-0.5
         return d_ii*Gk_i

@@ -65,7 +65,8 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
-    G = block_until_ready(stop_gradient(fsai(K, 10)))
+    G = stop_gradient(fsai(K, 10))
+    #pdb.set_trace()
 
     # set preconditioners and func to calculate its inverse matrix product
 #    P_K_lower = pivoted_cholesky(K, max_rank=max_precond_rank)
