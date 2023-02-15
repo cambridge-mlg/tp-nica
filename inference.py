@@ -1,5 +1,6 @@
-from jax._src.lax.lax import stop_gradient
 from jax.numpy.linalg import slogdet
+
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
@@ -36,6 +37,7 @@ from gaussian import *
 from functools import partial
 from time import perf_counter
 
+
 def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     n_s_samples, _, max_precond_rank, max_cg_iters, n_probe_vecs = nsamples
     theta_x, theta_cov = theta[:2]
@@ -65,8 +67,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
         1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
-    G = stop_gradient(fsai(K, 10))
-    #pdb.set_trace()
+    G = fsai(K, 1, 10, 1e-8, None, None)
 
     # set preconditioners and func to calculate its inverse matrix product
 #    P_K_lower = pivoted_cholesky(K, max_rank=max_precond_rank)
@@ -222,14 +223,18 @@ def gp_elbo(rng, theta, phi_s, logpx, cov_fn, x, t, nsamples):
     return Elogpx-KLqpu, s
 
 
-def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t, nsamples, elbo_fn):
+def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
+                 nsamples, precond, elbo_fn):
     """
     Calculate average negative elbo over training samples
     """
-    vlb, s = vmap(lambda a, b, c: elbo_fn(
-        a, theta, b, logpx, cov_fn, c, t, nsamples))(
-            jr.split(rng, x.shape[0]),  phi_n, x)
-    return -vlb.mean(), s
+    #vlb, s = vmap(lambda a, b, c: elbo_fn(
+    #    a, theta, b, logpx, cov_fn, c, t, nsamples))(
+    #        jr.split(rng, x.shape[0]),  phi_n, x)
+    vlb, s = vmap(elbo_fn, (0, None, 0, None, None, 0, None, None))(
+        jr.split(rng, x.shape[0]), theta, phi_n, logpx, cov_fn, x, t, nsamples
+    )
+    return -vlb.mean(), (s, precond)
 
 
 avg_neg_tp_elbo = Partial(avg_neg_elbo, elbo_fn=structured_elbo)

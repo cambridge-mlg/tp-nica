@@ -106,6 +106,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         phi = (phi_s, phi_tau)
 
     # set up training details
+    pre_cond = jnp.eye(N*T)
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
     theta_optimizer = optax.adam(theta_lr)
@@ -159,10 +160,12 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         else:
             @jit
             def tp_training_step(key, theta, phi_n, theta_opt_state,
-                              phi_n_opt_states, x, burn_in):
-                (nvlb, s), g = value_and_grad(avg_neg_tp_elbo, argnums=(1, 2),
-                                         has_aux=True)(key, theta, phi_n, logpx,
-                                                       kernel_fn, x, t, nsamples)
+                                 phi_n_opt_states, x, burn_in, precond):
+                (nvlb, (s, precond)), g = value_and_grad(
+                    avg_neg_tp_elbo, argnums=(1, 2), has_aux=True)(
+                        key, theta, phi_n, logpx, kernel_fn, x, t,
+                        nsamples, precond
+                    )
                 theta_g, phi_n_g = g
 
                 # set up gradient updates for theta 
@@ -189,18 +192,9 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 phi_n_updates, phi_n_opt_states = vmap(phi_opt.update)(
                     phi_n_g, phi_n_opt_states, phi_n)
                 phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
-                return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
+                return nvlb, s, theta, phi_n, theta_opt_state,phi_n_opt_states,\
+                        precond
             return tp_training_step
-
-
-    # define evaluation step
-    def make_eval_step(logpx, kernel_fn, t, nsamples, elbo_fn):
-        @jit
-        def eval_step(key, theta, phi_n, x):
-            (nvlb, s)  = elbo_fn(key, theta, phi_n, logpx,
-                                      kernel_fn, x, t, nsamples)
-            return nvlb, s
-        return eval_step
 
 
     # initialize eval/training step
@@ -253,9 +247,9 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 nvlb, s_sample = eval_step(key, theta, phi_it, x_it)
             else:
                 (nvlb, s_sample, theta, phi_it, theta_opt_state,
-                 phi_opt_states_it), key = rngcall(
+                 phi_opt_states_it, pre_cond), key = rngcall(
                     training_step, key, theta, phi_it, theta_opt_state,
-                    phi_opt_states_it, x_it, burn_in)
+                    phi_opt_states_it, x_it, burn_in, pre_cond)
  
                 # update the full variational parameter pytree at right indices
                 phi = tree_map(lambda a, b: a.at[idx_set_it].set(b), phi, phi_it)
