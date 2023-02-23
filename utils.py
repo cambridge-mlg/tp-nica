@@ -117,8 +117,7 @@ def comp_K_N(t1, t2, cov_fn, theta_cov):
 
 
 def K_N_diag(x, y, cov_fn, theta_cov, scaler):
-    N = theta_cov[0].shape[0]
-    scaled_diag = vmap(cov_fn, in_axes=(None, None, 0))(x, y, theta_cov)/scaler
+    scaled_diag = cov_fn(x, y, theta_cov)/scaler
     return jnp.diag(scaled_diag)
 
 
@@ -381,27 +380,18 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv):
     def _G_i_update_fun(k, value):
         i, g_i, idx = value
         n = A.shape[1]
-        A_nz = A[idx]
-        g_nz = g_i[idx]
-        phi_grad = jnp.where(jnp.arange(n) < i, 2*A_nz.T @ g_nz, 0)
-        if Minv == None:
-            p = phi_grad
-        else:
-            idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
-            p = jnp.matmul(Minv[:, idx], phi_grad[idx])
+        phi_grad = jnp.where(jnp.arange(n) < i, 2*A.T @ g_i, 0)
+        #idx = naive_top_k(jnp.abs(phi_grad), nz_max*100)[1]
+        p = cond(jnp.all(Minv == jnp.eye(A.shape[0])),
+                 _identity, lambda _: Minv@_, phi_grad)
         # below alpha calculated approximately only
-        idx = naive_top_k(jnp.abs(p), nz_max)[1]
-        p_nz = p[idx]
-        phi_grad_nz = phi_grad[idx]
-        A_nz = A[idx[:, None], idx[: None]]
-        alpha = -jnp.dot(phi_grad_nz, p_nz)/quad_form(p_nz, A_nz)
+        alpha = -jnp.dot(phi_grad, p) / quad_form(p, A)
         alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
         g_i_new = g_i + alpha*phi_grad
         idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
         g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
-        # below done just in case diag falls out of top_k (?shouldnt happen) 
-        g_i = g_i_new.at[i].set(g_i_new[i])
-        g_i = g_i + phi_grad
+        # below done just in case diag falls out of top_k (?shouldnt happen?) 
+        g_i = g_i.at[i].set(g_i_new[i])
         return (i, g_i, idx)
 
 
@@ -420,8 +410,6 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv):
 
     G = vmap(_calc_G_i, (0, 0))(jnp.arange(A.shape[0]), G0_tilde)
     return G
-
-
 
 
 if __name__ == "__main__":

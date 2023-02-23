@@ -38,27 +38,16 @@ from functools import partial
 from time import perf_counter
 
 
-def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
+def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
+                      K, G):
     n_s_samples, _, max_precond_rank, max_cg_iters, n_probe_vecs = nsamples
-    theta_x, theta_cov = theta[:2]
+    theta_x, _ = theta[:2]
     W, m = phi_s
     N = m.shape[1]
     T = t.shape[0]
-    theta_cov = tree_map(jnp.exp, theta_cov)
 
-    # repeat in case the same kernel replicated for all ICs
-    theta_cov = tree_map(lambda _: _.repeat(N-theta_cov[0].shape[0]+1),
-                         theta_cov)
-    t_dist_mat = jnp.sqrt(squared_euclid_dist_mat(t))
-    theta_cov = bound_se_kernel_params(
-        theta_cov, sigma_min=1e-3,
-        ls_min=jnp.min(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)]),
-        ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
-    )
-
-    # compute covariance
-    K = K_TN_blocks(t, t, cov_fn, theta_cov, tau)
-
+    # scale covariance
+    K = K / tau[None, None, None, :]
     #1: compute parameters for \tilde{q(s|tau)}
     W = vmap(fill_tril, in_axes=(0, None))(W, N)
     W_inv = vmap(custom_tril_solve, (0, None))(W, jnp.eye(N))
@@ -66,8 +55,8 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     J = K.at[jnp.arange(T), jnp.arange(T)].add(Linv).swapaxes(
         1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
-
-    G = fsai(K, 1, 10, 1e-8, None, None)
+    G = jnp.tile(jnp.sqrt(tau), T)[:, None] * G
+    jax_print(G)
 
     # set preconditioners and func to calculate its inverse matrix product
 #    P_K_lower = pivoted_cholesky(K, max_rank=max_precond_rank)
@@ -143,7 +132,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
 
 
 # compute elbo estimate, assumes q(tau) is gamma
-def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
+def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples, K, G):
     _, nsamples_tau, *_ = nsamples
     theta_tau = theta[2]
     theta_tau = 2.+jnp.exp(theta_tau)
@@ -158,9 +147,11 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples):
     kl = jnp.sum(
         gamma_kl(
             gamma_natparams_fromstandard(phi_tau),
-            gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0)
-    vlb_s, s = vmap(lambda _: structured_elbo_s(
-        rng, theta, phi_s, logpx, cov_fn, x, t, _, nsamples))(tau)
+            gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0
+    )
+    vlb_s, s = vmap(structured_elbo_s, (None, None, None, None, None, None,
+             None, 0, None, None, None))(rng, theta, phi_s, logpx, cov_fn,
+                                         x, t, tau, nsamples, K, G)
     return jnp.mean(vlb_s, 0) - kl, s
 
 
@@ -228,11 +219,31 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     """
     Calculate average negative elbo over training samples
     """
-    #vlb, s = vmap(lambda a, b, c: elbo_fn(
-    #    a, theta, b, logpx, cov_fn, c, t, nsamples))(
-    #        jr.split(rng, x.shape[0]),  phi_n, x)
-    vlb, s = vmap(elbo_fn, (0, None, 0, None, None, 0, None, None))(
-        jr.split(rng, x.shape[0]), theta, phi_n, logpx, cov_fn, x, t, nsamples
+    T = t.shape[0]
+    # unpack kernel params
+    theta_x, theta_cov = theta[:2]
+    N = theta_x[0][0][0].shape[0]
+    theta_cov = tree_map(jnp.exp, theta_cov)
+    # repeat in case the same kernel replicated for all ICs
+    theta_cov = tree_map(lambda _: _.repeat(N-theta_cov[0].shape[0]+1),
+                         theta_cov)
+    # bound kernel params into something reasonable
+    t_dist_mat = jnp.sqrt(squared_euclid_dist_mat(t))
+    theta_cov = bound_se_kernel_params(
+        theta_cov, sigma_min=1e-3,
+        ls_min=jnp.min(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)]),
+        ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
+    )
+    # calculate unscaled kernel (same for all samples in batch)
+    # and update unscaled preconditioner
+    K = K_TN_blocks(t, t, cov_fn, theta_cov, 1.)
+    precond = fsai(K.swapaxes(1, 2).reshape(N*T, N*T), 5, 100, 1e-8,
+                   precond, None)
+
+    # compute elbo
+    vlb, s = vmap(elbo_fn, (0, None, 0, None, None, 0, None, None, None, None))(
+        jr.split(rng, x.shape[0]), theta, phi_n, logpx, cov_fn, x, t, nsamples,
+        K, lax.stop_gradient(precond)
     )
     return -vlb.mean(), (s, precond)
 
