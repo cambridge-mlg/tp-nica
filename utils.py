@@ -437,7 +437,6 @@ def krylov_subspace_sampling(key, A, m=None):
     T_neg_sqrt = eV @ (jnp.diag(ew**-0.5) @ jnp.linalg.inv(eV))
     return b*(V.T@ T_neg_sqrt)[:, 0]
 
-
 if __name__ == "__main__":
     key = jr.PRNGKey(8)
     Q = jr.normal(key, (8, 8))
