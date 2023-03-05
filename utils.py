@@ -412,19 +412,38 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv):
     return G
 
 
+def _lanczos_step(carry, x):
+    v0, v1, b1 = carry
+    v = A@v1 - b1*v0
+    a1 = jnp.dot(v1, v)
+    v = v - a1*v1
+    b2 = jnp.linalg.norm(v)
+    v2 = v / b2
+    return (v1, v2, b2), (v1, a1, b1)
+
+
+def krylov_subspace_sampling(key, A, m=None):
+    ''' Samples N(0, inv(A))'''
+    d = A.shape[0]
+    v0 = jnp.zeros((d,))
+    v1 = jr.normal(key, (d,))
+    b = jnp.linalg.norm(v1)
+    v1 = v1 / b
+    b1 = 0
+    _, (V, alphas, betas) = scan(_lanczos_step, (v0, v1, b1), None, length=m)
+    T_off = jnp.diag(betas[1:], k=1)
+    T = jnp.diag(alphas)+T_off+T_off.T
+    ew, eV = jnp.linalg.eigh(T)
+    T_neg_sqrt = eV @ (jnp.diag(ew**-0.5) @ jnp.linalg.inv(eV))
+    return b*(V.T@ T_neg_sqrt)[:, 0]
+
+
 if __name__ == "__main__":
     key = jr.PRNGKey(8)
     Q = jr.normal(key, (8, 8))
     A = Q.T@Q
-    B = jr.normal(jr.split(key)[1], (8, 3))
 
-    pc = pivoted_cholesky(A, 8, 1e-9)
-
-    Pinv_fun = lambda _: solve_precond_plus_diag(pc, 0.01*jnp.ones(pc.shape[0]), _)
-    A_fun = partial(jnp.matmul, A)
-    out = mbcg(A_fun, B, tol=1e-30, maxiter=50, M=Pinv_fun)
-
-    jax_print(jnp.abs(jnp.linalg.inv(A)@B - out).sum())
-
+    out = vmap(lambda _: krylov_subspace_sampling(_, A, m=8))(
+        jr.split(key, 100000))
     pdb.set_trace()
 

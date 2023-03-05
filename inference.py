@@ -246,7 +246,6 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     )
     return -vlb.mean(), (s, precond)
 
-
 avg_neg_tp_elbo = Partial(avg_neg_elbo, elbo_fn=structured_elbo)
 avg_neg_gp_elbo = Partial(avg_neg_elbo, elbo_fn=gp_elbo)
 

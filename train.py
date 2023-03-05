@@ -54,6 +54,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         theta_tau = jnp.log(theta_tau)
         if args.repeat_dfs:
             theta_tau = theta_tau[:1]
+    pdb.set_trace()
 
     if args.D == 1:
         theta_k, key = rngcall(
