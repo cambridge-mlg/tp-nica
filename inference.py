@@ -55,15 +55,14 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     J = K.at[jnp.arange(T), jnp.arange(T)].add(Linv).swapaxes(
         1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
+
+    # scale preconditioner of inverse(cho_factor(K)) with current tau samples
     G = jnp.tile(jnp.sqrt(tau), T)[:, None] * G
-    jax_print(G)
 
     # set preconditioners and func to calculate its inverse matrix product
-#    P_K_lower = pivoted_cholesky(K, max_rank=max_precond_rank)
-#    Pinv_fun, LtWWtL = make_pinv_block_cho_version(P_K_lower, W)
-#
-#    # sample probe vectors with preconditioner covariance 
-#    key, zk_key, zl_key = jr.split(key, 3)
+
+    # sample probe vectors with preconditioner covariance 
+    key, zk_key, zl_key = jr.split(key, 3)
 #    z_K = P_K_lower @ jr.normal(zk_key, (P_K_lower.shape[1], n_probe_vecs))
 #    z_Linv = W_inv.swapaxes(1, 2) @ jr.normal(zl_key, (T, W_inv.shape[1],
 #                                                       n_probe_vecs))
