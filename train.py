@@ -54,7 +54,6 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         theta_tau = jnp.log(theta_tau)
         if args.repeat_dfs:
             theta_tau = theta_tau[:1]
-    pdb.set_trace()
 
     if args.D == 1:
         theta_k, key = rngcall(
@@ -159,7 +158,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
             return gp_training_step
         else:
-            @jit
+            #@jit
             def tp_training_step(key, theta, phi_n, theta_opt_state,
                                  phi_n_opt_states, x, burn_in, precond):
                 (nvlb, (s, precond)), g = value_and_grad(
@@ -228,7 +227,8 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     # train for multiple epochs
     for epoch in range(start_epoch, num_epochs):
         tic = time.perf_counter()
-        shuffle_idx, key = rngcall(jr.permutation, key, n_data)
+        #shuffle_idx, key = rngcall(jr.permutation, key, n_data)
+        shuffle_idx = jnp.arange(train_data.shape[0])
         shuff_data = train_data[shuffle_idx]
         shuff_s = s_data[shuffle_idx]
         mcc_epoch_hist = []

@@ -95,11 +95,17 @@ def custom_tril_solve(u, b):
     return custom_linear_solve(matvec, b, _solve, _trans_solve)
 
 
-def custom_cho_solve(a, b, cho_factor):
+def custom_choL_solve(cho_factor, b):
     def _solve(matvec, x):
         return js.linalg.cho_solve(cho_factor, x)
-    matvec = partial(jnp.matmul, a)
+    L = cho_factor[0]
+    matvec = lambda _: L @ (L.T @ _)
     return custom_linear_solve(matvec, b, _solve, symmetric=True)
+
+
+
+
+
 
 
 def comp_k_n(t1, t2, n1, n2, cov_fn, theta_cov):
@@ -380,12 +386,12 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv):
     def _G_i_update_fun(k, value):
         i, g_i, idx = value
         n = A.shape[1]
-        phi_grad = jnp.where(jnp.arange(n) < i, 2*A.T @ g_i, 0)
-        #idx = naive_top_k(jnp.abs(phi_grad), nz_max*100)[1]
-        p = cond(jnp.all(Minv == jnp.eye(A.shape[0])),
-                 _identity, lambda _: Minv@_, phi_grad)
-        # below alpha calculated approximately only
-        alpha = -jnp.dot(phi_grad, p) / quad_form(p, A)
+        phi_grad = jnp.where(jnp.arange(n) < i, 2*A[idx].T @ g_i[idx], 0)
+        idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
+        #p = cond(jnp.all(Minv == jnp.eye(A.shape[0])),
+        #         _identity, lambda _: Minv@_, phi_grad)
+        alpha = -jnp.dot(phi_grad[idx], phi_grad[idx])/quad_form(
+            phi_grad, A)
         alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
         g_i_new = g_i + alpha*phi_grad
         idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
@@ -399,16 +405,55 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv):
         idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
         init_val = (i, G0_i, idx)
         i, Gk_i, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
-        d_ii = quad_form(Gk_i[idx], A[idx[:, None], idx[None, :]])**-0.5
+        d_ii = quad_form(Gk_i[idx], A[idx][:, idx])**-0.5
         return d_ii*Gk_i
 
 
     if G0 == None:
         G0_tilde = jnp.eye(A.shape[0])
     else:
-        G0_tilde = (1/jnp.diag(G0))[:, None] * G0
+        G0_tilde = (1/jnp.einsum('ii->i', G0))[:, None] * G0
 
     G = vmap(_calc_G_i, (0, 0))(jnp.arange(A.shape[0]), G0_tilde)
+    return G
+
+
+@partial(jit, static_argnames=['A_fun', 'nz_max'])
+def fsai2(A_fun, G0, num_iter, nz_max, eps, Minv):
+    n = G0.shape[0]
+
+    if Minv == None:
+        Minv = jnp.eye(n)
+
+
+    def _G_i_update_fun(k, value):
+        i, g_i, idx = value
+        phi_grad = jnp.where(jnp.arange(n) < i, 2*A_fun(g_i), 0)
+        #idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
+        #p = cond(jnp.all(Minv == jnp.eye(A.shape[0])),
+        #         _identity, lambda _: Minv@_, phi_grad)
+        alpha = -jnp.dot(phi_grad, phi_grad)/jnp.dot(phi_grad, A_fun(phi_grad))
+        alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
+        g_i_new = g_i + alpha*phi_grad
+        idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
+        g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
+        # below done just in case diag falls out of top_k (?shouldnt happen?) 
+        g_i = g_i.at[i].set(g_i_new[i])
+        return (i, g_i, idx)
+
+
+    def _calc_G_i(i, G0_i):
+        idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
+        init_val = (i, G0_i, idx)
+        i, Gk_i, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
+        d_ii = jnp.dot(Gk_i, A_fun(Gk_i))**-0.5
+        jax_print(d_ii*Gk_i)
+        return d_ii*Gk_i
+
+
+    G0 = cond(jnp.all(G0 == jnp.eye(n)), _identity,
+              lambda _: (1/jnp.einsum('ii->i', _))[:, None] * _, G0)
+    G = vmap(_calc_G_i, (0, 0))(jnp.arange(n), G0)
     return G
 
 
@@ -437,11 +482,11 @@ def krylov_subspace_sampling(key, A, m=None):
     T_neg_sqrt = eV @ (jnp.diag(ew**-0.5) @ jnp.linalg.inv(eV))
     return b*(V.T@ T_neg_sqrt)[:, 0]
 
+
 if __name__ == "__main__":
     key = jr.PRNGKey(8)
     Q = jr.normal(key, (8, 8))
     A = Q.T@Q
-
     out = vmap(lambda _: krylov_subspace_sampling(_, A, m=8))(
         jr.split(key, 100000))
     pdb.set_trace()
