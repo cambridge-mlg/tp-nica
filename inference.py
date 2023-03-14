@@ -78,8 +78,13 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
     # calculate preconditioner for inverse(cho_factor(A))
     P = fsai(A, 2, 10, 1e-8, None, None)
-    A_mvp = lambda b: vmap(custom_choL_solve, ((0, None), 0))(
-        (W, True), b.reshape(W.shape[0], -1)).reshape(-1)+K@b
+
+    #A_mvp = lambda b: vmap(custom_choL_solve, ((0, None), 0))(
+    #    (W, True), b.reshape(W.shape[0], -1)).reshape(-1)+K@b
+    #A_mvp = Partial(jnp.matmul, A)
+    A_mvp = lambda b: A@b
+
+
     P2 = fsai2(A_mvp, jnp.eye(K.shape[0]), 2, 10, 1e-8, None)
     pdb.set_trace()
 
