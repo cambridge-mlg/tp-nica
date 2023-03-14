@@ -81,6 +81,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     A_mvp = lambda b: vmap(custom_choL_solve, ((0, None), 0))(
         (W, True), b.reshape(W.shape[0], -1)).reshape(-1)+K@b
     P2 = fsai2(A_mvp, jnp.eye(K.shape[0]), 2, 10, 1e-8, None)
+    pdb.set_trace()
 
     # sample probe vectors with preconditioner covariance 
 #    key, zk_key, zl_key = jr.split(key, 3)

@@ -443,17 +443,16 @@ def fsai2(A_fun, G0, num_iter, nz_max, eps, Minv):
 
 
     def _calc_G_i(i, G0_i):
-        idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
-        init_val = (i, G0_i, idx)
-        i, Gk_i, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
-        d_ii = jnp.dot(Gk_i, A_fun(Gk_i))**-0.5
-        jax_print(d_ii*Gk_i)
-        return d_ii*Gk_i
+        #idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
+        #init_val = (i, G0_i, idx)
+        #i, Gk_i, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
+        d_ii = jnp.dot(jnp.eye(n)[0], A_fun(jnp.eye(n)[0]))**-0.5
+        return d_ii#*Gk_i
 
 
     G0 = cond(jnp.all(G0 == jnp.eye(n)), _identity,
               lambda _: (1/jnp.einsum('ii->i', _))[:, None] * _, G0)
-    G = vmap(_calc_G_i, (0, 0))(jnp.arange(n), G0)
+    G = vmap(_calc_G_i, (0, 0))(jnp.arange(n)[:1], G0[:1])
     return G
 
 
