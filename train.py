@@ -125,7 +125,6 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings,
                            optimizers, is_gp):
         if is_gp:
-            @jit
             def gp_training_step(key, theta, phi_n, theta_opt_state,
                                  phi_n_opt_states, x, burn_in):
                 (nvlb, s), g = value_and_grad(avg_neg_gp_elbo, argnums=(1, 2),
@@ -158,7 +157,6 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
             return gp_training_step
         else:
-            #@jit
             def tp_training_step(key, theta, phi_n, theta_opt_state,
                                  phi_n_opt_states, x, burn_in, precond):
                 (nvlb, (s, precond)), g = value_and_grad(
@@ -341,4 +339,3 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 plt.show(block=False)
                 plt.pause(5.)
             plt.close()
-    return elbo_hist, mcc_hist

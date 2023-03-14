@@ -447,7 +447,7 @@ def fsai2(A_fun, G0, num_iter, nz_max, eps, Minv):
         init_val = (i, G0_i, idx)
         i, Gk_i, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
         d_ii = jnp.dot(Gk_i, A_fun(Gk_i))**-0.5
-        return d_ii#*Gk_i
+        return d_ii*Gk_i
 
 
     G0 = cond(jnp.all(G0 == jnp.eye(n)), _identity,

@@ -79,14 +79,12 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     # calculate preconditioner for inverse(cho_factor(A))
     P = fsai(A, 2, 10, 1e-8, None, None)
 
-    #A_mvp = lambda b: vmap(custom_choL_solve, ((0, None), 0))(
-    #    (W, True), b.reshape(W.shape[0], -1)).reshape(-1)+K@b
-    #A_mvp = Partial(jnp.matmul, A)
-    A_mvp = lambda b: A@b
-
+    A_mvp = lambda b: vmap(custom_choL_solve, ((0, None), 0))(
+        (W, True), b.reshape(W.shape[0], -1)).reshape(-1)+K@b
 
     P2 = fsai2(A_mvp, jnp.eye(K.shape[0]), 2, 10, 1e-8, None)
-    pdb.set_trace()
+    jax_print(P2)
+    #pdb.set_trace()
 
     # sample probe vectors with preconditioner covariance 
 #    key, zk_key, zl_key = jr.split(key, 3)
@@ -181,7 +179,6 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples, K, G):
     return jnp.mean(vlb_s, 0) - kl, s
 
 
-#@jit
 def gp_elbo(rng, theta, phi_s, logpx, cov_fn, x, t, nsamples):
     theta_x, theta_cov = theta[:2]
     What, yhat, tu = phi_s
