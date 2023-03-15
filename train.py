@@ -125,6 +125,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings,
                            optimizers, is_gp):
         if is_gp:
+            @jit
             def gp_training_step(key, theta, phi_n, theta_opt_state,
                                  phi_n_opt_states, x, burn_in):
                 (nvlb, s), g = value_and_grad(avg_neg_gp_elbo, argnums=(1, 2),
@@ -157,6 +158,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
             return gp_training_step
         else:
+            #@jit
             def tp_training_step(key, theta, phi_n, theta_opt_state,
                                  phi_n_opt_states, x, burn_in, precond):
                 (nvlb, (s, precond)), g = value_and_grad(
@@ -225,8 +227,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     # train for multiple epochs
     for epoch in range(start_epoch, num_epochs):
         tic = time.perf_counter()
-        #shuffle_idx, key = rngcall(jr.permutation, key, n_data)
-        shuffle_idx = jnp.arange(train_data.shape[0])
+        shuffle_idx, key = rngcall(jr.permutation, key, n_data)
         shuff_data = train_data[shuffle_idx]
         shuff_s = s_data[shuffle_idx]
         mcc_epoch_hist = []

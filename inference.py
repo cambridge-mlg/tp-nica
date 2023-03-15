@@ -53,6 +53,17 @@ from time import perf_counter
 #    return lax.scan(_f, (A, i, p), None, length=2)[0][2]
 
 
+
+def _cho_solve(c, b):
+    b = b.reshape(c.shape[0], -1)
+    b = lax.linalg.triangular_solve(c, b, left_side=True, lower=True,
+      transpose_a = False, conjugate_a = False)
+    b = lax.linalg.triangular_solve(c, b, left_side=True, lower=True,
+                                    transpose_a=True, conjugate_a=True)
+    return b.reshape(-1)
+
+
+
 def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
                       K, G):
     n_s_samples, _, max_precond_rank, max_cg_iters, n_probe_vecs = nsamples
@@ -70,22 +81,15 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     Linv = jnp.matmul(W_inv.swapaxes(1, 2), W_inv)
     A = K.at[jnp.arange(T), jnp.arange(T)].add(Linv).swapaxes(
       1, 2).reshape(N*T, N*T)
-
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
     # scale preconditioner of inverse(cho_factor(K)) with current tau samples
     G = jnp.tile(jnp.sqrt(tau), T)[:, None] * G
 
     # calculate preconditioner for inverse(cho_factor(A))
-    P = fsai(A, 2, 10, 1e-8, None, None)
-
-    A_mvp = lambda b: vmap(custom_choL_solve, ((0, None), 0))(
-        (W, True), b.reshape(W.shape[0], -1)).reshape(-1)+K@b
-
-    P2 = fsai2(A_mvp, jnp.eye(K.shape[0]), 2, 10, 1e-8, None)
-    jax_print(P2)
-    #pdb.set_trace()
-
+    #P = fsai(A, 2, 10, 1e-8, None, None)
+    P = fsai2(lambda b: _cho_solve(W, b), jnp.eye(K.shape[0]), 2, 10, 1e-8, None)
+    jax_print(P[0])
     # sample probe vectors with preconditioner covariance 
 #    key, zk_key, zl_key = jr.split(key, 3)
 #    z_K = P_K_lower @ jr.normal(zk_key, (P_K_lower.shape[1], n_probe_vecs))
@@ -151,7 +155,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(n_s_samples, T)), key)
-    return jnp.zeros((0,)), s + lax.stop_gradient(G).sum() + lax.stop_gradient(P2).sum()
+    return jnp.zeros((0,)), s + lax.stop_gradient(G).sum() + lax.stop_gradient(P).sum()
                       #Elogpx-KLqpu, s
 
 

@@ -103,11 +103,6 @@ def custom_choL_solve(cho_factor, b):
     return custom_linear_solve(matvec, b, _solve, symmetric=True)
 
 
-
-
-
-
-
 def comp_k_n(t1, t2, n1, n2, cov_fn, theta_cov):
     return cond(n1==n2, lambda a, b, c: cov_fn(a, b, c),
                 lambda a, b, c: jnp.array(0.), t1, t2, tree_get_idx(theta_cov, n1))
@@ -391,7 +386,7 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv):
         #p = cond(jnp.all(Minv == jnp.eye(A.shape[0])),
         #         _identity, lambda _: Minv@_, phi_grad)
         alpha = -jnp.dot(phi_grad[idx], phi_grad[idx])/quad_form(
-            phi_grad, A)
+            phi_grad[idx], A[idx][:, idx])
         alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
         g_i_new = g_i + alpha*phi_grad
         idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
