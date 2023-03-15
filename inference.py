@@ -55,13 +55,22 @@ from time import perf_counter
 
 
 def _cho_solve(c, b):
-    b = b.reshape(c.shape[0], -1)
     b = lax.linalg.triangular_solve(c, b, left_side=True, lower=True,
       transpose_a = False, conjugate_a = False)
     b = lax.linalg.triangular_solve(c, b, left_side=True, lower=True,
                                     transpose_a=True, conjugate_a=True)
-    return b.reshape(-1)
+    return b
 
+
+def _solve_or(carry, x):
+    c, b = x
+    y = lax.cond(jnp.all(b == 0), jnp.zeros_like, lambda _: _cho_solve(c, _), b)
+    return carry, y
+
+
+def _sparse_cho_solve(c, b):
+    b = b.reshape(c.shape[0], -1)
+    return lax.scan(_solve_or, None, (c, b))[1].reshape(-1)
 
 
 def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
@@ -88,7 +97,8 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
     # calculate preconditioner for inverse(cho_factor(A))
     #P = fsai(A, 2, 10, 1e-8, None, None)
-    P = fsai2(lambda b: _cho_solve(W, b), jnp.eye(K.shape[0]), 2, 10, 1e-8, None)
+    P = fsai2(lambda b: _sparse_cho_solve(W, b)+K@b,
+              jnp.eye(K.shape[0]), 2, 10, 1e-8, None)
     jax_print(P[0])
     # sample probe vectors with preconditioner covariance 
 #    key, zk_key, zl_key = jr.split(key, 3)
