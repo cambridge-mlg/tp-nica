@@ -95,10 +95,9 @@ def custom_tril_solve(u, b):
     return custom_linear_solve(matvec, b, _solve, _trans_solve)
 
 
-def custom_choL_solve(cho_factor, b):
+def custom_choL_solve(L, b):
     def _solve(matvec, x):
-        return js.linalg.cho_solve(cho_factor, x)
-    L = cho_factor[0]
+        return js.linalg.cho_solve((L, True), x)
     matvec = lambda _: L @ (L.T @ _)
     return custom_linear_solve(matvec, b, _solve, symmetric=True)
 
@@ -423,11 +422,12 @@ def fsai2(A_fun, G0, num_iter, nz_max, eps, Minv):
 
     def _G_i_update_fun(k, value):
         i, g_i, idx = value
-        phi_grad = jnp.where(jnp.arange(n) < i, 2*A_fun(g_i), 0)
-        #idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
+        phi_grad = jnp.where(jnp.arange(n) < i, 2*A_fun(g_i, idx), 0)
+        idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
         #p = cond(jnp.all(Minv == jnp.eye(A.shape[0])),
         #         _identity, lambda _: Minv@_, phi_grad)
-        alpha = -jnp.dot(phi_grad, phi_grad)/jnp.dot(phi_grad, A_fun(phi_grad))
+        alpha = -jnp.dot(phi_grad, phi_grad)/jnp.dot(phi_grad,
+                                                     A_fun(phi_grad, idx))
         alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
         g_i_new = g_i + alpha*phi_grad
         idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
@@ -441,7 +441,7 @@ def fsai2(A_fun, G0, num_iter, nz_max, eps, Minv):
         idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
         init_val = (i, G0_i, idx)
         i, Gk_i, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
-        d_ii = jnp.dot(Gk_i, A_fun(Gk_i))**-0.5
+        d_ii = jnp.dot(Gk_i, A_fun(Gk_i, idx))**-0.5
         return d_ii*Gk_i
 
 
@@ -475,6 +475,17 @@ def krylov_subspace_sampling(key, A, m=None):
     ew, eV = jnp.linalg.eigh(T)
     T_neg_sqrt = eV @ (jnp.diag(ew**-0.5) @ jnp.linalg.inv(eV))
     return b*(V.T@ T_neg_sqrt)[:, 0]
+
+
+
+
+
+
+
+
+
+
+
 
 
 if __name__ == "__main__":

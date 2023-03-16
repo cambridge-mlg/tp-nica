@@ -39,38 +39,15 @@ from functools import partial
 from time import perf_counter
 
 
-#def _f(carry, x):
-#    A, i, p = carry
-#    n = A.shape[1]
-#    phi_grad = jnp.where(jnp.arange(n) < i, 2*A[:10].T @ p[:10], 0)
-#    alpha = -jnp.dot(phi_grad[:10], phi_grad[:10]) / quad_form(phi_grad[:10],
-#                                                               A[:10])
-#    p = p + 1e-30*alpha*phi_grad
-#    return (A, i, p), None
-#
-#
-#def _fun(A, i, p):
-#    return lax.scan(_f, (A, i, p), None, length=2)[0][2]
-
-
-
-def _cho_solve(c, b):
-    b = lax.linalg.triangular_solve(c, b, left_side=True, lower=True,
-      transpose_a = False, conjugate_a = False)
-    b = lax.linalg.triangular_solve(c, b, left_side=True, lower=True,
-                                    transpose_a=True, conjugate_a=True)
-    return b
-
-
-def _solve_or(carry, x):
-    c, b = x
-    y = lax.cond(jnp.all(b == 0), jnp.zeros_like, lambda _: _cho_solve(c, _), b)
-    return carry, y
+def _solve_or(c, b):
+    y = lax.switch(1*jnp.all(b == 0), [lambda _: custom_choL_solve(c, _),
+                   jnp.zeros_like], b)
+    return y
 
 
 def _sparse_cho_solve(c, b):
     b = b.reshape(c.shape[0], -1)
-    return lax.scan(_solve_or, None, (c, b))[1].reshape(-1)
+    return vmap(_solve_or)(c, b).reshape(-1)
 
 
 def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
@@ -86,20 +63,18 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
     #1: compute parameters for \tilde{q(s|tau)}
     W = vmap(fill_tril, in_axes=(0, None))(W, N)
-    W_inv = vmap(custom_tril_solve, (0, None))(W, jnp.eye(N))
-    Linv = jnp.matmul(W_inv.swapaxes(1, 2), W_inv)
-    A = K.at[jnp.arange(T), jnp.arange(T)].add(Linv).swapaxes(
-      1, 2).reshape(N*T, N*T)
+    #W_inv = vmap(custom_tril_solve, (0, None))(W, jnp.eye(N))
+    #Linv = jnp.matmul(W_inv.swapaxes(1, 2), W_inv)
+    #A = K.at[jnp.arange(T), jnp.arange(T)].add(Linv).swapaxes(
+    #  1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
     # scale preconditioner of inverse(cho_factor(K)) with current tau samples
     G = jnp.tile(jnp.sqrt(tau), T)[:, None] * G
 
     # calculate preconditioner for inverse(cho_factor(A))
-    #P = fsai(A, 2, 10, 1e-8, None, None)
-    P = fsai2(lambda b: _sparse_cho_solve(W, b)+K@b,
+    P = fsai2(lambda b, idx: _sparse_cho_solve(W, b)+K[idx].T@b[idx],
               jnp.eye(K.shape[0]), 2, 10, 1e-8, None)
-    jax_print(P[0])
     # sample probe vectors with preconditioner covariance 
 #    key, zk_key, zl_key = jr.split(key, 3)
 #    z_K = P_K_lower @ jr.normal(zk_key, (P_K_lower.shape[1], n_probe_vecs))
