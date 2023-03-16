@@ -28,8 +28,7 @@ from utils import (
     make_pinv_block_cho_version,
     solve_precond_plus_diag,
     mbcg,
-    fsai,
-    fsai2
+    fsai
 )
 from util import *
 from gamma import *
@@ -37,17 +36,6 @@ from gaussian import *
 
 from functools import partial
 from time import perf_counter
-
-
-def _solve_or(c, b):
-    y = lax.switch(1*jnp.all(b == 0), [lambda _: custom_choL_solve(c, _),
-                   jnp.zeros_like], b)
-    return y
-
-
-def _sparse_cho_solve(c, b):
-    b = b.reshape(c.shape[0], -1)
-    return vmap(_solve_or)(c, b).reshape(-1)
 
 
 def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
@@ -63,18 +51,18 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
     #1: compute parameters for \tilde{q(s|tau)}
     W = vmap(fill_tril, in_axes=(0, None))(W, N)
-    #W_inv = vmap(custom_tril_solve, (0, None))(W, jnp.eye(N))
-    #Linv = jnp.matmul(W_inv.swapaxes(1, 2), W_inv)
-    #A = K.at[jnp.arange(T), jnp.arange(T)].add(Linv).swapaxes(
-    #  1, 2).reshape(N*T, N*T)
+    W_inv = vmap(custom_tril_solve, (0, None))(W, jnp.eye(N))
+    Linv = jnp.matmul(W_inv.swapaxes(1, 2), W_inv)
+    A = K.at[jnp.arange(T), jnp.arange(T)].add(Linv).swapaxes(
+      1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
     # scale preconditioner of inverse(cho_factor(K)) with current tau samples
     G = jnp.tile(jnp.sqrt(tau), T)[:, None] * G
 
     # calculate preconditioner for inverse(cho_factor(A))
-    P = fsai2(lambda b, idx: _sparse_cho_solve(W, b)+K[idx].T@b[idx],
-              jnp.eye(K.shape[0]), 2, 10, 1e-8, None)
+    P = fsai(A, 2, 10, 1e-8, None, None)
+    jax_print(P@A@P.T)
     # sample probe vectors with preconditioner covariance 
 #    key, zk_key, zl_key = jr.split(key, 3)
 #    z_K = P_K_lower @ jr.normal(zk_key, (P_K_lower.shape[1], n_probe_vecs))
