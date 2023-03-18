@@ -412,29 +412,36 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv):
 
 
 def _lanczos_step(carry, x):
-    v0, v1, b1 = carry
-    v = A@v1 - b1*v0
+    A, v0, v1, b1 = carry
+    v = A(v1) - b1*v0
     a1 = jnp.dot(v1, v)
     v = v - a1*v1
     b2 = jnp.linalg.norm(v)
     v2 = v / b2
-    return (v1, v2, b2), (v1, a1, b1)
+    return (A, v1, v2, b2), (v1, a1, b1)
+
+
+def lanczos_tridiag(A, v1, m):
+    '''Performs Lanczos tridiagonalization of pos.def. matrix.'''
+    d = v1.shape[0]
+    v0 = jnp.zeros((d,))
+    b1 = 0
+    _, (V, alphas, betas) = scan(_lanczos_step, (A, v0, v1, b1), None, length=m)
+    T_off = jnp.diag(betas[1:], k=1)
+    T = jnp.diag(alphas)+T_off+T_off.T
+    return T, V
+
 
 
 def krylov_subspace_sampling(key, A, m=None):
     ''' Samples N(0, inv(A))'''
-    d = A.shape[0]
-    v0 = jnp.zeros((d,))
     v1 = jr.normal(key, (d,))
     b = jnp.linalg.norm(v1)
     v1 = v1 / b
-    b1 = 0
-    _, (V, alphas, betas) = scan(_lanczos_step, (v0, v1, b1), None, length=m)
-    T_off = jnp.diag(betas[1:], k=1)
-    T = jnp.diag(alphas)+T_off+T_off.T
+    T, V = lanczos_tridiag(A, v1, m)
     ew, eV = jnp.linalg.eigh(T)
     T_neg_sqrt = eV @ (jnp.diag(ew**-0.5) @ jnp.linalg.inv(eV))
-    return b*(V.T@ T_neg_sqrt)[:, 0]
+    return b*(V.T@ T_neg_sqrt[:, 0])
 
 
 
