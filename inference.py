@@ -1,3 +1,4 @@
+from jax._src.scipy.linalg import block_diag
 from jax.numpy.linalg import slogdet
 
 import jax
@@ -28,6 +29,7 @@ from utils import (
     make_pinv_block_cho_version,
     solve_precond_plus_diag,
     mbcg,
+    _identity,
     fsai
 )
 from util import *
@@ -42,18 +44,18 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
                       K, G):
     n_s_samples, _, max_precond_rank, max_cg_iters, n_probe_vecs = nsamples
     theta_x, _ = theta[:2]
-    W, m = phi_s
-    N = m.shape[1]
+    L, h = phi_s
+    N = h.shape[1]
     T = t.shape[0]
 
     # scale covariance
     K = K / tau[None, None, None, :]
 
     #1: compute parameters for \tilde{q(s|tau)}
-    W = vmap(fill_tril, in_axes=(0, None))(W, N)
-    W_inv = vmap(custom_tril_solve, (0, None))(W, jnp.eye(N))
-    Linv = jnp.matmul(W_inv.swapaxes(1, 2), W_inv)
-    A = K.at[jnp.arange(T), jnp.arange(T)].add(Linv).swapaxes(
+    L = vmap(fill_tril, in_axes=(0, None))(L, N)
+    L_inv = vmap(custom_tril_solve, (0, None))(L, jnp.eye(N))
+    J_inv = jnp.matmul(L_inv.swapaxes(1, 2), L_inv)
+    A = K.at[jnp.arange(T), jnp.arange(T)].add(J_inv).swapaxes(
       1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
@@ -61,8 +63,23 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     G = jnp.tile(jnp.sqrt(tau), T)[:, None] * G
 
     # calculate preconditioner for inverse(cho_factor(A))
-    P = fsai(A, 2, 10, 1e-8, None, None)
-    jax_print(P@A@P.T)
+    P = fsai(A, 5, 10, 1e-8, None, None)
+
+    # set up an run mbcg
+    B = K@h.reshape(-1, 1)
+    B = jnp.hstack((B, B))
+    A_mvp = lambda _: vmap(custom_choL_solve)(
+        L, _.reshape(L.shape[0], L.shape[1], -1)).reshape(-1, _.shape[-1])+K@_
+    solves, Ts = mbcg(A_mvp, B, maxiter=max_cg_iters, M=_identity)
+    m = vmap(custom_choL_solve)(L, solves[:,0].reshape(L.shape[0],
+                                                       -1)).reshape(-1)
+
+    # checking with exact
+    J = jnp.matmul(L, L.swapaxes(1, 2))
+    m2 = jnp.linalg.inv(js.linalg.block_diag(*J) +
+                        jnp.linalg.inv(K))@h.reshape(-1)
+    jax_print(jnp.allclose(m, m2))
+    pdb.set_trace()
     # sample probe vectors with preconditioner covariance 
 #    key, zk_key, zl_key = jr.split(key, 3)
 #    z_K = P_K_lower @ jr.normal(zk_key, (P_K_lower.shape[1], n_probe_vecs))
@@ -71,10 +88,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 #    z = z_K + z_Linv.reshape(-1, n_probe_vecs)
 #    z = z / jnp.linalg.norm(z, 2, axis=0, keepdims=True)
 #
-#    # set up an run mbcg
-#    B = jnp.hstack((K@m.reshape(-1, 1), z))
-#    A_fun = partial(jnp.matmul, J)
-#    solves, Ts = mbcg(A_fun, B, maxiter=max_cg_iters, M=Pinv_fun)
+
 #
 #    # compute quadratic form term of normalizer
 #    JinvKm = solves[:, 0]

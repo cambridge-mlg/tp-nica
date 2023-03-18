@@ -22,7 +22,7 @@ from jax.lax import (
     scan,
     fori_loop
 )
-from jax.tree_util import Partial, tree_map
+from jax.tree_util import Partial, tree_map, tree_leaves
 from jax._src.scipy.sparse.linalg import (
     _normalize_matvec,
     _sub,
@@ -218,7 +218,6 @@ def load_checkpoint(train_args):
     return ckpt, hist
 
 
-#@partial(jit, static_argnames=['A', 'M', 'maxiter'])
 def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     def cond_fun(value):
         *_, R, j = value
@@ -227,33 +226,33 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
 
 
     def body_fun(value):
-        U, a_all, b_all, D, Z, a, b,  R, j = value
-        _V = A(D)
-        _a = (R*Z).sum(0) / (D*_V).sum(0)
-        _U = U + _a.reshape(1, -1)*D
+        X, a_all, b_all, P, Z, R, j = value
+        _V = A(P)
+        _a = (R*Z).sum(0) / (P*_V).sum(0)
+        _X = X + _a.reshape(1, -1)*P
         _R = R - _a.reshape(1, -1)*_V
         _Z = M(_R)
         _b = (_R*_Z).sum(0) / (R*Z).sum(0)
-        _D = _Z + _b.reshape(1, -1)*D
-        _a_all = a_all.at[j].set(_a[1:])
-        _b_all = b_all.at[j].set(_b[1:])
-        return _U, _a_all, _b_all, _D, _Z, _a, _b, _R, j+1
+        _P = _Z + _b.reshape(1, -1)*P
+        _a_all = a_all.at[j].set(_a)
+        _b_all = b_all.at[j].set(_b)
+        return _X, _a_all, _b_all, _P, _Z, _R, j+1
 
 
-    B = B.reshape(B.shape[0], -1)
     n, t = B.shape
-    a_all = jnp.zeros((maxiter, t-1))
-    b_all = jnp.zeros((maxiter, t-1))
+    a_all = jnp.zeros((maxiter, t))
+    b_all = jnp.zeros((maxiter, t))
     R0 = _sub(B, A(x0))
     Z0 = M(R0)
-    D0 = Z0.copy()
-    init_val = (x0, a_all, b_all, D0, Z0, jnp.zeros(t), jnp.zeros(t), R0, 0)
-    U_final, alphas, betas, *_ = while_loop(cond_fun, body_fun, init_val)
-    ba = jnp.vstack((jnp.zeros((1, t-1)), betas[:-1]/alphas[:-1]))
-    Ts = vmap(jnp.diag, in_axes=(1,))(1/alphas + ba)
-    Ts_off = vmap(lambda _: jnp.diag(_, k=1), in_axes=(1,))(jnp.sqrt(ba[1:]))
+    P0 = Z0.copy()
+    init_val = (x0, a_all, b_all, P0, Z0, R0, 0)
+    X, alphas, betas, *_ = while_loop(cond_fun, body_fun, init_val)
+    b_a = jnp.sqrt(betas[:-1])/alphas[:-1]
+    Ts_off = vmap(lambda _: jnp.diag(_, k=1), in_axes=(1,))(b_a)
+    Ts = vmap(jnp.diag, in_axes=(1,))(1/alphas +
+        jnp.vstack((jnp.zeros((1, t)), betas[:-1]/alphas[:-1])))
     Ts = Ts + Ts_off + Ts_off.swapaxes(1, 2)
-    return U_final, Ts
+    return X, Ts
 
 
 def mbcg(A, B, x0=None, *, tol=0.0, maxiter=None, M=None):
@@ -384,8 +383,8 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv):
         idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
         #p = cond(jnp.all(Minv == jnp.eye(A.shape[0])),
         #         _identity, lambda _: Minv@_, phi_grad)
-        alpha = -jnp.dot(phi_grad[idx], phi_grad[idx])/quad_form(
-            phi_grad[idx], A[idx][:, idx])
+        alpha = -jnp.dot(phi_grad, phi_grad)/quad_form(
+            phi_grad, A)
         alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
         g_i_new = g_i + alpha*phi_grad
         idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]

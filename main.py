@@ -1,9 +1,9 @@
 import os
-os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
 from matplotlib import projections
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -194,6 +194,9 @@ def main():
     # ensure there checkpoint will be loaded if only evaluating
     if args.eval_only:
         assert args.resume_ckpt, "Eval only requires --resume-ckpt=True"
+
+    # further checks
+    assert args.max_cg_iters <= args.T*args.N, "CG iters cant exceed data dim"
 
     # train model
     elbo_hist, mcc_hist = train(x, z, s, t, mu_fn, k_fn, params, args, est_key)
