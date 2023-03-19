@@ -428,7 +428,53 @@ def lanczos_tridiag(A, v1, m):
     _, (V, alphas, betas) = scan(_lanczos_step, (v0, v1, b1), None, length=m)
     T_off = jnp.diag(betas[1:], k=1)
     T = jnp.diag(alphas)+T_off+T_off.T
+    return T, V.T
+
+
+def Lanczos2(A, v, m=100):
+    n = len(v)
+    if m>n: m = n;
+    # from here https://en.wikipedia.org/wiki/Lanczos_algorithm
+    V = jnp.zeros((m,n))
+    T = jnp.zeros((m,m))
+    V = V.at[0, :].set(v)
+
+    # step 2.1 - 2.3 in https://en.wikipedia.org/wiki/Lanczos_algorithm
+    w = jnp.dot(A, v)
+    alfa = jnp.dot(w, v)
+    w = w - alfa*V[0, :]
+    T = T.at[0, 0].set(alfa)
+
+    # needs to start the iterations from indices 1
+    for j in range(1, m-1):
+        beta = jnp.sqrt(jnp.dot(w, w))
+
+        V = V.at[j, :].set(w/beta)
+
+        w = jnp.dot(A, V[j, :])
+        alfa = jnp.dot(w, V[j, :])
+        w = w - alfa * V[j, :] - beta*V[j-1, :]
+
+        T = T.at[j,j].set(alfa)
+        T = T.at[j-1, j].set(beta)
+        T = T.at[j, j-1].set(beta)
     return T, V
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -440,7 +486,7 @@ def krylov_subspace_sampling(key, A, v1, m=None):
     T, V = lanczos_tridiag(A, v1, m)
     ew, eV = jnp.linalg.eigh(T)
     T_neg_sqrt = eV @ (jnp.diag(ew**-0.5) @ jnp.linalg.inv(eV))
-    return b*(V.T@ T_neg_sqrt[:, 0])
+    return b*(V@ T_neg_sqrt[:, 0])
 
 
 

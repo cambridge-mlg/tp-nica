@@ -81,21 +81,44 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
         return Jinvx + K@x
 
 
-    solves, Ts = mbcg(A_mvp, B, maxiter=max_cg_iters, M=_identity)
+    solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=_identity)
     m = vmap(custom_choL_solve)(
         L, solves[:, 0].reshape(L.shape[0], -1)
     ).reshape(-1)
 
     v1 = jr.normal(key, (A.shape[0],))
     v1 = v1 / jnp.linalg.norm(v1)
-    T, V = lanczos_tridiag(A_mvp, v1, m=10)
+    T_mats2, V = lanczos_tridiag(A_mvp, v1, m=A.shape[0])
 
-    # checking with exact
-    J = jnp.matmul(L, L.swapaxes(1, 2))
-    m2 = jnp.linalg.inv(js.linalg.block_diag(*J) +
-                        jnp.linalg.inv(K))@h.reshape(-1)
-    jax_print(jnp.allclose(m, m2))
+
+    from utils import Lanczos2
+    Tt, Vv = Lanczos2(A, v1, m=400)
+
     pdb.set_trace()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    pdb.set_trace()
+    # checking with exact
+    #J = jnp.matmul(L, L.swapaxes(1, 2))
+    #m2 = jnp.linalg.inv(js.linalg.block_diag(*J) +
+    #                    jnp.linalg.inv(K))@h.reshape(-1)
+    #jax_print(jnp.allclose(m, m2))
+    #pdb.set_trace()
     # sample probe vectors with preconditioner covariance 
 #    key, zk_key, zl_key = jr.split(key, 3)
 #    z_K = P_K_lower @ jr.normal(zk_key, (P_K_lower.shape[1], n_probe_vecs))
