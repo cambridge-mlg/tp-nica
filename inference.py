@@ -78,9 +78,10 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     # calculate preconditioner for inverse(cho_factor(A))
     P = fsai(A, 5, 10, 1e-8, None, None)
 
-    from utils import fsai_vec
-    P = fsai_vec(A_mvp, K.shape[0], 10, 5, None, None)
-#    pdb.set_trace()
+    from utils import fsai_vec, naive_top_k
+    P2 = fsai_vec(A_mvp, K.shape[0], 10, 5, None, None)
+    jax_print(jnp.allclose(P, P2))
+    pdb.set_trace()
 
 
     # set up an run mbcg

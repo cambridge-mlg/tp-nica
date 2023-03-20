@@ -442,35 +442,16 @@ def fsai_vec(A, dim, nz_max, num_iter=None, G0=None, Minv=None):
         G_new = G_j + alpha.reshape(1, -1)*phi_grad
         idx = vmap(lambda _: naive_top_k(_, nz_max)[1],
                    in_axes=(1,), out_axes=1)(jnp.abs(G_new))
-        G_j = jnp.zeros_like(G_new)
-        G_j = vmap(lambda a, b: a.at[b].set(G_new[b]), (1, 1), 1)(G_j, idx)
-        jdb.breakpoint()
-        return (G_new, j+1)
+        G_j = vmap(lambda a, b: jnp.zeros_like(a).at[b].set(a[b]),
+                   (1, 1), 1)(G_new, idx)
+        return (G_j, j+1)
 
 
     init_val = (G0_tilde, 0)
-    G, _ =  while_loop(cond_fun, body_fun, init_val)
-    #d_ii = quad_form(G[idx], A[idx][:, idx])**-0.5
-    return G #d_ii*G
-
-
-#def _G_i_update_fun(k, value):
-#    i, g_i, idx = value
-#    n = A.shape[1]
-#    phi_grad = jnp.where(jnp.arange(n) < i, 2*A[idx].T @ g_i[idx], 0)
-#    idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
-#    #p = cond(jnp.all(Minv == jnp.eye(A.shape[0])),
-#    #         _identity, lambda _: Minv@_, phi_grad)
-#    alpha = -jnp.dot(phi_grad, phi_grad)/quad_form(
-#        phi_grad, A)
-#    alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
-#    g_i_new = g_i + alpha*phi_grad
-#    idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
-#    g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
-#    # below done just in case diag falls out of top_k (?shouldnt happen?) 
-#    g_i = g_i.at[i].set(g_i_new[i])
-#    return (i, g_i, idx)
-
+    G_tildeT, _ =  while_loop(cond_fun, body_fun, init_val)
+    d_ii = (G_tildeT * A(G_tildeT)).sum(0) ** -0.5
+    G_T = d_ii.reshape(1, -1)*G_tildeT
+    return G_T.T
 
 
 def lanczos_tridiag(A, v1, m):
