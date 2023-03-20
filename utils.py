@@ -411,6 +411,68 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv):
     return G
 
 
+#@partial(jit, static_argnames=['dim'])
+def fsai_vec(A, dim, nz_max, num_iter=None, G0=None, Minv=None):
+    # modifying https://jax.readthedocs.io/en/latest/_modules/jax/_src/\
+    #scipy/sparse/linalg.html#cg
+    # Note: assume A is symmetric
+    if G0 == None:
+        G0_tilde = jnp.eye(dim)
+    else:
+        G0_tilde = (1/jnp.einsum('ii->i', G0))[:, None] * G0
+
+    if num_iter is None:
+        size = sum(bi.size for bi in tree_leaves(A))
+        num_iter = 10*size
+
+    if Minv == None:
+        Minv = jnp.eye(dim)
+
+
+    def cond_fun(value):
+        _, j = value
+        return (j < num_iter)
+
+
+    def body_fun(value):
+        G_j, j = value
+        phi_grad = jnp.triu(2*A(G_j), k=1)
+        alpha = -(phi_grad**2).sum(0) / (phi_grad * A(phi_grad)).sum(0)
+        alpha = jnp.where(jnp.isnan(alpha), 0, alpha)
+        G_new = G_j + alpha.reshape(1, -1)*phi_grad
+        idx = vmap(lambda _: naive_top_k(_, nz_max)[1],
+                   in_axes=(1,), out_axes=1)(jnp.abs(G_new))
+        G_j = jnp.zeros_like(G_new)
+        G_j = vmap(lambda a, b: a.at[b].set(G_new[b]), (1, 1), 1)(G_j, idx)
+        jdb.breakpoint()
+        return (G_new, j+1)
+
+
+    init_val = (G0_tilde, 0)
+    G, _ =  while_loop(cond_fun, body_fun, init_val)
+    #d_ii = quad_form(G[idx], A[idx][:, idx])**-0.5
+    return G #d_ii*G
+
+
+#def _G_i_update_fun(k, value):
+#    i, g_i, idx = value
+#    n = A.shape[1]
+#    phi_grad = jnp.where(jnp.arange(n) < i, 2*A[idx].T @ g_i[idx], 0)
+#    idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
+#    #p = cond(jnp.all(Minv == jnp.eye(A.shape[0])),
+#    #         _identity, lambda _: Minv@_, phi_grad)
+#    alpha = -jnp.dot(phi_grad, phi_grad)/quad_form(
+#        phi_grad, A)
+#    alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
+#    g_i_new = g_i + alpha*phi_grad
+#    idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
+#    g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
+#    # below done just in case diag falls out of top_k (?shouldnt happen?) 
+#    g_i = g_i.at[i].set(g_i_new[i])
+#    return (i, g_i, idx)
+
+
+
 def lanczos_tridiag(A, v1, m):
     '''Performs Lanczos tridiagonalization of pos.def. matrix.'''
     def _lanczos_step(carry, x):
@@ -429,53 +491,6 @@ def lanczos_tridiag(A, v1, m):
     T_off = jnp.diag(betas[1:], k=1)
     T = jnp.diag(alphas)+T_off+T_off.T
     return T, V.T
-
-
-def Lanczos2(A, v, m=100):
-    n = len(v)
-    if m>n: m = n;
-    # from here https://en.wikipedia.org/wiki/Lanczos_algorithm
-    V = jnp.zeros((m,n))
-    T = jnp.zeros((m,m))
-    V = V.at[0, :].set(v)
-
-    # step 2.1 - 2.3 in https://en.wikipedia.org/wiki/Lanczos_algorithm
-    w = jnp.dot(A, v)
-    alfa = jnp.dot(w, v)
-    w = w - alfa*V[0, :]
-    T = T.at[0, 0].set(alfa)
-
-    # needs to start the iterations from indices 1
-    for j in range(1, m-1):
-        beta = jnp.sqrt(jnp.dot(w, w))
-
-        V = V.at[j, :].set(w/beta)
-
-        w = jnp.dot(A, V[j, :])
-        alfa = jnp.dot(w, V[j, :])
-        w = w - alfa * V[j, :] - beta*V[j-1, :]
-
-        T = T.at[j,j].set(alfa)
-        T = T.at[j-1, j].set(beta)
-        T = T.at[j, j-1].set(beta)
-    return T, V
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def krylov_subspace_sampling(key, A, v1, m=None):

@@ -63,12 +63,6 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     # scale preconditioner of inverse(cho_factor(K)) with current tau samples
     G = jnp.tile(jnp.sqrt(tau), T)[:, None] * G
 
-    # calculate preconditioner for inverse(cho_factor(A))
-    P = fsai(A, 5, 10, 1e-8, None, None)
-
-    # set up an run mbcg
-    B = K@h.reshape(-1, 1)
-
 
     def A_mvp(x):
         if len(x.shape) == 1:
@@ -81,6 +75,19 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
         return Jinvx + K@x
 
 
+    # calculate preconditioner for inverse(cho_factor(A))
+    P = fsai(A, 5, 10, 1e-8, None, None)
+
+    from utils import fsai_vec
+    P = fsai_vec(A_mvp, K.shape[0], 10, 5, None, None)
+#    pdb.set_trace()
+
+
+    # set up an run mbcg
+    B = K@h.reshape(-1, 1)
+
+
+
     solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=_identity)
     m = vmap(custom_choL_solve)(
         L, solves[:, 0].reshape(L.shape[0], -1)
@@ -90,29 +97,9 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     v1 = v1 / jnp.linalg.norm(v1)
     T_mats2, V = lanczos_tridiag(A_mvp, v1, m=A.shape[0])
 
-
-    from utils import Lanczos2
-    Tt, Vv = Lanczos2(A, v1, m=400)
-
-    pdb.set_trace()
+    y = 1e-20*(T_mats+T_mats2)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    pdb.set_trace()
     # checking with exact
     #J = jnp.matmul(L, L.swapaxes(1, 2))
     #m2 = jnp.linalg.inv(js.linalg.block_diag(*J) +
@@ -181,7 +168,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(n_s_samples, T)), key)
-    return jnp.zeros((0,)), s + lax.stop_gradient(G).sum() + lax.stop_gradient(P).sum()
+    return jnp.zeros((0,)), s + lax.stop_gradient(G).sum() + lax.stop_gradient(P).sum() +y.sum()
                       #Elogpx-KLqpu, s
 
 
