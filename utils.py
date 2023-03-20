@@ -412,7 +412,7 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv):
 
 
 #@partial(jit, static_argnames=['dim'])
-def fsai_vec(A, dim, nz_max, num_iter=None, G0=None, Minv=None):
+def fsai_vec(A_f, dim, nz_max, num_iter=None, G0=None, Minv=None):
     # modifying https://jax.readthedocs.io/en/latest/_modules/jax/_src/\
     #scipy/sparse/linalg.html#cg
     # Note: assume A is symmetric
@@ -420,10 +420,6 @@ def fsai_vec(A, dim, nz_max, num_iter=None, G0=None, Minv=None):
         G0_tilde = jnp.eye(dim)
     else:
         G0_tilde = (1/jnp.einsum('ii->i', G0))[:, None] * G0
-
-    if num_iter is None:
-        size = sum(bi.size for bi in tree_leaves(A))
-        num_iter = 10*size
 
     if Minv == None:
         Minv = jnp.eye(dim)
@@ -436,8 +432,8 @@ def fsai_vec(A, dim, nz_max, num_iter=None, G0=None, Minv=None):
 
     def body_fun(value):
         G_j, j = value
-        phi_grad = jnp.triu(2*A(G_j), k=1)
-        alpha = -(phi_grad**2).sum(0) / (phi_grad * A(phi_grad)).sum(0)
+        phi_grad = jnp.triu(2*A_f(G_j), k=1)
+        alpha = -(phi_grad**2).sum(0) / (phi_grad * A_f(phi_grad)).sum(0)
         alpha = jnp.where(jnp.isnan(alpha), 0, alpha)
         G_new = G_j + alpha.reshape(1, -1)*phi_grad
         idx = vmap(lambda _: naive_top_k(_, nz_max)[1],
@@ -449,7 +445,7 @@ def fsai_vec(A, dim, nz_max, num_iter=None, G0=None, Minv=None):
 
     init_val = (G0_tilde, 0)
     G_tildeT, _ =  while_loop(cond_fun, body_fun, init_val)
-    d_ii = (G_tildeT * A(G_tildeT)).sum(0) ** -0.5
+    d_ii = (G_tildeT * A_f(G_tildeT)).sum(0) ** -0.5
     G_T = d_ii.reshape(1, -1)*G_tildeT
     return G_T.T
 

@@ -31,6 +31,7 @@ from utils import (
     mbcg,
     _identity,
     fsai,
+    fsai_vec,
     lanczos_tridiag
 )
 from util import *
@@ -77,29 +78,14 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
     # calculate preconditioner for inverse(cho_factor(A))
     P = fsai(A, 5, 10, 1e-8, None, None)
-
-    from utils import fsai_vec, naive_top_k
-    P2 = fsai_vec(A_mvp, K.shape[0], 10, 5, None, None)
-    jax_print(jnp.allclose(P, P2))
-    pdb.set_trace()
-
+    #P = fsai_vec(A_mvp, K.shape[0], 10, 5, None, None)
 
     # set up an run mbcg
     B = K@h.reshape(-1, 1)
-
-
-
     solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=_identity)
     m = vmap(custom_choL_solve)(
         L, solves[:, 0].reshape(L.shape[0], -1)
     ).reshape(-1)
-
-    v1 = jr.normal(key, (A.shape[0],))
-    v1 = v1 / jnp.linalg.norm(v1)
-    T_mats2, V = lanczos_tridiag(A_mvp, v1, m=A.shape[0])
-
-    y = 1e-20*(T_mats+T_mats2)
-
 
     # checking with exact
     #J = jnp.matmul(L, L.swapaxes(1, 2))
@@ -169,7 +155,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(n_s_samples, T)), key)
-    return jnp.zeros((0,)), s + lax.stop_gradient(G).sum() + lax.stop_gradient(P).sum() +y.sum()
+    return jnp.zeros((0,)), s +lax.stop_gradient(G).sum()+lax.stop_gradient(P).sum()
                       #Elogpx-KLqpu, s
 
 

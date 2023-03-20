@@ -1,9 +1,9 @@
 import os
-#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
 from matplotlib import projections
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -17,6 +17,8 @@ from sklearn.linear_model import LinearRegression as LR
 
 ###DEBUG##############################
 #config.update('jax_disable_jit', True)
+#config.update('jax_check_tracer_leaks', True)
+#config.update('jax_debug_nans', True) # tricky to use here due to tfp
 ######################################
 
 import jax
@@ -203,4 +205,5 @@ def main():
 
 
 if __name__=="__main__":
+    #with jax.debug_nans(True):
     sys.exit(main())
