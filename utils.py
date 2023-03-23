@@ -1,9 +1,13 @@
 from functools import partial
+from jax.config import config
+config.update("jax_enable_x64", True)
+
 
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as js
 import jax.debug as jdb
+import optax
 
 import numpy as np
 import scipy as sp
@@ -13,7 +17,7 @@ import os
 import cloudpickle
 import pickle
 
-from jax import vmap, jit, device_put, grad, lax
+from jax import vmap, jit, device_put, grad, lax, block_until_ready
 from jax.lax import (
     cond,
     custom_linear_solve,
@@ -370,34 +374,31 @@ def naive_top_k(data, k):
     return values.T, indices.T
 
 
-@partial(jit, static_argnames=['nz_max'])
-def fsai(A, num_iter, nz_max, eps, G0, Minv):
-    if Minv == None:
-        Minv = jnp.eye(A.shape[0])
-
+@partial(jit, static_argnames=['nz_max', 'Minv_f'])
+def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
+    opt = optax.adam(3e-4)
 
     def _G_i_update_fun(k, value):
-        i, g_i, idx = value
+        i, g_i, idx, opt_state = value
         n = A.shape[1]
+
+        jax_print((k, quad_form(g_i, A)))
+
         phi_grad = jnp.where(jnp.arange(n) < i, 2*A[idx].T @ g_i[idx], 0)
-        idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
-        #p = cond(jnp.all(Minv == jnp.eye(A.shape[0])),
-        #         _identity, lambda _: Minv@_, phi_grad)
-        alpha = -jnp.dot(phi_grad, phi_grad)/quad_form(
-            phi_grad, A)
-        alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
-        g_i_new = g_i + alpha*phi_grad
+        g_updates, opt_state = opt.update(phi_grad, opt_state, g_i)
+        g_i_new = optax.apply_updates(g_i, g_updates)
         idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
         g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
         # below done just in case diag falls out of top_k (?shouldnt happen?) 
         g_i = g_i.at[i].set(g_i_new[i])
-        return (i, g_i, idx)
+        return (i, g_i, idx, opt_state)
 
 
     def _calc_G_i(i, G0_i):
         idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
-        init_val = (i, G0_i, idx)
-        i, Gk_i, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
+        opt_state = opt.init(G0_i)
+        init_val = (i, G0_i, idx, opt_state)
+        i, Gk_i, idx, _ = fori_loop(0, num_iter, _G_i_update_fun, init_val)
         d_ii = quad_form(Gk_i[idx], A[idx][:, idx])**-0.5
         return d_ii*Gk_i
 
@@ -407,7 +408,8 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv):
     else:
         G0_tilde = (1/jnp.einsum('ii->i', G0))[:, None] * G0
 
-    G = vmap(_calc_G_i, (0, 0))(jnp.arange(A.shape[0]), G0_tilde)
+#    G = vmap(_calc_G_i)(jnp.arange(A.shape[0])[-1:], G0_tilde[-1:])
+    G = vmap(_calc_G_i)(jnp.arange(A.shape[0]), G0_tilde)
     return G
 
 
@@ -484,9 +486,15 @@ def krylov_subspace_sampling(key, A, v1, m=None):
 
 if __name__ == "__main__":
     key = jr.PRNGKey(8)
-    Q = jr.normal(key, (8, 8))
+    Q = jr.normal(key, (6000, 6000))
     A = Q.T@Q
-    out = vmap(lambda _: krylov_subspace_sampling(_, A, m=8))(
-        jr.split(key, 100000))
+
+    P = fsai(A, 100, 1000, 1e-8, G0=None, Minv_f=_identity)
+    L = js.linalg.cho_factor(A, lower=True)[0]
+    Pt = jnp.linalg.inv(L)
+    print(jit(jnp.linalg.cond)(A))
+    print(jit(jnp.linalg.cond)((P@(A@P.T))))
+
+
     pdb.set_trace()
 

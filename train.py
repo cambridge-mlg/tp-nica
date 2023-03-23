@@ -251,58 +251,58 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                  phi_opt_states_it, pre_cond), key = rngcall(
                     training_step, key, theta, phi_it, theta_opt_state,
                     phi_opt_states_it, x_it, burn_in, pre_cond)
- 
+
                 # update the full variational parameter pytree at right indices
                 phi = tree_map(lambda a, b: a.at[idx_set_it].set(b), phi, phi_it)
                 phi_opt_states = tree_map(lambda a, b: a.at[idx_set_it].set(b),
                                           phi_opt_states, phi_opt_states_it)
 
             # evaluate
-            #s_sample = s_sample.swapaxes(-1, -2)
-            #if args.GP:
-            #    s_sample = s_sample.mean(axis=(1,))
-            #else:
-            #    s_sample = s_sample.mean(axis=(1, 2))
-            #minib_mccs = []
-            #for j in range(minib_size):
-            #    mcc, _, sort_idx = matching_sources_corr(s_sample[j], s_it[j])
-            #    minib_mccs.append(mcc)
-            #minib_avg_mcc = jnp.mean(jnp.array(minib_mccs))
-            #mcc_epoch_hist.append(minib_avg_mcc.item())
-            #elbo_epoch_hist.append(-nvlb.item())
+            s_sample = s_sample.swapaxes(-1, -2)
+            if args.GP:
+                s_sample = s_sample.mean(axis=(1,))
+            else:
+                s_sample = s_sample.mean(axis=(1, 2))
+            minib_mccs = []
+            for j in range(minib_size):
+                mcc, _, sort_idx = matching_sources_corr(s_sample[j], s_it[j])
+                minib_mccs.append(mcc)
+            minib_avg_mcc = jnp.mean(jnp.array(minib_mccs))
+            mcc_epoch_hist.append(minib_avg_mcc.item())
+            elbo_epoch_hist.append(-nvlb.item())
 
-            #print("*Epoch: [{0}/{1}]\t"
-            #      "Minibatch: [{2}/{3}]\t"
-            #      "ELBO: {4:.2f}\t"
-            #      "MCC: {5:.3f}".format(epoch, num_epochs-1, it,
-            #                            num_minibs-1, -nvlb, minib_avg_mcc))
+            print("*Epoch: [{0}/{1}]\t"
+                  "Minibatch: [{2}/{3}]\t"
+                  "ELBO: {4:.2f}\t"
+                  "MCC: {5:.3f}".format(epoch, num_epochs-1, it,
+                                        num_minibs-1, -nvlb, minib_avg_mcc))
 
-            ### plot regularly
-            #if (epoch % args.plot_freq == 0 or args.eval_only) and it == 0:
-            #    plot_idx = 0 # which data sample to plot in each minibatch
-            #    plot_start = 0
-            #    plot_len = min(1000, T)
-            #    plot_end = plot_start+plot_len
+            ## plot regularly
+            if (epoch % args.plot_freq == 0 or args.eval_only) and it == 0:
+                plot_idx = 0 # which data sample to plot in each minibatch
+                plot_start = 0
+                plot_len = min(1000, T)
+                plot_end = plot_start+plot_len
 
-            #    # set plot
-            #    fig, ax = plt.subplots(1, N, figsize=(10 * N, 6), sharex=True)
+                # set plot
+                fig, ax = plt.subplots(1, N, figsize=(10 * N, 6), sharex=True)
 
-            #    # create separate plot for each IC
-            #    for n in range(N):
-            #        s_sample_n = s_sample[plot_idx][sort_idx][n, plot_start:
-            #                                                  plot_end]
-            #        s_it_n = s_it[plot_idx][n, plot_start:plot_end]
-            #        ax[n].clear()
-            #        ax2_n = ax[n].twinx()
-            #        ax[n].plot(s_it_n, color='blue')
-            #        ax[n].set_xlim([plot_start, plot_end])
-            #        ax2_n.plot(s_sample_n, color='red')
-            #    if args.headless:
-            #        plt.savefig("s_vs_sest.png")
-            #    else:
-            #        plt.show(block=False)
-            #        plt.pause(10.)
-            #    plt.close()
+                # create separate plot for each IC
+                for n in range(N):
+                    s_sample_n = s_sample[plot_idx][sort_idx][n, plot_start:
+                                                              plot_end]
+                    s_it_n = s_it[plot_idx][n, plot_start:plot_end]
+                    ax[n].clear()
+                    ax2_n = ax[n].twinx()
+                    ax[n].plot(s_it_n, color='blue')
+                    ax[n].set_xlim([plot_start, plot_end])
+                    ax2_n.plot(s_sample_n, color='red')
+                if args.headless:
+                    plt.savefig("s_vs_sest.png")
+                else:
+                    plt.show(block=False)
+                    plt.pause(10.)
+                plt.close()
 
         toc = time.perf_counter()
         epoch_avg_mcc = jnp.mean(jnp.array(mcc_epoch_hist))

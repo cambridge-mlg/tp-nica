@@ -77,22 +77,54 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
 
     # calculate preconditioner for inverse(cho_factor(A))
-    P = fsai(A, 5, 10, 1e-8, None, None)
-    #P = fsai_vec(A_mvp, K.shape[0], 10, 5, None, None)
+    #P = fsai(A, 10, 100, 1e-8, None, _identity)
+    #M_mvp = lambda _: jnp.matmul(P0.T, jnp.matmul(P0, _))
+    #P = fsai(A, 10, 100, 1e-8, P0, M_mvp)
+    #c2 = jnp.linalg.cond(P@A@P.T)
+    #cc = jnp.linalg.cond(A)
+    #jdb.breakpoint()
+    #zz = vmap(lambda _: quad_form(_, A))(P)
 
-    # set up an run mbcg
-    B = K@h.reshape(-1, 1)
-    solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=_identity)
-    m = vmap(custom_choL_solve)(
-        L, solves[:, 0].reshape(L.shape[0], -1)
-    ).reshape(-1)
 
-    # checking with exact
+
+    #co = jnp.linalg.cond(A)
+    #co2 = jnp.linalg.cond(M_mvp(A))
+    #ev = jnp.linalg.cond(A)
+    #ev2 = jnp.linalg.cond(P@A@P.T)
+    #jdb.breakpoint()
+
+    ## set up an run mbcg
+    #B = K@h.reshape(-1, 1)
+    #solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=_identity)
+    #solves2, T_mats2 = mbcg(A_mvp, B, maxiter=max_cg_iters, M=M_mvp)
+    #solves3, T_mats3 = mbcg(A_mvp, B, maxiter=max_cg_iters, M=_identity)
+
+
+
+    #m = vmap(custom_choL_solve)(
+    #    L, solves[:, 0].reshape(L.shape[0], -1)
+    #).reshape(-1)
+
+    #m2 = vmap(custom_choL_solve)(
+    #    L, solves2[:, 0].reshape(L.shape[0], -1)
+    #).reshape(-1)
+
+
+    ## checking with exact
     #J = jnp.matmul(L, L.swapaxes(1, 2))
-    #m2 = jnp.linalg.inv(js.linalg.block_diag(*J) +
+    #m3 = jnp.linalg.inv(js.linalg.block_diag(*J) +
     #                    jnp.linalg.inv(K))@h.reshape(-1)
+
+    #jax_print(jnp.corrcoef(m, m3))
+    #jax_print(jnp.ones(5))
+    #jax_print(jnp.corrcoef(m2, m3))
+
+
+
+    #jdb.breakpoint()
     #jax_print(jnp.allclose(m, m2))
     #pdb.set_trace()
+
     # sample probe vectors with preconditioner covariance 
 #    key, zk_key, zl_key = jr.split(key, 3)
 #    z_K = P_K_lower @ jr.normal(zk_key, (P_K_lower.shape[1], n_probe_vecs))
@@ -155,7 +187,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(n_s_samples, T)), key)
-    return jnp.zeros((0,)), s +lax.stop_gradient(G).sum()+lax.stop_gradient(P).sum()
+    return jnp.zeros((0,)), s +lax.stop_gradient(G).sum()#+lax.stop_gradient(P).sum()
                       #Elogpx-KLqpu, s
 
 
@@ -264,8 +296,8 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     # calculate unscaled kernel (same for all samples in batch)
     # and update unscaled preconditioner
     K = K_TN_blocks(t, t, cov_fn, theta_cov, 1.)
-    precond = fsai(K.swapaxes(1, 2).reshape(N*T, N*T), 2, 100, 1e-8,
-                   precond, None)
+    precond = fsai(K.swapaxes(1, 2).reshape(N*T, N*T), 200, 100, 1e-8,
+                   None, lambda _: precond.T@(precond@_))
 
     # compute elbo
     vlb, s = vmap(elbo_fn, (0, None, 0, None, None, 0, None, None, None, None))(
