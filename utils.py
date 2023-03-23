@@ -374,16 +374,14 @@ def naive_top_k(data, k):
     return values.T, indices.T
 
 
-@partial(jit, static_argnames=['nz_max', 'Minv_f'])
+#@partial(jit, static_argnames=['nz_max', 'Minv_f'])
 def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
-    opt = optax.adam(3e-4)
+    opt = optax.adam(3e-3)
+
 
     def _G_i_update_fun(k, value):
         i, g_i, idx, opt_state = value
         n = A.shape[1]
-
-        jax_print((k, quad_form(g_i, A)))
-
         phi_grad = jnp.where(jnp.arange(n) < i, 2*A[idx].T @ g_i[idx], 0)
         g_updates, opt_state = opt.update(phi_grad, opt_state, g_i)
         g_i_new = optax.apply_updates(g_i, g_updates)
@@ -408,7 +406,6 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
     else:
         G0_tilde = (1/jnp.einsum('ii->i', G0))[:, None] * G0
 
-#    G = vmap(_calc_G_i)(jnp.arange(A.shape[0])[-1:], G0_tilde[-1:])
     G = vmap(_calc_G_i)(jnp.arange(A.shape[0]), G0_tilde)
     return G
 
