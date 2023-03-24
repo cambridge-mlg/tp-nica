@@ -382,9 +382,9 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
         n = A.shape[1]
         grad = 2*A[idx].T @ g_i[idx]
         phi_grad = jnp.where(jnp.arange(n) < i, grad, 0)
-        #idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
+        idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
         p = Minv_f(phi_grad)
-        alpha = -jnp.dot(p, grad/2)/quad_form(p, A)
+        alpha = -jnp.dot(p[idx], grad[idx]/2)/quad_form(p[idx], A[idx][:, idx])
         alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
         g_i_new = g_i + alpha*phi_grad
         idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]

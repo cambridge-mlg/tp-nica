@@ -76,21 +76,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
 
     # calculate preconditioner for inverse(cho_factor(A))
-    #P = fsai(A, 10, 100, 1e-8, None, _identity)
-    #M_mvp = lambda _: jnp.matmul(P0.T, jnp.matmul(P0, _))
-    #P = fsai(A, 10, 100, 1e-8, P0, M_mvp)
-    #c2 = jnp.linalg.cond(P@A@P.T)
-    #cc = jnp.linalg.cond(A)
-    #jdb.breakpoint()
-    #zz = vmap(lambda _: quad_form(_, A))(P)
-
-
-
-    #co = jnp.linalg.cond(A)
-    #co2 = jnp.linalg.cond(M_mvp(A))
-    #ev = jnp.linalg.cond(A)
-    #ev2 = jnp.linalg.cond(P@A@P.T)
-    #jdb.breakpoint()
+    P = fsai(A, 10, 100, 1e-8, None, _identity)
 
     ## set up an run mbcg
     #B = K@h.reshape(-1, 1)
@@ -186,7 +172,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(n_s_samples, T)), key)
-    return jnp.zeros((0,)), s +lax.stop_gradient(G).sum()#+lax.stop_gradient(P).sum()
+    return jnp.zeros((0,)), s +lax.stop_gradient(G).sum()+lax.stop_gradient(P).sum()
                       #Elogpx-KLqpu, s
 
 
@@ -297,9 +283,6 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     K = K_TN_blocks(t, t, cov_fn, theta_cov, 1.)
     precond = fsai(K.swapaxes(1, 2).reshape(N*T, N*T), 2, 100, 1e-8,
                    precond, _identity)
-
-    jax_print(jnp.linalg.cond(K.swapaxes(1, 2).reshape(N*T, N*T)))
-    jax_print(jnp.linalg.cond(precond@K.swapaxes(1, 2).reshape(N*T, N*T)@precond.T))
 
     # compute elbo
     vlb, s = vmap(elbo_fn, (0, None, 0, None, None, 0, None, None, None, None))(
