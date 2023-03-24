@@ -31,6 +31,7 @@ from utils import (
     mbcg,
     _identity,
     fsai,
+    fsai2,
     lanczos_tridiag
 )
 from util import *
@@ -76,38 +77,28 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
 
     # calculate preconditioner for inverse(cho_factor(A))
-    P = fsai(A, 10, 100, 1e-8, None, _identity)
+    P = fsai(A, 5, 10, 1e-8, None, _identity)
+    Minv_mvp = lambda b: jnp.matmul(P.T, jnp.matmul(P, b))
 
     ## set up an run mbcg
-    #B = K@h.reshape(-1, 1)
-    #solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=_identity)
-    #solves2, T_mats2 = mbcg(A_mvp, B, maxiter=max_cg_iters, M=M_mvp)
-    #solves3, T_mats3 = mbcg(A_mvp, B, maxiter=max_cg_iters, M=_identity)
+    B = K@h.reshape(-1, 1)
+    solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=Minv_mvp)
+
+    # compute vlb terms
+    m = vmap(custom_choL_solve)(
+        L, solves2[:, 0].reshape(L.shape[0], -1)
+    ).reshape(-1)
 
 
-
-    #m = vmap(custom_choL_solve)(
-    #    L, solves[:, 0].reshape(L.shape[0], -1)
-    #).reshape(-1)
-
-    #m2 = vmap(custom_choL_solve)(
-    #    L, solves2[:, 0].reshape(L.shape[0], -1)
-    #).reshape(-1)
+    # checking with exact
+    J = jnp.matmul(L, L.swapaxes(1, 2))
+    m = jnp.linalg.solve(js.linalg.block_diag(*J) + jnp.linalg.inv(K),
+                         h.reshape(-1))
 
 
-    ## checking with exact
-    #J = jnp.matmul(L, L.swapaxes(1, 2))
-    #m3 = jnp.linalg.inv(js.linalg.block_diag(*J) +
-    #                    jnp.linalg.inv(K))@h.reshape(-1)
-
-    #jax_print(jnp.corrcoef(m, m3))
-    #jax_print(jnp.ones(5))
-    #jax_print(jnp.corrcoef(m2, m3))
-
-
-
-    #jdb.breakpoint()
-    #jax_print(jnp.allclose(m, m2))
+    import scipy as sp
+    import numpy as np
+    jdb.breakpoint()
     #pdb.set_trace()
 
     # sample probe vectors with preconditioner covariance 

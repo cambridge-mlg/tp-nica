@@ -373,8 +373,48 @@ def naive_top_k(data, k):
     data, (values, indices) = scan(scannable_top_1, data, (), k)
     return values.T, indices.T
 
+@partial(jit, static_argnames=['nz_max'])
+def fsai2(A, num_iter, nz_max, eps, G0, Minv):
+    if Minv == None:
+        Minv = jnp.eye(A.shape[0])
 
-@partial(jit, static_argnames=['nz_max', 'Minv_f'])
+
+    def _G_i_update_fun(k, value):
+        i, g_i, idx = value
+        n = A.shape[1]
+        phi_grad = jnp.where(jnp.arange(n) < i, 2*A[idx].T @ g_i[idx], 0)
+        idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
+        #p = cond(jnp.all(Minv == jnp.eye(A.shape[0])),
+        #         _identity, lambda _: Minv@_, phi_grad)
+        alpha = -jnp.dot(phi_grad[idx], phi_grad[idx])/quad_form(
+            phi_grad[idx], A[idx][:, idx])
+        alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
+        g_i_new = g_i + alpha*phi_grad
+        idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
+        g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
+        # below done just in case diag falls out of top_k (?shouldnt happen?) 
+        g_i = g_i.at[i].set(g_i_new[i])
+        return (i, g_i, idx)
+
+
+    def _calc_G_i(i, G0_i):
+        idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
+        init_val = (i, G0_i, idx)
+        i, Gk_i, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
+        d_ii = quad_form(Gk_i[idx], A[idx][:, idx])**-0.5
+        return d_ii*Gk_i
+
+
+    if G0 == None:
+        G0_tilde = jnp.eye(A.shape[0])
+    else:
+        G0_tilde = (1/jnp.einsum('ii->i', G0))[:, None] * G0
+
+    G = vmap(_calc_G_i, (0, 0))(jnp.arange(A.shape[0]), G0_tilde)
+    return G
+
+
+#@partial(jit, static_argnames=['nz_max', 'Minv_f'])
 def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
 
     def _G_i_update_fun(k, value):
