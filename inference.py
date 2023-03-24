@@ -31,7 +31,6 @@ from utils import (
     mbcg,
     _identity,
     fsai,
-    fsai_vec,
     lanczos_tridiag
 )
 from util import *
@@ -296,8 +295,11 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     # calculate unscaled kernel (same for all samples in batch)
     # and update unscaled preconditioner
     K = K_TN_blocks(t, t, cov_fn, theta_cov, 1.)
-    precond = fsai(K.swapaxes(1, 2).reshape(N*T, N*T), 200, 100, 1e-8,
-                   None, lambda _: precond.T@(precond@_))
+    precond = fsai(K.swapaxes(1, 2).reshape(N*T, N*T), 2, 100, 1e-8,
+                   precond, _identity)
+
+    jax_print(jnp.linalg.cond(K.swapaxes(1, 2).reshape(N*T, N*T)))
+    jax_print(jnp.linalg.cond(precond@K.swapaxes(1, 2).reshape(N*T, N*T)@precond.T))
 
     # compute elbo
     vlb, s = vmap(elbo_fn, (0, None, 0, None, None, 0, None, None, None, None))(

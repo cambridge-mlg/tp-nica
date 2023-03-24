@@ -407,7 +407,7 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
     else:
         G0_tilde = (1/jnp.einsum('ii->i', G0))[:, None] * G0
 
-    G = vmap(_calc_G_i, (0, 0))(jnp.arange(A.shape[0]), G0_tilde)
+    G = vmap(_calc_G_i)(jnp.arange(A.shape[0]), G0_tilde)
     return G
 
 
