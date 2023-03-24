@@ -374,29 +374,30 @@ def naive_top_k(data, k):
     return values.T, indices.T
 
 
-#@partial(jit, static_argnames=['nz_max', 'Minv_f'])
+@partial(jit, static_argnames=['nz_max', 'Minv_f'])
 def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
-    opt = optax.adam(3e-3)
-
 
     def _G_i_update_fun(k, value):
-        i, g_i, idx, opt_state = value
+        i, g_i, idx = value
         n = A.shape[1]
-        phi_grad = jnp.where(jnp.arange(n) < i, 2*A[idx].T @ g_i[idx], 0)
-        g_updates, opt_state = opt.update(phi_grad, opt_state, g_i)
-        g_i_new = optax.apply_updates(g_i, g_updates)
+        grad = 2*A[idx].T @ g_i[idx]
+        phi_grad = jnp.where(jnp.arange(n) < i, grad, 0)
+        #idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
+        p = Minv_f(phi_grad)
+        alpha = -jnp.dot(p, grad/2)/quad_form(p, A)
+        alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
+        g_i_new = g_i + alpha*phi_grad
         idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
         g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
         # below done just in case diag falls out of top_k (?shouldnt happen?) 
         g_i = g_i.at[i].set(g_i_new[i])
-        return (i, g_i, idx, opt_state)
+        return (i, g_i, idx)
 
 
     def _calc_G_i(i, G0_i):
         idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
-        opt_state = opt.init(G0_i)
-        init_val = (i, G0_i, idx, opt_state)
-        i, Gk_i, idx, _ = fori_loop(0, num_iter, _G_i_update_fun, init_val)
+        init_val = (i, G0_i, idx)
+        i, Gk_i, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
         d_ii = quad_form(Gk_i[idx], A[idx][:, idx])**-0.5
         return d_ii*Gk_i
 
@@ -406,47 +407,8 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
     else:
         G0_tilde = (1/jnp.einsum('ii->i', G0))[:, None] * G0
 
-    G = vmap(_calc_G_i)(jnp.arange(A.shape[0]), G0_tilde)
+    G = vmap(_calc_G_i, (0, 0))(jnp.arange(A.shape[0]), G0_tilde)
     return G
-
-
-#@partial(jit, static_argnames=['dim'])
-def fsai_vec(A_f, dim, nz_max, num_iter=None, G0=None, Minv=None):
-    # modifying https://jax.readthedocs.io/en/latest/_modules/jax/_src/\
-    #scipy/sparse/linalg.html#cg
-    # Note: assume A is symmetric
-    if G0 == None:
-        G0_tilde = jnp.eye(dim)
-    else:
-        G0_tilde = (1/jnp.einsum('ii->i', G0))[:, None] * G0
-
-    if Minv == None:
-        Minv = jnp.eye(dim)
-
-
-    def cond_fun(value):
-        _, j = value
-        return (j < num_iter)
-
-
-    def body_fun(value):
-        G_j, j = value
-        phi_grad = jnp.triu(2*A_f(G_j), k=1)
-        alpha = -(phi_grad**2).sum(0) / (phi_grad * A_f(phi_grad)).sum(0)
-        alpha = jnp.where(jnp.isnan(alpha), 0, alpha)
-        G_new = G_j + alpha.reshape(1, -1)*phi_grad
-        idx = vmap(lambda _: naive_top_k(_, nz_max)[1],
-                   in_axes=(1,), out_axes=1)(jnp.abs(G_new))
-        G_j = vmap(lambda a, b: jnp.zeros_like(a).at[b].set(a[b]),
-                   (1, 1), 1)(G_new, idx)
-        return (G_j, j+1)
-
-
-    init_val = (G0_tilde, 0)
-    G_tildeT, _ =  while_loop(cond_fun, body_fun, init_val)
-    d_ii = (G_tildeT * A_f(G_tildeT)).sum(0) ** -0.5
-    G_T = d_ii.reshape(1, -1)*G_tildeT
-    return G_T.T
 
 
 def lanczos_tridiag(A, v1, m):
@@ -486,7 +448,7 @@ if __name__ == "__main__":
     Q = jr.normal(key, (6000, 6000))
     A = Q.T@Q
 
-    P = fsai(A, 100, 1000, 1e-8, G0=None, Minv_f=_identity)
+    P = fsai_og(A, 100, 100, 1e-8, G0=None, Minv_f=_identity)
     L = js.linalg.cho_factor(A, lower=True)[0]
     Pt = jnp.linalg.inv(L)
     print(jit(jnp.linalg.cond)(A))
