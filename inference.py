@@ -31,7 +31,6 @@ from utils import (
     mbcg,
     _identity,
     fsai,
-    fsai2,
     lanczos_tridiag
 )
 from util import *
@@ -79,26 +78,46 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     # calculate preconditioner for inverse(cho_factor(A))
     P = fsai(A, 5, 10, 1e-8, None, _identity)
     Minv_mvp = lambda b: jnp.matmul(P.T, jnp.matmul(P, b))
+    A_mvp2 = lambda _: P@A_mvp(P.T@_)
 
-    ## set up an run mbcg
-    B = K@h.reshape(-1, 1)
-    solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=Minv_mvp)
+    # set up an run mbcg
+    key, key_z = jr.split(key)
+    Z = jr.normal(key_z, shape=(N*T, n_probe_vecs))
+    Z_tilde = custom_tril_solve(P, Z)
+    B = jnp.hstack((K@h.reshape(-1, 1), Z_tilde))
+    #solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=Minv_mvp)
+    solves, T_mats = mbcg(A_mvp2, P@B, maxiter=max_cg_iters, M=None)
+    solves = P.T@solves
 
-    # compute vlb terms
+    # compute m 
     m = vmap(custom_choL_solve)(
-        L, solves2[:, 0].reshape(L.shape[0], -1)
+        L, solves[:, 0].reshape(L.shape[0], -1)
     ).reshape(-1)
 
+    # compute logdet approximation
+    ew, eV = jnp.linalg.eigh(T_mats[1:])
+    logdet_A_tilde = N*T * (jnp.log(ew) * eV[:, 0, :]**2).sum(1).mean()
+    logdet_A = logdet_A_tilde - 2*jnp.log(jnp.diag(P)).sum()
 
-    # checking with exact
-    J = jnp.matmul(L, L.swapaxes(1, 2))
-    m = jnp.linalg.solve(js.linalg.block_diag(*J) + jnp.linalg.inv(K),
-                         h.reshape(-1))
+    # compute trace approximation
+    ste = vmap(jnp.dot, (1, 1))(solves[:, 1:], K@(P.T@(P@Z_tilde))).mean()
 
-
-    import scipy as sp
     import numpy as np
     jdb.breakpoint()
+
+    ## checking with exact
+    #J = jnp.matmul(L, L.swapaxes(1, 2))
+    #m_ex = jnp.linalg.solve(js.linalg.block_diag(*J) + jnp.linalg.inv(K),
+    #                        h.reshape(-1))
+    #jax_print(m)
+    #jax_print(m_ex)
+
+    # np.trace(np.linalg.inv(A)@K)
+
+
+    #import scipy as sp
+    #import numpy as np
+    #jdb.breakpoint()
     #pdb.set_trace()
 
     # sample probe vectors with preconditioner covariance 
@@ -163,7 +182,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
     s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
                 jnp.eye(N), shape=(n_s_samples, T)), key)
-    return jnp.zeros((0,)), s +lax.stop_gradient(G).sum()+lax.stop_gradient(P).sum()
+    return jnp.zeros((0,)), s+lax.stop_gradient(G).sum()+lax.stop_gradient(P).sum()+m.sum()+T_mats.sum()
                       #Elogpx-KLqpu, s
 
 
