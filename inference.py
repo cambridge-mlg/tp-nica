@@ -104,9 +104,10 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
         L, solves[:, 0].reshape(L.shape[0], -1)
     )
 
-    # solve for sample
-    s = vmap(lambda x: vmap(custom_choL_solve)(L, x.reshape(T, N)), in_axes=1)(
+    # solve for sample and add mean
+    s_zero = vmap(lambda x: vmap(custom_choL_solve)(L, x.reshape(T, N)), in_axes=1)(
         solves[:, 1:n_s_samples+1])
+    s = m[None] + s_zero
 
     # compute logdet approximation
     ew, eV = jnp.linalg.eigh(T_mats[n_s_samples+1:])
@@ -120,10 +121,10 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
                                 K@(P.T@(P@Z_tilde))).mean()
 
 
-
-    #Elogpx = jnp.mean(
-    #    jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
-    #)
+    # compute vlb
+    Elogpx = jnp.mean(
+        jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
+    )
 
 
     ## checking with exact
