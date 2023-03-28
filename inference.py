@@ -114,102 +114,34 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     logdet_A_tilde = N*T * (jnp.log(ew) * eV[:, 0, :]**2).sum(1).mean()
     logdet_A = logdet_A_tilde - 2*jnp.log(jnp.diag(P)).sum()
     logdet_J = 2*jnp.log(jnp.einsum('ijj->ij', L)).sum()
-    logdet = logdet_A + logdet_J
+    logdet = -logdet_A-logdet_J
 
     # compute trace approximation
     ste = vmap(jnp.dot, (1, 1))(solves[:, n_s_samples+1:],
                                 K@(P.T@(P@Z_tilde))).mean()
+
+    # compute mJm
+    Lm = vmap(jnp.matmul)(L.swapaxes(1, 2), m)
+    mJm = (Lm**2).sum()
 
 
     # compute vlb
     Elogpx = jnp.mean(
         jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
     )
+    KL = 0.5*((h*m).sum()-mJm-ste-logdet)
+    vlb = Elogpx - KL
 
 
     ## checking with exact
     J = js.linalg.block_diag(*jnp.matmul(L, L.swapaxes(1, 2)))
+    kl_exact =-0.5*jnp.mean(vmap(lambda x: x.reshape(-1)@(J@x.reshape(-1)))(s))+\
+            0.5*jnp.dot(h.reshape(-1), m.reshape(-1))-0.5*jnp.linalg.slogdet(
+                jnp.linalg.inv(J)@jnp.linalg.inv(A))[1]
     import numpy as np
     jdb.breakpoint()
 
-    #m_ex = jnp.linalg.solve(J + jnp.linalg.inv(K),
-    #                        h.reshape(-1))
-    #jax_print(m)
-    #jax_print(m_ex)
-
-    # np.trace(np.linalg.inv(A)@K)
-
-
-    #import scipy as sp
-    #import numpy as np
-    #jdb.breakpoint()
-    #pdb.set_trace()
-
-    # sample probe vectors with preconditioner covariance 
-#    key, zk_key, zl_key = jr.split(key, 3)
-#    z_K = P_K_lower @ jr.normal(zk_key, (P_K_lower.shape[1], n_probe_vecs))
-#    z_Linv = W_inv.swapaxes(1, 2) @ jr.normal(zl_key, (T, W_inv.shape[1],
-#                                                       n_probe_vecs))
-#    z = z_K + z_Linv.reshape(-1, n_probe_vecs)
-#    z = z / jnp.linalg.norm(z, 2, axis=0, keepdims=True)
-#
-
-#
-#    # compute quadratic form term of normalizer
-#    JinvKm = solves[:, 0]
-#    Linvm = vmap(jnp.matmul)(Linv, m).reshape(-1)
-#    quad_term = 0.5 * Linvm@JinvKm
-#
-#    ## compute logdet terms of normalizer
-#    ew, eV = jnp.linalg.eigh(Ts)
-#    E_tr_delta_log = N*T * jnp.sum(jnp.log(ew) * eV[:, 0, :]**2, 1).mean()
-#    logdet_P_K = jnp.linalg.slogdet(LtWWtL+jnp.eye(LtWWtL.shape[0]))[1]
-#    logdet = -0.5*logdet_P_K-0.5*E_tr_delta_log
-
-    #A_inv = jnp.linalg.inv(jnp.linalg.inv(K)+J)
-#    logZ = 0.5*h.T@A_inv@h + 0.5*jnp.linalg.slogdet(A_inv)[1] - \
-#        0.5*jnp.linalg.slogdet(K)[1]
-
-    # set preconditioners and func to calculate its inverse matrix product
-    #    #
-    # run mbcg
-    #A_fun = partial(jnp.matmul, K_Jinv)
-    #logZ2 = 0.5*(h.T@Jinv)@jnp.linalg.inv(Jinv+K)@(K@h) - 0.5*jnp.linalg.slogdet(
-    #    Jinv+K)[1] + 0.5*jnp.linalg.slogdet(Jinv)[1]
-
-#    jax_print(logZ)
-    #jax_print(logZ2)
-
-
-    #WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
-    #L = js.linalg.block_diag(*jnp.moveaxis(
-    #  jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
-    #LK = L@Kuu
-    #lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
-    #KyyWTy = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
-    #mu_s = Ksu @ KyyWTy
-    #cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
-    #cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
-    #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    #s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
-    #    cov_s, shape=(nsamples, T)), rng)
-
-    ## compute E_{\tilde{q(s|tau)}}[log_p(x_t|s_t)]
-    #Elogpx = jnp.mean(
-    #    jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
-    #)
-
-    ## compute KL[q(u)|p(u)]
-    #tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
-    #h = Kuu@KyyWTy
-    #logZ = 0.5*(jnp.dot(WTy.squeeze(), h)
-    #            -jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
-    #KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
-    s, _ = rngcall(lambda _: jr.multivariate_normal(_, jnp.zeros((T, N)),
-                jnp.eye(N), shape=(n_s_samples, T)), key)
-    return jnp.zeros((0,)), s+lax.stop_gradient(G).sum()+lax.stop_gradient(P).sum()+m.sum()+T_mats.sum()
-                      #Elogpx-KLqpu, s
-
+    return vlb, s
 
 # compute elbo estimate, assumes q(tau) is gamma
 def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples, K, G):
