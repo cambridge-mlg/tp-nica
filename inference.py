@@ -70,7 +70,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     K_mvp = lambda _: G@(K@(G.T@_))
     u0 = Z.T[-n_s_samples:].reshape(-1, T, N)
     u0 = vmap(vmap(jnp.matmul), (None, 0))(L, u0)
-    u1 = vmap(lambda _: krylov_subspace_sampling(K_mvp, _, 600),
+    u1 = vmap(lambda _: krylov_subspace_sampling(K_mvp, _, 10),
               in_axes=1, out_axes=1)(Z[:, :n_s_samples])
     u1 = (G.T@u1).T.reshape(-1, T, N)
     u = (u0+u1).reshape(n_s_samples, -1).T
@@ -88,7 +88,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
 
     # calculate preconditioner for inverse(cho_factor(A))
-    P = fsai(A, 5, 10, 1e-8, None, _identity)
+    P = lax.stop_gradient(fsai(A, 5, 10, 1e-8, None, _identity))
     Minv_mvp = lambda b: jnp.matmul(P.T, jnp.matmul(P, b))
     A_mvp2 = lambda _: P@A_mvp(P.T@_)
 
@@ -124,24 +124,14 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     Lm = vmap(jnp.matmul)(L.swapaxes(1, 2), m)
     mJm = (Lm**2).sum()
 
-
     # compute vlb
     Elogpx = jnp.mean(
         jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
     )
     KL = 0.5*((h*m).sum()-mJm-ste-logdet)
-    vlb = Elogpx - KL
+    vlb_s = Elogpx - KL
+    return vlb_s, s
 
-
-    ## checking with exact
-    J = js.linalg.block_diag(*jnp.matmul(L, L.swapaxes(1, 2)))
-    kl_exact =-0.5*jnp.mean(vmap(lambda x: x.reshape(-1)@(J@x.reshape(-1)))(s))+\
-            0.5*jnp.dot(h.reshape(-1), m.reshape(-1))-0.5*jnp.linalg.slogdet(
-                jnp.linalg.inv(J)@jnp.linalg.inv(A))[1]
-    import numpy as np
-    jdb.breakpoint()
-
-    return vlb, s
 
 # compute elbo estimate, assumes q(tau) is gamma
 def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples, K, G):
@@ -248,8 +238,8 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     # calculate unscaled kernel (same for all samples in batch)
     # and update unscaled preconditioner
     K = K_TN_blocks(t, t, cov_fn, theta_cov, 1.)
-    precond = fsai(K.swapaxes(1, 2).reshape(N*T, N*T), 500, 100, 1e-8,
-                   precond, _identity)
+    precond = lax.stop_gradient(fsai(K.swapaxes(1, 2).reshape(N*T, N*T), 2, 10, 1e-8,
+                   precond, _identity))
 
     # compute elbo
     vlb, s = vmap(elbo_fn, (0, None, 0, None, None, 0, None, None, None, None))(
