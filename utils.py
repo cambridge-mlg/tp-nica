@@ -431,15 +431,15 @@ def lanczos_tridiag(A, v1, m):
     return T, V.T
 
 
-def krylov_subspace_sampling(key, A, v1, m=None):
+def krylov_subspace_sampling(A, v1, m=None):
     ''' Samples N(0, inv(A))'''
-    #v1 = jr.normal(key, (d,))
+    import numpy as np
     b = jnp.linalg.norm(v1)
     v1 = v1 / b
     T, V = lanczos_tridiag(A, v1, m)
     ew, eV = jnp.linalg.eigh(T)
-    T_neg_sqrt = eV @ (jnp.diag(ew**-0.5) @ jnp.linalg.inv(eV))
-    return b*(V@ T_neg_sqrt[:, 0])
+    T_neg_sqrt_v1 = eV @ ((ew**-0.5)*eV[0])
+    return b*(V @ T_neg_sqrt_v1)
 
 
 

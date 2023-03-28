@@ -31,6 +31,7 @@ from utils import (
     mbcg,
     _identity,
     fsai,
+    krylov_subspace_sampling,
     lanczos_tridiag
 )
 from util import *
@@ -63,6 +64,17 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     # scale preconditioner of inverse(cho_factor(K)) with current tau samples
     G = jnp.tile(jnp.sqrt(tau), T)[:, None] * G
 
+    # set up sampling
+    key, key_z = jr.split(key)
+    Z = jr.normal(key_z, shape=(N*T, n_probe_vecs))
+    K_mvp = lambda _: G@(K@(G.T@_))
+    u0 = Z.T[-n_s_samples:].reshape(-1, T, N)
+    u0 = vmap(vmap(jnp.matmul), (None, 0))(L, u0)
+    u1 = vmap(lambda _: krylov_subspace_sampling(K_mvp, _, 600),
+              in_axes=1, out_axes=1)(Z[:, :n_s_samples])
+    u1 = (G.T@u1).T.reshape(-1, T, N)
+    u = (u0+u1).reshape(n_s_samples, -1).T
+
 
     def A_mvp(x):
         if len(x.shape) == 1:
@@ -81,10 +93,8 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     A_mvp2 = lambda _: P@A_mvp(P.T@_)
 
     # set up an run mbcg
-    key, key_z = jr.split(key)
-    Z = jr.normal(key_z, shape=(N*T, n_probe_vecs))
     Z_tilde = custom_tril_solve(P, Z)
-    B = jnp.hstack((K@h.reshape(-1, 1), Z_tilde))
+    B = jnp.hstack((K@h.reshape(-1, 1), K@u, Z_tilde))
     #solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=Minv_mvp)
     solves, T_mats = mbcg(A_mvp2, P@B, maxiter=max_cg_iters, M=None)
     solves = P.T@solves
@@ -92,22 +102,36 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     # compute m 
     m = vmap(custom_choL_solve)(
         L, solves[:, 0].reshape(L.shape[0], -1)
-    ).reshape(-1)
+    )
+
+    # solve for sample
+    s = vmap(lambda x: vmap(custom_choL_solve)(L, x.reshape(T, N)), in_axes=1)(
+        solves[:, 1:n_s_samples+1])
 
     # compute logdet approximation
-    ew, eV = jnp.linalg.eigh(T_mats[1:])
+    ew, eV = jnp.linalg.eigh(T_mats[n_s_samples+1:])
     logdet_A_tilde = N*T * (jnp.log(ew) * eV[:, 0, :]**2).sum(1).mean()
     logdet_A = logdet_A_tilde - 2*jnp.log(jnp.diag(P)).sum()
+    logdet_J = 2*jnp.log(jnp.einsum('ijj->ij', L)).sum()
+    logdet = logdet_A + logdet_J
 
     # compute trace approximation
-    ste = vmap(jnp.dot, (1, 1))(solves[:, 1:], K@(P.T@(P@Z_tilde))).mean()
+    ste = vmap(jnp.dot, (1, 1))(solves[:, n_s_samples+1:],
+                                K@(P.T@(P@Z_tilde))).mean()
 
+
+
+    #Elogpx = jnp.mean(
+    #    jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
+    #)
+
+
+    ## checking with exact
+    J = js.linalg.block_diag(*jnp.matmul(L, L.swapaxes(1, 2)))
     import numpy as np
     jdb.breakpoint()
 
-    ## checking with exact
-    #J = jnp.matmul(L, L.swapaxes(1, 2))
-    #m_ex = jnp.linalg.solve(js.linalg.block_diag(*J) + jnp.linalg.inv(K),
+    #m_ex = jnp.linalg.solve(J + jnp.linalg.inv(K),
     #                        h.reshape(-1))
     #jax_print(m)
     #jax_print(m_ex)
@@ -291,7 +315,7 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     # calculate unscaled kernel (same for all samples in batch)
     # and update unscaled preconditioner
     K = K_TN_blocks(t, t, cov_fn, theta_cov, 1.)
-    precond = fsai(K.swapaxes(1, 2).reshape(N*T, N*T), 2, 100, 1e-8,
+    precond = fsai(K.swapaxes(1, 2).reshape(N*T, N*T), 500, 100, 1e-8,
                    precond, _identity)
 
     # compute elbo
