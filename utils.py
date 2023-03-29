@@ -376,28 +376,32 @@ def naive_top_k(data, k):
 
 #@partial(jit, static_argnames=['nz_max', 'Minv_f'])
 def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
+    n = A.shape[1]
 
     def _G_i_update_fun(k, value):
-        i, g_i, idx = value
-        n = A.shape[1]
-        grad = 2*A[idx].T @ g_i[idx]
-        phi_grad = jnp.where(jnp.arange(n) < i, grad, 0)
+        i, g_i, phi_grad, r, idx = value 
         idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
         p = Minv_f(phi_grad)
-        alpha = -jnp.dot(p[idx], grad[idx]/2)/quad_form(p[idx], A[idx][:, idx])
+        alpha = -jnp.dot(p[idx], phi_grad[idx]/2)/jnp.dot(p[idx], r[idx])
         alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
-        g_i_new = g_i + alpha*phi_grad
+        g_i_new = g_i + alpha*p
         idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
         g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
         # below done just in case diag falls out of top_k (?shouldnt happen?) 
         g_i = g_i.at[i].set(g_i_new[i])
-        return (i, g_i, idx)
+        grad_new = (phi_grad + 2*alpha*r)
+        phi_grad_new = jnp.where(jnp.arange(n) < i, grad_new, 0)
+        r = A@phi_grad_new
+        return (i, g_i, phi_grad_new, r, idx)
 
 
     def _calc_G_i(i, G0_i):
         idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
-        init_val = (i, G0_i, idx)
-        i, Gk_i, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
+        grad = 2*A[idx].T @ G0_i[idx]
+        phi_grad = jnp.where(jnp.arange(n) < i, grad, 0)
+        r = A@phi_grad
+        init_val = (i, G0_i, phi_grad, r, idx)
+        i, Gk_i, *_ = fori_loop(0, num_iter, _G_i_update_fun, init_val)
         d_ii = quad_form(Gk_i[idx], A[idx][:, idx])**-0.5
         return d_ii*Gk_i
 

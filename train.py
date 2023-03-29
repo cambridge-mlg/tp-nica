@@ -94,7 +94,8 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     # initialize variational parameters (phi)
     W, key = rngcall(lambda _k: vmap(
         lambda _: jnp.linalg.cholesky(
-            sample_wishart(_, jnp.array(N+1.), 10*jnp.eye(N))
+            jnp.eye(N)
+            #sample_wishart(_, jnp.array(N+1.), 10*jnp.eye(N))
         )[jnp.tril_indices(N)])(jr.split(_k, T)), key
     )
     phi_s = (jnp.repeat(W[None, :], n_data, 0), jnp.ones((n_data, T, N)))
