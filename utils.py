@@ -226,6 +226,7 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     def cond_fun(value):
         *_, R, j = value
         errs = jnp.sum(R**2, 0)**0.5
+        #jax_print(jnp.max(errs))
         return (j < maxiter)# & jnp.any(errs > tol)
 
 
@@ -241,7 +242,6 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
         _a_all = a_all.at[j].set(_a)
         _b_all = b_all.at[j].set(_b)
         return _X, _a_all, _b_all, _P, _Z, _R, j+1
-
 
     n, t = B.shape
     a_all = jnp.zeros((maxiter, t))
@@ -379,29 +379,30 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
     n = A.shape[1]
 
     def _G_i_update_fun(k, value):
-        i, g_i, phi_grad, r, idx = value 
+        i, g_i, phi_grad, p, idx = value
         idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
-        p = Minv_f(phi_grad)
-        alpha = -jnp.dot(p[idx], phi_grad[idx]/2)/jnp.dot(p[idx], r[idx])
+        r = A[idx].T @ p[idx]
+        alpha = jnp.dot(p[idx], phi_grad[idx])/jnp.dot(p[idx], r[idx])
         alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
-        g_i_new = g_i + alpha*p
-        idx = naive_top_k(jnp.abs(g_i_new), nz_max)[1]
-        g_i = jnp.zeros_like(g_i_new).at[idx].set(g_i_new[idx])
+        _g_i = g_i + alpha*p
+        idx = naive_top_k(jnp.abs(_g_i), nz_max)[1]
+        g_i_new = jnp.zeros_like(_g_i).at[idx].set(_g_i[idx])
         # below done just in case diag falls out of top_k (?shouldnt happen?) 
-        g_i = g_i.at[i].set(g_i_new[i])
-        grad_new = (phi_grad + 2*alpha*r)
-        phi_grad_new = jnp.where(jnp.arange(n) < i, grad_new, 0)
-        r = A@phi_grad_new
-        return (i, g_i, phi_grad_new, r, idx)
+        g_i_new = g_i_new.at[i].set(_g_i[i])
+        #phi_grad = jnp.where(jnp.arange(n) < i, 2*A.T @ g_i_new, 0)
+        phi_grad = jnp.where(jnp.arange(n) < i,
+                 jnp.zeros_like(g_i).at[idx].set((phi_grad-alpha*r)[idx]), 0)
+        p = Minv_f(phi_grad)
+        return (i, g_i_new, phi_grad, p, idx)
 
 
     def _calc_G_i(i, G0_i):
         idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
-        grad = 2*A[idx].T @ G0_i[idx]
+        grad = -A[idx].T @ G0_i[idx]
         phi_grad = jnp.where(jnp.arange(n) < i, grad, 0)
-        r = A@phi_grad
-        init_val = (i, G0_i, phi_grad, r, idx)
-        i, Gk_i, *_ = fori_loop(0, num_iter, _G_i_update_fun, init_val)
+        p = Minv_f(phi_grad)
+        init_val = (i, G0_i, phi_grad, p, idx)
+        i, Gk_i, *_, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
         d_ii = quad_form(Gk_i[idx], A[idx][:, idx])**-0.5
         return d_ii*Gk_i
 
@@ -437,7 +438,7 @@ def lanczos_tridiag(A, v1, m):
 
 def krylov_subspace_sampling(A, v1, m=None):
     ''' Samples N(0, inv(A))'''
-    import numpy as np
+    #import numpy as np
     b = jnp.linalg.norm(v1)
     v1 = v1 / b
     T, V = lanczos_tridiag(A, v1, m)

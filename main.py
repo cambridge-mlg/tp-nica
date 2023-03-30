@@ -70,7 +70,9 @@ def parse():
                         help="num. of samples from q(s|tau) in elbo")
     parser.add_argument('--num-tau-samples', type=int, default=3,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--max-precond-rank', type=int, default=5,
+    parser.add_argument('--max-precond-rank-K', type=int, default=10,
+                        help="num. of samples from q(tau) in elbo")
+    parser.add_argument('--max-precond-rank-A', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--max-cg-iters', type=int, default=20,
                         help="num. of samples from q(tau) in elbo")
@@ -205,5 +207,5 @@ def main():
 
 
 if __name__=="__main__":
-    #with jax.debug_nans(True):
-    sys.exit(main())
+   # with jax.debug_nans(True):
+   sys.exit(main())

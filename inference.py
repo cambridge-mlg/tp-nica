@@ -1,3 +1,4 @@
+from jax._src.numpy.lax_numpy import trace
 from jax._src.scipy.linalg import block_diag
 from jax.numpy.linalg import slogdet
 
@@ -44,7 +45,7 @@ from time import perf_counter
 
 def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
                       K, G):
-    n_s_samples, _, max_precond_rank, max_cg_iters, n_probe_vecs = nsamples
+    n_s_samples, *_, max_P_rank, max_cg_iters, n_probe_vecs = nsamples
     theta_x, _ = theta[:2]
     L, h = phi_s
     N = h.shape[1]
@@ -90,7 +91,8 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
 
     # calculate preconditioner for inverse(cho_factor(A))
-    P = lax.stop_gradient(fsai(A, 5, 10, 1e-8, None, _identity))
+    P = lax.stop_gradient(fsai(lax.stop_gradient(A), 5, max_P_rank,
+                               1e-8, None, _identity))
     Minv_mvp = lambda b: jnp.matmul(P.T, jnp.matmul(P, b))
     A_mvp2 = lambda _: P@A_mvp(P.T@_)
 
@@ -132,6 +134,23 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     )
     KL = 0.5*((h*m).sum()-mJm-ste-logdet)
     vlb_s = Elogpx - KL
+    #jax_print(KL)
+
+    # "exact" validation
+    J = js.linalg.block_diag(*jnp.matmul(L, L.swapaxes(1, 2)))
+    m_x = jnp.linalg.solve(J+jnp.linalg.inv(K), h.reshape(-1))
+    solves2 = jnp.linalg.solve(jnp.linalg.inv(J)+K, K@h.reshape(-1))
+
+    #m_x2 = jnp.linalg.solve(J, solves[:,0])
+    #m_x2 = jnp.linalg.solve(J, solves2)
+    #jax_print(jnp.max(jnp.abs((solves[:, 0]-solves2))).round(2))
+
+
+    tr_x = jnp.trace(jnp.linalg.solve(jnp.linalg.inv(J)+K, K))
+    mJm_x = jnp.dot(m_x, jnp.matmul(J, m_x))
+    logdet_A_x = jnp.linalg.slogdet(jnp.linalg.solve(jnp.linalg.inv(J)+K,
+                                             jnp.linalg.inv(J)))[1]
+    kl_x = 0.5*(jnp.dot(m_x, h.reshape(-1)) - tr_x - mJm_x - logdet_A_x)
     return vlb_s, s
 
 
@@ -153,8 +172,9 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples, K, G):
             gamma_natparams_fromstandard(phi_tau),
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0
     )
-    vlb_s, s = vmap(structured_elbo_s, (None, None, None, None, None, None,
-             None, 0, None, None, None))(rng, theta, phi_s, logpx, cov_fn,
+    vlb_s, s = vmap(structured_elbo_s, (0, None, None, None, None, None,
+             None, 0, None, None, None))(jr.split(rng, nsamples_tau),
+                                         theta, phi_s, logpx, cov_fn,
                                          x, t, tau, nsamples, K, G)
     return jnp.mean(vlb_s, 0) - kl, s
 
@@ -218,11 +238,12 @@ def gp_elbo(rng, theta, phi_s, logpx, cov_fn, x, t, nsamples):
 
 
 def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
-                 nsamples, precond, elbo_fn):
+                 nsamples, G, elbo_fn):
     """
     Calculate average negative elbo over training samples
     """
     T = t.shape[0]
+    max_G_rank = nsamples[2]
     # unpack kernel params
     theta_x, theta_cov = theta[:2]
     N = theta_x[0][0][0].shape[0]
@@ -240,18 +261,17 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     # calculate unscaled kernel (same for all samples in batch)
     # and update unscaled preconditioner
     K = K_TN_blocks(t, t, cov_fn, theta_cov, 1.)
-    precond = lax.stop_gradient(fsai(K.swapaxes(1, 2).reshape(N*T, N*T), 2, 10, 1e-8,
-                   precond, _identity))
-
-    jax_print(jnp.linalg.cond(K.swapaxes(1, 2).reshape(N*T, N*T)))
-    jax_print(jnp.linalg.cond(precond@K.swapaxes(1, 2).reshape(N*T, N*T)@precond.T))
+    G = fsai(lax.stop_gradient(K.swapaxes(1, 2).reshape(N*T, N*T)), 2,
+             max_G_rank, 1e-8, lax.stop_gradient(G), _identity)
+    #jax_print(jnp.linalg.cond(K.swapaxes(1, 2).reshape(N*T, N*T)))
+    #jax_print(jnp.linalg.cond(G@K.swapaxes(1, 2).reshape(N*T, N*T)@G.T))
 
     # compute elbo
     vlb, s = vmap(elbo_fn, (0, None, 0, None, None, 0, None, None, None, None))(
         jr.split(rng, x.shape[0]), theta, phi_n, logpx, cov_fn, x, t, nsamples,
-        K, lax.stop_gradient(precond)
+        K, lax.stop_gradient(G)
     )
-    return -vlb.mean(), (s, precond)
+    return -vlb.mean(), (s, G)
 
 avg_neg_tp_elbo = Partial(avg_neg_elbo, elbo_fn=structured_elbo)
 avg_neg_gp_elbo = Partial(avg_neg_elbo, elbo_fn=gp_elbo)

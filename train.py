@@ -43,8 +43,8 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         gt_Q, gt_mixer_params, gt_kernel_params = params
     else:
         nsamples = (args.num_s_samples, args.num_tau_samples,
-                    args.max_precond_rank, args.max_cg_iters,
-                    args.num_probe_vectors)
+                    args.max_precond_rank_K, args.max_precond_rank_A,
+                    args.max_cg_iters, args.num_probe_vectors)
         gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
     # initialize generative model params (theta)
