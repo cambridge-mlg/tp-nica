@@ -99,9 +99,9 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     # set up an run mbcg
     Z_tilde = custom_tril_solve(P, Z)
     B = jnp.hstack((K@h.reshape(-1, 1), K@u, Z_tilde))
-    #solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=Minv_mvp)
-    solves, T_mats = mbcg(A_mvp2, P@B, maxiter=max_cg_iters, M=None)
-    solves = P.T@solves
+    solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=Minv_mvp)
+    #solves, T_mats = mbcg(A_mvp2, P@B, maxiter=max_cg_iters, M=None)
+    #solves = P.T@solves
 
     # compute m 
     m = vmap(custom_choL_solve)(
