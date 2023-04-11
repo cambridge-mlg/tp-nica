@@ -81,7 +81,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     key, key_u = jr.split(key, 2)
     u0 = Z.T[-n_s_samples:].reshape(-1, T, N)
     u0 = vmap(vmap(jnp.matmul), (None, 0))(L, u0)
-    u1 = vmap(lambda _: krylov_subspace_sampling(key_u, K_mvp, _, 4, K_norm),
+    u1 = vmap(lambda _: krylov_subspace_sampling(key_u, K_mvp, _, 40, K_norm),
               in_axes=1, out_axes=1)(Z[:, :n_s_samples])
     u1 = (G.T@u1).T.reshape(-1, T, N)
     u = (u0+u1).reshape(n_s_samples, -1).T
