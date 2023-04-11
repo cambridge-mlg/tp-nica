@@ -429,19 +429,80 @@ def lanczos_tridiag(A, v1, m):
 
     d = v1.shape[0]
     v0 = jnp.zeros((d,))
-    b1 = 0
+    b1 = 0.
     _, (V, alphas, betas) = scan(_lanczos_step, (v0, v1, b1), None, length=m)
     T_off = jnp.diag(betas[1:], k=1)
     T = jnp.diag(alphas)+T_off+T_off.T
     return T, V.T
 
 
-def krylov_subspace_sampling(A, v1, m=None):
+def lanczos_partial_ro(key, A, v1, m, A_norm, macheps=2**-52):
+    '''Performs Lanczos tridiagonalization of pos.def. matrix.'''
+    def _lanczos_step(carry, i):
+        key, v0, v1, b1, all_a, all_b, W = carry
+        v = A(v1) - b1*v0
+        a1 = jnp.dot(v1, v)
+        all_a = all_a.at[i].set(a1)
+        v = v - a1*v1
+        b2 = jnp.linalg.norm(v)
+        v2 = v / b2
+        all_b = all_b.at[i].set(b2)
+
+        # partial reorthogonalization
+        key, key_a, key_b = jr.split(key, 3)
+        bw1 = all_b[:-2]*W[-1, 1:-1]
+        aw = (all_a[:-2]-all_a[i-1])*W[-1,:-2]
+        bw2 = jnp.concatenate((jnp.zeros((1,)),
+               all_b[:-3]))*jnp.concatenate((jnp.zeros((1,)), W[-1, :-3]))
+        bw3 = all_b[i-2]*W[-2,:-2]
+        out = aw
+        var_theta = macheps*(all_b[:-2]+b2)*(0.3**0.5)*jr.normal(key_a, (1,))
+        w_new = jnp.where(jnp.arange(m-2) <= i, (bw1 + aw + bw2 - bw3)
+                          / all_b[i-1] + var_theta, 0)
+        W = W.at[:-1].set(W[1:])
+        W = W.at[-1, :-2].set(w_new)
+        W = cond(i >= 1, lambda _: _.at[-1, i-1].set(
+          (macheps*d*all_b[1]/b2)*(0.6**0.5)*jr.normal(key_b)),
+            _identity, W)
+        W = W.at[-1, i].set(1.)
+        #v = cond(jnp.max(jnp.abs(W[-1])) > jnp.sqrt(macheps), reorth,
+        #         _identity, v)
+        return (key, v1, v2, b2, all_a, all_b, W), (v1, a1, b2, out)
+
+
+    # ensure 1st col. has unit norm
+    v1 = v1 / jnp.linalg.norm(v1)
+    d = v1.shape[0]
+    v0 = jnp.zeros((d,))
+    b1 = 0.
+    all_a = jnp.zeros((m,))
+    all_b = jnp.zeros((m,))
+    W = jnp.zeros((4, m))
+    (*_, W), (V, alphas, betas, out) = scan(_lanczos_step, (key, v0, v1, b1, all_a,
+                                                       all_b, W), jnp.arange(m))
+
+
+   # w20 = (V[0]@A(V[1])-alphas[1]*V[0]@V[1]-betas[0]*V[0]@V[0])/betas[1]
+
+
+
+#    V_j+1 = (A(V[j])-alphas[j]*V[j]-betas[j-1]*V[j-1])/betas[j]
+
+    import numpy as np
+    jdb.breakpoint()
+
+    T_off = jnp.diag(betas[:-1], k=1)
+    T = jnp.diag(alphas)+T_off+T_off.T
+    return T, V.T
+
+
+def krylov_subspace_sampling(key, A, v1, m, A_norm):
     ''' Samples N(0, inv(A))'''
     #import numpy as np
     b = jnp.linalg.norm(v1)
     v1 = v1 / b
-    T, V = lanczos_tridiag(A, v1, m)
+    #T, V = lanczos_tridiag(A, v1, m)
+    T, V = lanczos_partial_ro(key, A, v1, m, A_norm)
     ew, eV = jnp.linalg.eigh(T)
     T_neg_sqrt_v1 = eV @ ((ew**-0.5)*eV[0])
     return b*(V @ T_neg_sqrt_v1)

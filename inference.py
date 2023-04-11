@@ -71,13 +71,20 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     key, key_z = jr.split(key)
     Z = jr.normal(key_z, shape=(N*T, n_probe_vecs))
     K_mvp = lambda _: G@(K@(G.T@_))
+
+    # compute only rarely
+    K_norm = jnp.linalg.norm(G@K@G.T)
+
+    #jax_print(jnp.linalg.cond(K))
+    #jax_print(jnp.linalg.cond(G@(K@G.T)))
+
+    key, key_u = jr.split(key, 2)
     u0 = Z.T[-n_s_samples:].reshape(-1, T, N)
     u0 = vmap(vmap(jnp.matmul), (None, 0))(L, u0)
-    u1 = vmap(lambda _: krylov_subspace_sampling(K_mvp, _, 10),
+    u1 = vmap(lambda _: krylov_subspace_sampling(key_u, K_mvp, _, 4, K_norm),
               in_axes=1, out_axes=1)(Z[:, :n_s_samples])
     u1 = (G.T@u1).T.reshape(-1, T, N)
     u = (u0+u1).reshape(n_s_samples, -1).T
-
 
     def A_mvp(x):
         if len(x.shape) == 1:
@@ -263,8 +270,8 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     K = K_TN_blocks(t, t, cov_fn, theta_cov, 1.)
     G = fsai(lax.stop_gradient(K.swapaxes(1, 2).reshape(N*T, N*T)), 2,
              max_G_rank, 1e-8, lax.stop_gradient(G), _identity)
-    #jax_print(jnp.linalg.cond(K.swapaxes(1, 2).reshape(N*T, N*T)))
-    #jax_print(jnp.linalg.cond(G@K.swapaxes(1, 2).reshape(N*T, N*T)@G.T))
+#    jax_print(jnp.linalg.cond(K.swapaxes(1, 2).reshape(N*T, N*T)))
+#    jax_print(jnp.linalg.cond(G@K.swapaxes(1, 2).reshape(N*T, N*T)@G.T))
 
     # compute elbo
     vlb, s = vmap(elbo_fn, (0, None, 0, None, None, 0, None, None, None, None))(

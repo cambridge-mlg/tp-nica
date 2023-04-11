@@ -207,5 +207,5 @@ def main():
 
 
 if __name__=="__main__":
-   # with jax.debug_nans(True):
-   sys.exit(main())
+    with jax.debug_nans(True):
+        sys.exit(main())
