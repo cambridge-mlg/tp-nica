@@ -436,10 +436,21 @@ def lanczos_tridiag(A, v1, m):
     return T, V.T
 
 
+def _ro(v, v_k, do_ro):
+    return cond(do_ro, lambda _: _*jnp.dot(v, _),
+                lambda _: jnp.zeros_like(_), v_k)
+
+
+def reorth(V, w, i, macheps):
+    ro_idx = w > macheps**(3/4)
+    ro = vmap(_ro, (None, 0, 0))(V[i], V, ro_idx)
+    return V[i] - ro.sum(0)
+
+
 def lanczos_pro(key, A, v1, m, A_norm, macheps=2**-52):
     '''Performs Lanczos tridiagonalization of pos.def. matrix.'''
     def _lanczos_step(carry, i):
-        key, v0, v1, b1, all_a, all_b, W = carry
+        key, v0, v1, b1, all_V, all_a, all_b, W = carry
         v = A(v1) - b1*v0
         a1 = jnp.dot(v1, v)
         all_a = all_a.at[i].set(a1)
@@ -447,26 +458,26 @@ def lanczos_pro(key, A, v1, m, A_norm, macheps=2**-52):
         b2 = jnp.linalg.norm(v)
         v2 = v / b2
         all_b = all_b.at[i].set(b2)
+        all_V = all_V.at[i].set(v1)
 
         # partial reorthogonalization
         key, key_a, key_b = jr.split(key, 3)
         bw1 = all_b[:-2]*W[-1, 1:-1]
-        aw = (all_a[:-2]-all_a[i-1])*W[-1,:-2]
+        aw = (all_a[:-2]-all_a[i])*W[-1,:-2]
         bw2 = jnp.concatenate((jnp.zeros((1,)),
                all_b[:-3]))*jnp.concatenate((jnp.zeros((1,)), W[-1, :-3]))
-        bw3 = all_b[i-2]*W[-2,:-2]
+        bw3 = all_b[i-1]*W[-2,:-2]
         var_theta = macheps*(all_b[:-2]+b2)*(0.3**0.5)*jr.normal(key_a, (1,))
-        w_new = jnp.where(jnp.arange(m-2) <= i, (bw1 + aw + bw2 - bw3)
-                          / all_b[i-1] + var_theta, 0)
+        w_new = jnp.where(jnp.arange(m-2) <= i+1, (bw1 + aw + bw2 - bw3)
+                          / all_b[i] + var_theta, 0)
         W = W.at[-2].set(W[-1])
         W = W.at[-1, :-2].set(w_new)
-        W = cond(i >= 1, lambda _: _.at[-1, i-1].set(
-          (macheps*d*all_b[1]/b2)*(0.6**0.5)*jr.normal(key_b)),
-            _identity, W)
-        W = W.at[-1, i].set(1.)
-        #v = cond(jnp.max(jnp.abs(W[-1])) > jnp.sqrt(macheps), reorth,
-        #         _identity, v)
-        return (key, v1, v2, b2, all_a, all_b, W), (v1, a1, b2)
+        W = W.at[-1, i].set((macheps*d*all_b[1]/b2)*(0.6**0.5)*jr.normal(key_b))
+        W = W.at[-1, i+1].set(1.)
+        w_ref = jnp.abs(jnp.where(jnp.arange(m) > i-2, 0, W[-1]))
+        #out = cond(jnp.max(w_ref) > jnp.sqrt(macheps), reorth,
+        #           lambda *_: V, all_V, w_ref, i, macheps)
+        return (key, v1, v2, b2, all_V, all_a, all_b, W), (v1, a1, b2, W[-1])
 
 
     # ensure 1st col. has unit norm
@@ -476,16 +487,11 @@ def lanczos_pro(key, A, v1, m, A_norm, macheps=2**-52):
     b1 = 0.
     all_a = jnp.zeros((m,))
     all_b = jnp.zeros((m,))
+    all_V = jnp.zeros((m, d))
     W = jnp.zeros((2, m))
-    (*_, W), (V, alphas, betas) = scan(_lanczos_step, (key, v0, v1, b1, all_a,
-                                                       all_b, W), jnp.arange(m))
-
-
-   # w20 = (V[0]@A(V[1])-alphas[1]*V[0]@V[1]-betas[0]*V[0]@V[0])/betas[1]
-
-
-
-#    V_j+1 = (A(V[j])-alphas[j]*V[j]-betas[j-1]*V[j-1])/betas[j]
+    W = W.at[-1, 0].set(1.)
+    *_ , (V, alphas, betas, out) = scan(_lanczos_step, (key, v0, v1, b1, all_V, all_a,
+                                                  all_b, W), jnp.arange(m))
 
     import numpy as np
     jdb.breakpoint()

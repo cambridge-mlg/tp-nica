@@ -152,7 +152,6 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     #m_x2 = jnp.linalg.solve(J, solves2)
     #jax_print(jnp.max(jnp.abs((solves[:, 0]-solves2))).round(2))
 
-
     tr_x = jnp.trace(jnp.linalg.solve(jnp.linalg.inv(J)+K, K))
     mJm_x = jnp.dot(m_x, jnp.matmul(J, m_x))
     logdet_A_x = jnp.linalg.slogdet(jnp.linalg.solve(jnp.linalg.inv(J)+K,
