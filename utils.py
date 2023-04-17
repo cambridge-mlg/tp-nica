@@ -441,13 +441,21 @@ def _ro(v, v_k, do_ro):
                 lambda _: jnp.zeros_like(_), v_k)
 
 
-def reorth(V, w, i, macheps):
+def reorth(v, V, w, macheps):
     ro_idx = w > macheps**(3/4)
-    ro = vmap(_ro, (None, 0, 0))(V[i], V, ro_idx)
-    return V[i] - ro.sum(0)
+    ro = vmap(_ro, (None, 0, 0))(v, V, ro_idx)
+    v = v - ro.sum(0)
+    b = jnp.linalg.norm(v)
+    return v/b, b
 
 
-def lanczos_pro(key, A, v1, m, A_norm, macheps=2**-52):
+def _pro_reset_w(key, W, macheps):
+    W = jnp.where(jnp.arange(m) < i,
+                  macheps*(1.5**0.5)*jr.normal(key, W.shape[1]),
+                  W[-1])
+
+
+def lanczos_pro(key, A, v1, m, macheps=2**-52):
     '''Performs Lanczos tridiagonalization of pos.def. matrix.'''
     def _lanczos_step(carry, i):
         key, v0, v1, b1, all_V, all_a, all_b, W = carry
@@ -461,7 +469,7 @@ def lanczos_pro(key, A, v1, m, A_norm, macheps=2**-52):
         all_V = all_V.at[i].set(v1)
 
         # partial reorthogonalization
-        key, key_a, key_b = jr.split(key, 3)
+        key, key_a, key_b, key_c = jr.split(key, 4)
         bw1 = all_b[:-2]*W[-1, 1:-1]
         aw = (all_a[:-2]-all_a[i])*W[-1,:-2]
         bw2 = jnp.concatenate((jnp.zeros((1,)),
@@ -475,8 +483,17 @@ def lanczos_pro(key, A, v1, m, A_norm, macheps=2**-52):
         W = W.at[-1, i].set((macheps*d*all_b[1]/b2)*(0.6**0.5)*jr.normal(key_b))
         W = W.at[-1, i+1].set(1.)
         w_ref = jnp.abs(jnp.where(jnp.arange(m) > i-2, 0, W[-1]))
-        #out = cond(jnp.max(w_ref) > jnp.sqrt(macheps), reorth,
-        #           lambda *_: V, all_V, w_ref, i, macheps)
+        do_ro = jnp.max(w_ref) > jnp.sqrt(macheps)
+        v2, b2 = cond(do_ro, reorth, lambda *_: (v2, b2),
+                      v2, all_V, w_ref, macheps)
+        W = cond(do_ro,
+                   lambda _: _.at[-1].set(
+                       jnp.where(
+                           jnp.arange(m) < i, macheps*(1.5**0.5)*jr.normal(
+                               key_c, shape=(m,)
+                           ), _[-1]
+                       )
+                   ), _identity, W)
         return (key, v1, v2, b2, all_V, all_a, all_b, W), (v1, a1, b2, W[-1])
 
 
@@ -501,13 +518,13 @@ def lanczos_pro(key, A, v1, m, A_norm, macheps=2**-52):
     return T, V.T
 
 
-def krylov_subspace_sampling(key, A, v1, m, A_norm):
+def krylov_subspace_sampling(key, A, v1, m):
     ''' Samples N(0, inv(A))'''
     #import numpy as np
     b = jnp.linalg.norm(v1)
     v1 = v1 / b
     #T, V = lanczos_tridiag(A, v1, m)
-    T, V = lanczos_pro(key, A, v1, m, A_norm)
+    T, V = lanczos_pro(key, A, v1, m)
     ew, eV = jnp.linalg.eigh(T)
     T_neg_sqrt_v1 = eV @ ((ew**-0.5)*eV[0])
     return b*(V @ T_neg_sqrt_v1)
