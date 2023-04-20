@@ -436,84 +436,72 @@ def lanczos_tridiag(A, v1, m):
     return T, V.T
 
 
-def _ro(v, v_k, do_ro):
-    return cond(do_ro, lambda _: _*jnp.dot(v, _),
-                lambda _: jnp.zeros_like(_), v_k)
+def _ro(r, q_k, do_ro):
+    return cond(do_ro, lambda _: _*jnp.dot(r, _),
+                lambda _: jnp.zeros_like(_), q_k)
 
 
-def reorth(v, V, w, macheps):
-    ro_idx = w > macheps**(3/4)
-    ro = vmap(_ro, (None, 0, 0))(v, V, ro_idx)
-    v = v - ro.sum(0)
-    b = jnp.linalg.norm(v)
-    return v/b, b
+def reorth(r, Q, w, macheps):
+    ro_idx = w > macheps**(3/4)  # hacky -- fix!
+    ro = vmap(_ro, (None, 0, 0))(r, Q, ro_idx)
+    r = r - ro.sum(0)
+    return r, ro_idx
 
 
-def _pro_reset_w(key, W, macheps):
-    W = jnp.where(jnp.arange(m) < i,
-                  macheps*(1.5**0.5)*jr.normal(key, W.shape[1]),
-                  W[-1])
-
-
-def lanczos_pro(key, A, v1, m, macheps=2**-52):
+def lanczos_pro(key, A, r1, m, macheps=2**-52):
     '''Performs Lanczos tridiagonalization of pos.def. matrix.'''
     def _lanczos_step(carry, i):
-        key, v0, v1, b1, all_V, all_a, all_b, W = carry
-        v = A(v1) - b1*v0
-        a1 = jnp.dot(v1, v)
+        key, r1, b1, q0, all_a, all_b, all_Q, W, y = carry
+        all_b = all_b.at[i].set(b1)
+        q1 = r1 / b1
+        all_Q = all_Q.at[i].set(q1)
+        u1 = A(q1) - b1*q0
+        a1 = jnp.dot(u1, q1)
         all_a = all_a.at[i].set(a1)
-        v = v - a1*v1
-        b2 = jnp.linalg.norm(v)
-        v2 = v / b2
-        all_b = all_b.at[i].set(b2)
-        all_V = all_V.at[i].set(v1)
+        r2 = u1 - a1*q1
+        _b2 = jnp.linalg.norm(r2)
 
-        # partial reorthogonalization
+        # update W
         key, key_a, key_b, key_c = jr.split(key, 4)
-        bw1 = all_b[:-2]*W[-1, 1:-1]
-        aw = (all_a[:-2]-all_a[i])*W[-1,:-2]
-        bw2 = jnp.concatenate((jnp.zeros((1,)),
-               all_b[:-3]))*jnp.concatenate((jnp.zeros((1,)), W[-1, :-3]))
-        bw3 = all_b[i-1]*W[-2,:-2]
-        var_theta = macheps*(all_b[:-2]+b2)*(0.3**0.5)*jr.normal(key_a, (1,))
-        w_new = jnp.where(jnp.arange(m-2) <= i+1, (bw1 + aw + bw2 - bw3)
-                          / all_b[i] + var_theta, 0)
+        bw1 = all_b[1:-1]*W[-1, 1:-1]
+        aw = (all_a[:-2] - all_a[i])*W[-1, :-2]
+        bw2 = all_b[:-2]*jnp.concatenate((jnp.zeros((1,)), W[-1, :-3]))
+        bw3 = all_b[i]*W[-2,:-2]
+        var_theta = macheps*(all_b[1:-1]+_b2)*(0.3**0.5)*jr.normal(key_a, (1,))
+        w_new = jnp.where(jnp.arange(m-2) < i, (bw1+aw+bw2-bw3)/_b2
+                          + var_theta, 0)
         W = W.at[-2].set(W[-1])
         W = W.at[-1, :-2].set(w_new)
-        W = W.at[-1, i].set((macheps*d*all_b[1]/b2)*(0.6**0.5)*jr.normal(key_b))
+        scale = cond(i == 0, lambda _: 1., lambda _: _[1]/_b2, all_b)
+        W = W.at[-1, i].set(macheps*d*scale*(0.6**0.5)*jr.normal(key_b))
         W = W.at[-1, i+1].set(1.)
-        w_ref = jnp.abs(jnp.where(jnp.arange(m) > i-2, 0, W[-1]))
-        do_ro = jnp.max(w_ref) > jnp.sqrt(macheps)
-        v2, b2 = cond(do_ro, reorth, lambda *_: (v2, b2),
-                      v2, all_V, w_ref, macheps)
-        W = cond(do_ro,
-                   lambda _: _.at[-1].set(
-                       jnp.where(
-                           jnp.arange(m) < i, macheps*(1.5**0.5)*jr.normal(
-                               key_c, shape=(m,)
-                           ), _[-1]
-                       )
-                   ), _identity, W)
-        return (key, v1, v2, b2, all_V, all_a, all_b, W), (v1, a1, b2, W[-1])
+
+        # pro
+        w_ref = jnp.where(jnp.arange(m) < i, jnp.abs(W[-1]), 0)
+        do_pro = (w_ref.max() > jnp.sqrt(macheps)) | (y == 1)
+        r2, ro_idx = cond(do_pro, reorth, lambda *_: (r2, jnp.array([False]*(m))),
+                          r2, all_Q, w_ref, macheps)
+        b2 = jnp.linalg.norm(r2)
+        W = W.at[-1].set(jnp.where(
+            ro_idx, macheps*(1.5**0.5)*jr.normal(key_c, (m,)), W[-1]))
+        y = (do_pro & (y == 0))*1
+        return (key, r2, b2, q1, all_a, all_b, all_Q, W, y), (q1, a1, b1)
 
 
-    # ensure 1st col. has unit norm
-    v1 = v1 / jnp.linalg.norm(v1)
-    d = v1.shape[0]
-    v0 = jnp.zeros((d,))
-    b1 = 0.
+    d = r1.shape[0]
+    q0 = jnp.zeros((d,))
+    b1 = jnp.linalg.norm(r1)
     all_a = jnp.zeros((m,))
     all_b = jnp.zeros((m,))
-    all_V = jnp.zeros((m, d))
+    all_Q = jnp.zeros((m, d))
+    y = 0
     W = jnp.zeros((2, m))
     W = W.at[-1, 0].set(1.)
-    *_ , (V, alphas, betas, out) = scan(_lanczos_step, (key, v0, v1, b1, all_V, all_a,
-                                                  all_b, W), jnp.arange(m))
-
-    import numpy as np
-    jdb.breakpoint()
-
-    T_off = jnp.diag(betas[:-1], k=1)
+    *_ , (V, alphas, betas) = scan(_lanczos_step,
+                                   (key, r1, b1, q0, all_a, all_b,
+                                    all_Q, W, y),
+                                   jnp.arange(m))
+    T_off = jnp.diag(betas[1:], k=1)
     T = jnp.diag(alphas)+T_off+T_off.T
     return T, V.T
 
@@ -523,7 +511,6 @@ def krylov_subspace_sampling(key, A, v1, m):
     #import numpy as np
     b = jnp.linalg.norm(v1)
     v1 = v1 / b
-    #T, V = lanczos_tridiag(A, v1, m)
     T, V = lanczos_pro(key, A, v1, m)
     ew, eV = jnp.linalg.eigh(T)
     T_neg_sqrt_v1 = eV @ ((ew**-0.5)*eV[0])
