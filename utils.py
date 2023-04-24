@@ -222,17 +222,17 @@ def load_checkpoint(train_args):
     return ckpt, hist
 
 
-def _ro_cg(_z, _r, r, z, p_k, do_ro):
-    return cond(do_ro, lambda _: ((_z*(_r-r)).sum(0)/(z*r).sum(0))[None, :] * _,
-                lambda _: jnp.zeros_like(_), p_k)
-
-
-def _reorth_cg(j, R, Z, P, ro_idx):
-    _z = Z[j]
-    gs = vmap(_ro_cg, (None, 0, 0, 0, 0, 0))(_z, R[1:], R[:-1], Z[:-1],
-                                             P[:-1], ro_idx)
-    _p = _z + gs.sum(0)
-    return _p
+#def _ro_cg(_z, _r, r,do_ro):
+#    return cond(do_ro, lambda _: ((_z*(_r-r)).sum(0)/(z*r).sum(0))[None, :] * _,
+#                lambda _: jnp.zeros_like(_), p_k)
+#
+#
+#def _reorth_cg(j, R, ro_idx):
+#    _z = Z[j]
+#    gs = vmap(_ro_cg, (None, 0, 0, 0, 0, 0))(_z, R[1:], R[:-1], Z[:-1],
+#                                             P[:-1], ro_idx)
+#    _p = _z + gs.sum(0)
+#    return _p
 
 
 def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
@@ -249,20 +249,22 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
         _a = (R*Z).sum(0) / (P*_V).sum(0)
         _X = X + _a.reshape(1, -1)*P
         _R = R - _a.reshape(1, -1)*_V
+        R_all = R_all.at[j].set(_R)
 
+        tst = jnp.sum(((_R[None, :, :] * R_all).sum(1)
+                       / (_R[None, :, :] * R_all).sum(1))[:, None, :]*R_all, 0)
         jdb.breakpoint()
 
         _Z = M(_R)
 
         # double re-orth
-        R_all = R_all.at[j].set(_R)
-        _b = (_R*_Z).sum(0) / (R*Z).sum(0)
 
 
         ro_idx = jnp.where(jnp.arange(maxiter) <= j, True, False)[1:]
-        _P = cond(j == 0, lambda a, b, c: Z + _b.reshape(1, -1)*P,
-                  lambda a, b, c: _reorth_cg(a, b, c), j, R_all, ro_idx)
-        #_P = _Z + _b.reshape(1, -1)*P
+        #_P = cond(j == 0, lambda a, b, c: Z + _b.reshape(1, -1)*P,
+        #          lambda a, b, c: _reorth_cg(a, b, c), j, R_all, ro_idx)
+        _b = (_R*_Z).sum(0) / (R*Z).sum(0)
+        _P = _Z + _b.reshape(1, -1)*P
         _a_all = a_all.at[j].set(_a)
         _b_all = b_all.at[j].set(_b)
         return _X, _a_all, _b_all, _P, _Z, _R, R_all, j+1
