@@ -222,17 +222,10 @@ def load_checkpoint(train_args):
     return ckpt, hist
 
 
-#def _ro_cg(_z, _r, r,do_ro):
-#    return cond(do_ro, lambda _: ((_z*(_r-r)).sum(0)/(z*r).sum(0))[None, :] * _,
-#                lambda _: jnp.zeros_like(_), p_k)
-#
-#
-#def _reorth_cg(j, R, ro_idx):
-#    _z = Z[j]
-#    gs = vmap(_ro_cg, (None, 0, 0, 0, 0, 0))(_z, R[1:], R[:-1], Z[:-1],
-#                                             P[:-1], ro_idx)
-#    _p = _z + gs.sum(0)
-#    return _p
+# reorth
+def _cg_reorth(r, R, do_ro):
+    return cond(do_ro, lambda _: ((r*_).sum(0) / (_**2).sum(0))[None, :] * _,
+                lambda _: jnp.zeros_like(_), R)
 
 
 def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
@@ -249,20 +242,16 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
         _a = (R*Z).sum(0) / (P*_V).sum(0)
         _X = X + _a.reshape(1, -1)*P
         _R = R - _a.reshape(1, -1)*_V
+        ro_idx = jnp.where(jnp.arange(maxiter) < j, True, False)
+
+        # reorth
+        #gram_sch = vmap(_cg_reorth, (None, 0, 0))(_R, R_all, ro_idx)
+        #_R = _R - gram_sch.sum(0)
+        #gram_sch = vmap(_cg_reorth, (None, 0, 0))(_R, R_all, ro_idx)
+        #_R = _R - gram_sch.sum(0)
+
         R_all = R_all.at[j].set(_R)
-
-        tst = jnp.sum(((_R[None, :, :] * R_all).sum(1)
-                       / (_R[None, :, :] * R_all).sum(1))[:, None, :]*R_all, 0)
-        jdb.breakpoint()
-
         _Z = M(_R)
-
-        # double re-orth
-
-
-        ro_idx = jnp.where(jnp.arange(maxiter) <= j, True, False)[1:]
-        #_P = cond(j == 0, lambda a, b, c: Z + _b.reshape(1, -1)*P,
-        #          lambda a, b, c: _reorth_cg(a, b, c), j, R_all, ro_idx)
         _b = (_R*_Z).sum(0) / (R*Z).sum(0)
         _P = _Z + _b.reshape(1, -1)*P
         _a_all = a_all.at[j].set(_a)
@@ -284,7 +273,7 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     Ts = vmap(jnp.diag, in_axes=(1,))(1/alphas +
         jnp.vstack((jnp.zeros((1, t)), betas[:-1]/alphas[:-1])))
     Ts = Ts + Ts_off + Ts_off.swapaxes(1, 2)
-#    jax_print((jnp.ones(2), jnp.linalg.eigh(Ts)[0]))
+    jax_print((jnp.ones(2), jnp.linalg.eigh(Ts)[0]))
     return X, Ts
 
 

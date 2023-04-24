@@ -102,8 +102,6 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
                                1e-8, None, _identity))
     Minv_mvp = lambda b: jnp.matmul(P.T, jnp.matmul(P, b))
     A_mvp2 = lambda _: P@A_mvp(P.T@_)
-    
-    jax_print(jnp.linalg.eigh(P@A_mvp(P.T))[0])
 
     # set up an run mbcg
     Z_tilde = custom_tril_solve(P, Z)
@@ -146,19 +144,19 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     #jax_print(KL)
 
     # "exact" validation
-    J = js.linalg.block_diag(*jnp.matmul(L, L.swapaxes(1, 2)))
-    m_x = jnp.linalg.solve(J+jnp.linalg.inv(K), h.reshape(-1))
-    solves2 = jnp.linalg.solve(jnp.linalg.inv(J)+K, K@h.reshape(-1))
+    #J = js.linalg.block_diag(*jnp.matmul(L, L.swapaxes(1, 2)))
+    #m_x = jnp.linalg.solve(J+jnp.linalg.inv(K), h.reshape(-1))
+    #solves2 = jnp.linalg.solve(jnp.linalg.inv(J)+K, K@h.reshape(-1))
 
-    #m_x2 = jnp.linalg.solve(J, solves[:,0])
-    #m_x2 = jnp.linalg.solve(J, solves2)
-    #jax_print(jnp.max(jnp.abs((solves[:, 0]-solves2))).round(2))
+    ##m_x2 = jnp.linalg.solve(J, solves[:,0])
+    ##m_x2 = jnp.linalg.solve(J, solves2)
+    ##jax_print(jnp.max(jnp.abs((solves[:, 0]-solves2))).round(2))
 
-    tr_x = jnp.trace(jnp.linalg.solve(jnp.linalg.inv(J)+K, K))
-    mJm_x = jnp.dot(m_x, jnp.matmul(J, m_x))
-    logdet_A_x = jnp.linalg.slogdet(jnp.linalg.solve(jnp.linalg.inv(J)+K,
-                                             jnp.linalg.inv(J)))[1]
-    kl_x = 0.5*(jnp.dot(m_x, h.reshape(-1)) - tr_x - mJm_x - logdet_A_x)
+    #tr_x = jnp.trace(jnp.linalg.solve(jnp.linalg.inv(J)+K, K))
+    #mJm_x = jnp.dot(m_x, jnp.matmul(J, m_x))
+    #logdet_A_x = jnp.linalg.slogdet(jnp.linalg.solve(jnp.linalg.inv(J)+K,
+    #                                         jnp.linalg.inv(J)))[1]
+    #kl_x = 0.5*(jnp.dot(m_x, h.reshape(-1)) - tr_x - mJm_x - logdet_A_x)
     return vlb_s, s
 
 
