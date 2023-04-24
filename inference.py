@@ -102,6 +102,8 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
                                1e-8, None, _identity))
     Minv_mvp = lambda b: jnp.matmul(P.T, jnp.matmul(P, b))
     A_mvp2 = lambda _: P@A_mvp(P.T@_)
+    
+    jax_print(jnp.linalg.eigh(P@A_mvp(P.T))[0])
 
     # set up an run mbcg
     Z_tilde = custom_tril_solve(P, Z)
