@@ -244,28 +244,28 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
 
 
     def body_fun(value):
-        X, a_all, b_all, P, Z, R, R_all, Z_all, P_all, j = value
+        X, a_all, b_all, P, Z, R, R_all, j = value
         _V = A(P)
         _a = (R*Z).sum(0) / (P*_V).sum(0)
         _X = X + _a.reshape(1, -1)*P
         _R = R - _a.reshape(1, -1)*_V
+
+        jdb.breakpoint()
+
         _Z = M(_R)
 
         # double re-orth
         R_all = R_all.at[j].set(_R)
-        Z_all = Z_all.at[j].set(_Z)
         _b = (_R*_Z).sum(0) / (R*Z).sum(0)
 
 
         ro_idx = jnp.where(jnp.arange(maxiter) <= j, True, False)[1:]
-        _P = cond(j == 0, lambda a, b, c, d, f: Z + _b.reshape(1, -1)*P,
-                  lambda a, b, c, d, f: _reorth_cg(a, b, c, d, f),
-                  j, R_all, Z_all, P_all, ro_idx)
+        _P = cond(j == 0, lambda a, b, c: Z + _b.reshape(1, -1)*P,
+                  lambda a, b, c: _reorth_cg(a, b, c), j, R_all, ro_idx)
         #_P = _Z + _b.reshape(1, -1)*P
-        P_all = P_all.at[j].set(_P)
         _a_all = a_all.at[j].set(_a)
         _b_all = b_all.at[j].set(_b)
-        return _X, _a_all, _b_all, _P, _Z, _R, R_all, Z_all, P_all, j+1
+        return _X, _a_all, _b_all, _P, _Z, _R, R_all, j+1
 
 
     n, t = B.shape
@@ -275,9 +275,7 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     a_all = jnp.zeros((maxiter, t))
     b_all = jnp.zeros((maxiter, t))
     R_all = jnp.zeros((maxiter, n, t))
-    Z_all = jnp.zeros((maxiter, n, t))
-    P_all = jnp.zeros((maxiter, n, t))
-    init_val = (x0, a_all, b_all, P0, Z0, R0, R_all, Z_all, P_all, 0)
+    init_val = (x0, a_all, b_all, P0, Z0, R0, R_all, 0)
     X, alphas, betas, *_ = while_loop(cond_fun, body_fun, init_val)
     b_a = jnp.sqrt(betas[:-1])/alphas[:-1]
     Ts_off = vmap(lambda _: jnp.diag(_, k=1), in_axes=(1,))(b_a)
