@@ -232,12 +232,12 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     def cond_fun(value):
         *_, R, j = value
         errs = jnp.sum(R**2, 0)**0.5
-        #jax_print(jnp.max(errs))
+        jax_print((j, jnp.max(errs)))
         return (j < maxiter)# & jnp.any(errs > tol)
 
 
     def body_fun(value):
-        X, a_all, b_all, P, Z, R, R_all, j = value
+        X, a_all, b_all, P, Z, R, j = value
         _V = A(P)
         _a = (R*Z).sum(0) / (P*_V).sum(0)
         _X = X + _a.reshape(1, -1)*P
@@ -256,7 +256,7 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
         _P = _Z + _b.reshape(1, -1)*P
         _a_all = a_all.at[j].set(_a)
         _b_all = b_all.at[j].set(_b)
-        return _X, _a_all, _b_all, _P, _Z, _R, R_all, j+1
+        return _X, _a_all, _b_all, _P, _Z, _R, j+1
 
 
     n, t = B.shape
@@ -273,7 +273,7 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     Ts = vmap(jnp.diag, in_axes=(1,))(1/alphas +
         jnp.vstack((jnp.zeros((1, t)), betas[:-1]/alphas[:-1])))
     Ts = Ts + Ts_off + Ts_off.swapaxes(1, 2)
-    jax_print((jnp.ones(2), jnp.linalg.eigh(Ts)[0]))
+    #jax_print((jnp.ones(2), jnp.linalg.eigh(Ts)[0]))
     return X, Ts
 
 

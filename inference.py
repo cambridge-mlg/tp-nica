@@ -72,12 +72,6 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     Z = jr.normal(key_z, shape=(N*T, n_probe_vecs))
     K_mvp = lambda _: G@(K@(G.T@_))
 
-    # compute only rarely
-    K_norm = jnp.linalg.norm(G@K@G.T)
-
-    #jax_print(jnp.linalg.cond(K))
-    #jax_print(jnp.linalg.cond(G@(K@G.T)))
-
     key, key_u = jr.split(key, 2)
     u0 = Z.T[-n_s_samples:].reshape(-1, T, N)
     u0 = vmap(vmap(jnp.matmul), (None, 0))(L, u0)
@@ -141,22 +135,22 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     )
     KL = 0.5*((h*m).sum()-mJm-ste-logdet)
     vlb_s = Elogpx - KL
-    #jax_print(KL)
+
 
     # "exact" validation
-    #J = js.linalg.block_diag(*jnp.matmul(L, L.swapaxes(1, 2)))
-    #m_x = jnp.linalg.solve(J+jnp.linalg.inv(K), h.reshape(-1))
+    J = js.linalg.block_diag(*jnp.matmul(L, L.swapaxes(1, 2)))
+    m_x = jnp.linalg.solve(J+jnp.linalg.inv(K), h.reshape(-1))
     #solves2 = jnp.linalg.solve(jnp.linalg.inv(J)+K, K@h.reshape(-1))
 
-    ##m_x2 = jnp.linalg.solve(J, solves[:,0])
-    ##m_x2 = jnp.linalg.solve(J, solves2)
+    m_x2 = jnp.linalg.solve(J, solves[:,0])
+    #m_x2 = jnp.linalg.solve(J, solves2)
     ##jax_print(jnp.max(jnp.abs((solves[:, 0]-solves2))).round(2))
 
-    #tr_x = jnp.trace(jnp.linalg.solve(jnp.linalg.inv(J)+K, K))
-    #mJm_x = jnp.dot(m_x, jnp.matmul(J, m_x))
-    #logdet_A_x = jnp.linalg.slogdet(jnp.linalg.solve(jnp.linalg.inv(J)+K,
-    #                                         jnp.linalg.inv(J)))[1]
-    #kl_x = 0.5*(jnp.dot(m_x, h.reshape(-1)) - tr_x - mJm_x - logdet_A_x)
+    tr_x = jnp.trace(jnp.linalg.solve(jnp.linalg.inv(J)+K, K))
+    mJm_x = jnp.dot(m_x, jnp.matmul(J, m_x))
+    logdet_A_x = jnp.linalg.slogdet(jnp.linalg.solve(jnp.linalg.inv(J)+K,
+                                             jnp.linalg.inv(J)))[1]
+    kl_x = 0.5*(jnp.dot(m_x, h.reshape(-1)) - tr_x - mJm_x - logdet_A_x)
     return vlb_s, s
 
 
@@ -173,6 +167,7 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples, K, G):
     phi_tau = tree_map(jnp.exp, phi_tau)
     tau, rng = rngcall(gamma_sample, rng, gamma_natparams_fromstandard(phi_tau),
                        (nsamples_tau, *phi_tau[0].shape))
+
     kl = jnp.sum(
         gamma_kl(
             gamma_natparams_fromstandard(phi_tau),
