@@ -232,8 +232,8 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     def cond_fun(value):
         *_, R, j = value
         errs = jnp.sum(R**2, 0)**0.5
-        jax_print((j, jnp.max(errs)))
-        return (j < maxiter)# & jnp.any(errs > tol)
+        #jax_print((j, jnp.max(errs)))
+        return (j < maxiter) #& jnp.any(errs > tol)
 
 
     def body_fun(value):
@@ -242,15 +242,6 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
         _a = (R*Z).sum(0) / (P*_V).sum(0)
         _X = X + _a.reshape(1, -1)*P
         _R = R - _a.reshape(1, -1)*_V
-        ro_idx = jnp.where(jnp.arange(maxiter) < j, True, False)
-
-        # reorth
-        #gram_sch = vmap(_cg_reorth, (None, 0, 0))(_R, R_all, ro_idx)
-        #_R = _R - gram_sch.sum(0)
-        #gram_sch = vmap(_cg_reorth, (None, 0, 0))(_R, R_all, ro_idx)
-        #_R = _R - gram_sch.sum(0)
-
-        R_all = R_all.at[j].set(_R)
         _Z = M(_R)
         _b = (_R*_Z).sum(0) / (R*Z).sum(0)
         _P = _Z + _b.reshape(1, -1)*P
@@ -265,8 +256,7 @@ def _mbcg_solve(A, B, x0=None, *, tol=0.01, maxiter=None, M=None):
     P0 = Z0.copy()
     a_all = jnp.zeros((maxiter, t))
     b_all = jnp.zeros((maxiter, t))
-    R_all = jnp.zeros((maxiter, n, t))
-    init_val = (x0, a_all, b_all, P0, Z0, R0, R_all, 0)
+    init_val = (x0, a_all, b_all, P0, Z0, R0, 0)
     X, alphas, betas, *_ = while_loop(cond_fun, body_fun, init_val)
     b_a = jnp.sqrt(betas[:-1])/alphas[:-1]
     Ts_off = vmap(lambda _: jnp.diag(_, k=1), in_axes=(1,))(b_a)

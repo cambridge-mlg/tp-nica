@@ -61,7 +61,7 @@ def parse():
                         help="zero (zero mean assumed),")
     parser.add_argument('--kernel', type=str, default="se",
                         help="se (squared exponential),")
-    parser.add_argument('--tp-df', type=float, default=2.01,
+    parser.add_argument('--tp-df', type=float, default=8.0,
                         help="df of t-process for simulated data")
     parser.add_argument('--GP', action='store_true', default=False,
                         help="generate and train from GP latents instead of TP")
@@ -116,7 +116,7 @@ def parse():
                         help="set nonlinear ica params to ground-truth values")
     parser.add_argument('--use-gt-kernel', action='store_true', default=False,
                         help="set GP kernel params to ground-truth values")
-    parser.add_argument('--use-gt-tau', action='store_true', default=False,
+    parser.add_argument('--use-gt-tau', action='store_true', default=True,
                         help="set tau to ground-truth values")
     # server settings
     parser.add_argument('--headless', action='store_true', default=False,

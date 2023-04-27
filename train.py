@@ -50,7 +50,9 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     # initialize generative model params (theta)
     if not args.GP:
         theta_tau, key = rngcall(
-            lambda _k: vmap(lambda _: rdm_df(_, maxval=4))(jr.split(_k, N)), key
+            lambda _k: vmap(lambda _: rdm_df(_, min_val=args.tp_df,
+                                             max_val=args.tp_df))(jr.split(_k, N)),
+            key
         )
         theta_tau = jnp.log(theta_tau)
         if args.repeat_dfs:
@@ -102,7 +104,8 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     if args.GP:
         phi = phi_s
     else:
-        phi_df, key = rngcall(lambda _:vmap(rdm_df)(jr.split(_, n_data*N)), key)
+        phi_df, key = rngcall(lambda _: vmap(lambda _k: rdm_df(
+            _k, min_val=args.tp_df, max_val=args.tp_df))(jr.split(_, n_data*N)), key)
         phi_df = jnp.log(phi_df.reshape(n_data, N))
         phi_tau = (phi_df, phi_df)
         phi = (phi_s, phi_tau)
