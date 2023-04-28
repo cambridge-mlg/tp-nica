@@ -27,8 +27,6 @@ from utils import (
     quad_form,
     fill_tril,
     jax_print,
-    pivoted_cholesky,
-    make_pinv_block_cho_version,
     solve_precond_plus_diag,
     mbcg,
     _identity,
@@ -53,9 +51,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     T = t.shape[0]
 
     # scale covariance
-    #jax_print((0, jnp.linalg.cond(K.swapaxes(1, 2).reshape(N*T, N*T))))
     K = K / tau[None, None, None, :]
-    #jax_print((1, jnp.linalg.cond(K.swapaxes(1, 2).reshape(N*T, N*T))))
 
     #1: compute parameters for \tilde{q(s|tau)}
     L = vmap(fill_tril, in_axes=(0, None))(L, N)
@@ -99,10 +95,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     P = lax.stop_gradient(fsai(lax.stop_gradient(A), 5, max_P_rank,
                                1e-8, None, _identity))
     Minv_mvp = lambda b: jnp.matmul(P.T, jnp.matmul(P, b))
-    A_mvp2 = lambda _: P@A_mvp(P.T@_)
-
-    #jax_print((2, jnp.linalg.cond(A))) #
-    #jax_print((3, jnp.linalg.cond(P @ A_mvp(P.T)))) #
+    #A_mvp2 = lambda _: P@A_mvp(P.T@_)
 
     # set up an run mbcg
     Z_tilde = custom_tril_solve(P, Z[:, 2*n_s_samples:])
@@ -147,9 +140,9 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     #jax_print((Elogpx, KL))
 
     # "exact" validation
-    J = js.linalg.block_diag(*jnp.matmul(L, L.swapaxes(1, 2)))
-    m_x = jnp.linalg.solve(J+jnp.linalg.inv(K), h.reshape(-1))
-    Cov = jnp.linalg.inv(J+jnp.linalg.inv(K))
+    #J = js.linalg.block_diag(*jnp.matmul(L, L.swapaxes(1, 2)))
+    #m_x = jnp.linalg.solve(J+jnp.linalg.inv(K), h.reshape(-1))
+    #Cov = jnp.linalg.inv(J+jnp.linalg.inv(K))
     ##solves2 = jnp.linalg.solve(jnp.linalg.inv(J)+K, K@h.reshape(-1))
 
     ##m_x2 = jnp.linalg.solve(J, solves[:,0])
@@ -161,10 +154,6 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
     #logdet_A_x = jnp.linalg.slogdet(jnp.linalg.solve(jnp.linalg.inv(J)+K,
     #                                         jnp.linalg.inv(J)))[1]
     #kl_x = 0.5*(jnp.dot(m_x, h.reshape(-1)) - tr_x - mJm_x - logdet_A_x)
-    mtest = jnp.mean(s.reshape(-1, N*T), 0)
-    ctest = jnp.cov(s.reshape(-1, N*T), rowvar=False)
-    dif = jnp.abs(ctest-Cov).max()
-    jdb.breakpoint()
     return vlb_s, s
 
 

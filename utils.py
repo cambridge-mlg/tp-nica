@@ -289,68 +289,6 @@ def mbcg(A, B, x0=None, *, tol=0.0, maxiter=None, M=None):
     return x, Ts
 
 
-def pivoted_cholesky(A, max_rank, tol=0.0):
-    # this implementation is bit ugly -- jax doesnt allow dynamic indexing
-    # so had to use masking and jnp.where
-    # also had to set tol=0.0 as otherwise reach issues wiht dynamic slicign
-    def cond_fun(value, max_rank=max_rank, tol=tol):
-        diag, perm, L, m = value
-        del L
-        perm_diag = diag[perm]
-        error = jnp.sum(jnp.where(jnp.arange(perm_diag.shape[0]) >= m,
-                                  perm_diag, 0))
-        return (m < max_rank)# & (error > tol)
-
-
-    def body_fun(value):
-        diag, perm, L, m = value
-        N = diag.shape[0]
-        perm_diag = diag[perm]
-        i = jnp.argmax(jnp.where(jnp.arange(N) >= m, perm_diag, -jnp.inf))
-        perm_m = perm[m]
-        perm_i = perm[i]
-        perm = perm.at[m].set(perm_i).at[i].set(perm_m)
-        max_val = jnp.sqrt(diag[perm[m]])
-        l = jnp.zeros((N,)).at[perm[m]].set(max_val)
-        l = l.at[perm].add(jnp.where(jnp.arange(N) >= m+1, A[perm[m]][perm],0))
-        l_row = jnp.where(jnp.arange(L.shape[1]) < m, L[perm[m], :], 0)
-        l_sub = l_row @ jnp.where((jnp.arange(N) >= m+1)[:, None],
-                                  L[perm, :], 0).T
-        l = l.at[perm].add(-l_sub)
-        l = l.at[perm].set(jnp.where(jnp.arange(N)>=m+1, l[perm]/max_val,
-                                        l[perm]))
-        diag = diag.at[perm].set(jnp.where(jnp.arange(N) >= m+1,
-                                           diag[perm]-l[perm]**2, diag))
-        L = L.at[:, m].set(l)
-        return (diag, perm, L, m+1)
-
-
-    diag = jnp.diag(A)
-    perm = jnp.arange(A.shape[0])
-    pchol = jnp.zeros((A.shape[0], max_rank))
-    init_val = (diag, perm, pchol, 0)
-    *_, pchol, m = while_loop(cond_fun, body_fun, init_val)
-    return pchol
-
-
-def make_pinv_block_cho_version(L, W):
-    # using closure here so that we can cache LtWWtL for later use
-    WtL = jnp.matmul(W.swapaxes(1, 2), L.reshape(
-        W.shape[0], -1, L.shape[-1])).reshape(-1, L.shape[-1])
-    LtW = WtL.T
-    LtWWtL = LtW @ WtL
-    def solve_precond_plus_block_cho(B):
-        # D must be a batch of block diagonal matrices
-        WtB = jnp.matmul(W.swapaxes(1, 2), B.reshape(
-            W.shape[0], -1, B.shape[-1])).reshape(-1, B.shape[-1])
-        A = jnp.eye(L.shape[1]) + LtWWtL
-        cho_factor = js.linalg.cho_factor(A)
-        woodbury_inv = custom_cho_solve(A, LtW @ WtB, cho_factor)
-        return jnp.matmul(W, (WtB - WtL@woodbury_inv).reshape(
-            W.shape[0], -1, WtB.shape[-1])).reshape(-1, WtB.shape[-1])
-    return solve_precond_plus_block_cho, LtWWtL
-
-
 def solve_precond_plus_diag(L, d, B):
     # B must be a batch of block diagonal matrices
     dB = d[:, None]*B
@@ -488,7 +426,8 @@ def lanczos_pro(key, A, r1, m, macheps=2**-52):
         w_ref = jnp.where(jnp.arange(m) < i, jnp.abs(W[-1]), 0)
         do_pro = (w_ref.max() > jnp.sqrt(macheps)) | (y == 1)
         r2, ro_idx = cond(do_pro, reorth, lambda *_: (r2, jnp.array([False]*(m))),
-                          r2, all_Q, w_ref, macheps)
+                          lax.stop_gradient(r2), lax.stop_gradient(all_Q),
+                          lax.stop_gradient(w_ref), macheps)
         b2 = jnp.linalg.norm(r2)
         W = W.at[-1].set(jnp.where(
             ro_idx, macheps*(1.5**0.5)*jr.normal(key_c, (m,)), W[-1]))
