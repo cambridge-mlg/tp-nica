@@ -350,7 +350,7 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
         init_val = (i, G0_i, phi_grad, p, idx)
         i, Gk_i, *_, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
         d_ii = quad_form(Gk_i[idx], A[idx][:, idx])**-0.5
-        return d_ii*Gk_i
+        return d_ii*Gk_i, idx
 
 
     if G0 == None:
@@ -358,8 +358,8 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
     else:
         G0_tilde = (1/jnp.einsum('ii->i', G0))[:, None] * G0
 
-    G = vmap(_calc_G_i)(jnp.arange(A.shape[0]), G0_tilde)
-    return G
+    G, idx = vmap(_calc_G_i)(jnp.arange(A.shape[0]), G0_tilde)
+    return G, idx
 
 
 def lanczos_tridiag(A, v1, m):

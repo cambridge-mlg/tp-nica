@@ -1,4 +1,5 @@
 import jax
+from jax._src.numpy.lax_numpy import arange
 import jax.numpy as jnp
 import jax.random as jr
 import jax.debug as jdb
@@ -16,6 +17,7 @@ from kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
 from utils import (
     _identity,
+    jax_print,
     tree_zeros_like,
     sample_wishart,
     matching_sources_corr,
@@ -111,7 +113,11 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         phi = (phi_s, phi_tau)
 
     # set up training details
-    pre_cond = jnp.eye(N*T)
+    G = jnp.eye(N*T)
+    P_all = (jnp.ones((n_data, N*T, args.max_precond_rank_A)),
+             jnp.repeat(jnp.outer(jnp.arange(N*T),
+                        jnp.ones(args.max_precond_rank_A,
+                                 dtype=jnp.int64))[None, :, :], n_data, 0))
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
     theta_optimizer = optax.adam(theta_lr)
@@ -165,11 +171,11 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         else:
             @jit
             def tp_training_step(key, theta, phi_n, theta_opt_state,
-                                 phi_n_opt_states, x, burn_in, precond):
-                (nvlb, (s, precond)), g = value_and_grad(
+                                 phi_n_opt_states, x, burn_in, G, P_n):
+                (nvlb, (s, G, P_n)), g = value_and_grad(
                     avg_neg_tp_elbo, argnums=(1, 2), has_aux=True)(
                         key, theta, phi_n, logpx, kernel_fn, x, t,
-                        nsamples, precond
+                        nsamples, G, P_n
                     )
                 theta_g, phi_n_g = g
 
@@ -197,8 +203,8 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 phi_n_updates, phi_n_opt_states = vmap(phi_opt.update)(
                     phi_n_g, phi_n_opt_states, phi_n)
                 phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
-                return nvlb, s, theta, phi_n, theta_opt_state,phi_n_opt_states,\
-                        precond
+                return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states,\
+                        G, P_n
             return tp_training_step
 
 
@@ -246,20 +252,25 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
             idx_set_it = shuffle_idx[it*minib_size:(it+1)*minib_size]
             phi_it = tree_get_idx(phi, idx_set_it)
             phi_opt_states_it = tree_get_idx(phi_opt_states, idx_set_it)
+            P_all_it = tree_get_idx(P_all, idx_set_it)
 
             # training step (or evaluation)
             if args.eval_only:
                 nvlb, s_sample = eval_step(key, theta, phi_it, x_it)
             else:
                 (nvlb, s_sample, theta, phi_it, theta_opt_state,
-                 phi_opt_states_it, pre_cond), key = rngcall(
+                 phi_opt_states_it, G, P_all_it), key = rngcall(
                     training_step, key, theta, phi_it, theta_opt_state,
-                    phi_opt_states_it, x_it, burn_in, pre_cond)
+                    phi_opt_states_it, x_it, burn_in, G, P_all_it)
 
                 # update the full variational parameter pytree at right indices
                 phi = tree_map(lambda a, b: a.at[idx_set_it].set(b), phi, phi_it)
                 phi_opt_states = tree_map(lambda a, b: a.at[idx_set_it].set(b),
                                           phi_opt_states, phi_opt_states_it)
+                P_all = tree_map(lambda a, b: a.at[idx_set_it].set(b),
+                                 P_all, P_all_it)
+
+                # update the observation specific preconditioner
 
             # evaluate
             s_sample = s_sample.swapaxes(-1, -2)
