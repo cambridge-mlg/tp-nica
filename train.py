@@ -41,12 +41,14 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     theta_lr = args.theta_learning_rate
     phi_lr = args.phi_learning_rate
     if args.GP:
-        nsamples = args.num_s_samples
+        nsamples = (args.num_s_samples, args.max_precond_rank_K,
+                    args.max_precond_rank_A, args.max_cg_iters,
+                    args.num_probe_vectors)
         gt_Q, gt_mixer_params, gt_kernel_params = params
     else:
-        nsamples = (args.num_s_samples, args.num_tau_samples,
-                    args.max_precond_rank_K, args.max_precond_rank_A,
-                    args.max_cg_iters, args.num_probe_vectors)
+        nsamples = (args.num_s_samples, args.max_precond_rank_K,
+                    args.max_precond_rank_A, args.max_cg_iters,
+                    args.num_probe_vectors, args.num_tau_samples)
         gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
     # initialize generative model params (theta)
@@ -138,10 +140,12 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         if is_gp:
             @jit
             def gp_training_step(key, theta, phi_n, theta_opt_state,
-                                 phi_n_opt_states, x, burn_in):
-                (nvlb, s), g = value_and_grad(avg_neg_gp_elbo, argnums=(1, 2),
-                                         has_aux=True)(key, theta, phi_n, logpx,
-                                                       kernel_fn, x, t, nsamples)
+                                 phi_n_opt_states, x, burn_in, G, P_n):
+                (nvlb, (s, G, P_n)), g = value_and_grad(
+                    avg_neg_gp_elbo, argnums=(1, 2), has_aux=True)(
+                        key, theta, phi_n, logpx, kernel_fn, x, t,
+                        nsamples, G, P_n
+                    )
                 theta_g, phi_n_g = g
 
                 # set up gradient updates for theta
@@ -166,7 +170,8 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 phi_n_updates, phi_n_opt_states = vmap(phi_opt.update)(
                     phi_n_g, phi_n_opt_states, phi_n)
                 phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
-                return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states
+                return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states,\
+                        G, P_n
             return gp_training_step
         else:
             @jit
@@ -269,8 +274,6 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                                           phi_opt_states, phi_opt_states_it)
                 P_all = tree_map(lambda a, b: a.at[idx_set_it].set(b),
                                  P_all, P_all_it)
-
-                # update the observation specific preconditioner
 
             # evaluate
             s_sample = s_sample.swapaxes(-1, -2)

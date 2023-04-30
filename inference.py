@@ -43,9 +43,8 @@ from functools import partial
 from time import perf_counter
 
 
-def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
-                      K, G, P):
-    n_s_samples, *_, max_P_rank, max_cg_iters, n_probe_vecs = nsamples
+def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, nsamples, K, G, P):
+    n_s_samples, _, max_P_rank, max_cg_iters, n_probe_vecs = nsamples
     theta_x, _ = theta[:2]
     L, h = phi_s
     N = h.shape[1]
@@ -161,8 +160,8 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
 
 # compute elbo estimate, assumes q(tau) is gamma
-def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples, K, G, P):
-    n_s_samples, nsamples_tau, *_, max_P_rank, max_cg_iters, _ = nsamples
+def structured_elbo(rng, theta, phi, logpx, x, t, nsamples, K, G, P):
+    _, _, max_P_rank,  *_, nsamples_tau = nsamples
     theta_tau = theta[2]
     theta_tau = jnp.exp(theta_tau)
     phi_s, phi_tau = phi[:2]
@@ -178,10 +177,10 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples, K, G, P):
             gamma_natparams_fromstandard(phi_tau),
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0
     )
-    vlb_s, s, P_val = vmap(structured_elbo_s, (0, None, None, None, None, None,
+    vlb_s, s, P_val = vmap(structured_elbo_s, (0, None, None, None, None,
              None, 0, None, None, None, None))(jr.split(rng, nsamples_tau),
-                                         theta, phi_s, logpx, cov_fn,
-                                         x, t, tau, nsamples, K, G, P)
+                                         theta, phi_s, logpx, x, t, tau,
+                                               nsamples[:-1], K, G, P)
 
     # comput average preconditioner over tau samples
     P_avg = jnp.median(P_val, 0)
@@ -190,62 +189,119 @@ def structured_elbo(rng, theta, phi, logpx, cov_fn, x, t, nsamples, K, G, P):
     return jnp.mean(vlb_s, 0) - kl, s, (P_dense, P_idx)
 
 
-def gp_elbo(rng, theta, phi_s, logpx, cov_fn, x, t, nsamples):
-    theta_x, theta_cov = theta[:2]
-    What, yhat, tu = phi_s
-    N, n_pseudo = yhat.shape
+def gp_elbo(key, theta, phi_s, logpx, x, t, nsamples, K, G, P):
+    n_s_samples, _, max_P_rank, max_cg_iters, n_probe_vecs = nsamples
+    theta_x, _ = theta[:2]
+    L, h = phi_s
+    N = h.shape[1]
     T = t.shape[0]
-    theta_cov = tree_map(lambda _: jnp.exp(_), theta_cov)
-    # repeat in case the same kernel replicated for all ICs
-    theta_cov = tree_map(lambda _: _.repeat(N-theta_cov[0].shape[0]+1),
-                         theta_cov)
-    t_dist_mat = jnp.sqrt(squared_euclid_dist_mat(t))
-    theta_cov = bound_se_kernel_params(
-        theta_cov, sigma_min=1e-3,
-        ls_min=jnp.min(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)]),
-        ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
+
+    #1: compute parameters for \tilde{q(s|tau)}
+    L = vmap(fill_tril, in_axes=(0, None))(L, N)
+    L = vmap(lambda x: x.at[jnp.diag_indices_from(x)].set(
+      jnp.exp(jnp.diag(x))))(L)
+    L_inv = vmap(custom_tril_solve, (0, None))(L, jnp.eye(N))
+    J_inv = jnp.matmul(L_inv.swapaxes(1, 2), L_inv)
+    A = K.at[jnp.arange(T), jnp.arange(T)].add(J_inv).swapaxes(
+      1, 2).reshape(N*T, N*T)
+    K = K.swapaxes(1, 2).reshape(N*T, N*T)
+
+    # set up sampling
+    key, key_z, key_u = jr.split(key, 3)
+    Z = jr.normal(key_z, shape=(N*T, 2*n_s_samples + n_probe_vecs))
+    K_mvp = lambda _: G@(K@(G.T@_))
+    u0 = Z.T[:n_s_samples].reshape(-1, T, N)
+    u0 = vmap(vmap(jnp.matmul), (None, 0))(L, u0)
+    u1 = vmap(lambda _: krylov_subspace_sampling(key_u, K_mvp, _, 20),
+              in_axes=1, out_axes=1)(Z[:, n_s_samples:2*n_s_samples])
+    u1 = (G.T@u1).T.reshape(-1, T, N)
+    u = (u0+u1).reshape(n_s_samples, -1).T
+
+
+    def A_mvp(x):
+        if len(x.shape) == 1:
+            Jinvx = vmap(custom_choL_solve)(
+                L, x.reshape(L.shape[0], -1)).reshape(-1)
+        elif len(x.shape) == 2:
+            Jinvx = vmap(custom_choL_solve)(
+                L, x.reshape(L.shape[0], -1, x.shape[-1])).reshape(
+                    -1, x.shape[-1])
+        return Jinvx + K@x
+
+
+    # calculate preconditioner for inverse(cho_factor(A))
+    #P0 = jnp.eye(N*T)
+    #P0 = P0.at[jnp.arange(N*T)[:, None], P[1]].set(P[0]) 
+
+    #!! NOTICE NONE BELOW HARD-CODED FOR NOW!!
+    P_val, P_idx = lax.stop_gradient(fsai(lax.stop_gradient(A), 5, max_P_rank,
+                                     1e-8, None, _identity))
+    Minv_mvp = lambda b: jnp.matmul(P_val.T, jnp.matmul(P_val, b))
+    #Minv_mvp = lambda b: jnp.matmul(P_val.T, vmap(lambda a, i:
+    #                                          jnp.matmul(a[i],b[i]))(P_val, P_idx))
+    #A_mvp2 = lambda _: P_val@A_mvp(P_val.T@_)
+
+    # save P for next iteration (turned off for now; see None input into fsai)
+    P_dense = P_val[jnp.arange(P_val.shape[0])[:, None], P_idx]
+
+    # set up an run mbcg
+    Z_tilde = custom_tril_solve(P_val, Z[:, 2*n_s_samples:])
+    B = jnp.hstack((K@h.reshape(-1, 1), K@u, Z_tilde))
+    solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=Minv_mvp)
+    #solves, T_mats = mbcg(A_mvp2, P_val@B, maxiter=max_cg_iters, M=None)
+    #solves = P_val.T@solves
+
+    # compute m 
+    m = vmap(custom_choL_solve)(
+        L, solves[:, 0].reshape(L.shape[0], -1)
     )
-    Kuu = vmap(lambda b: vmap(lambda a:
-        comp_K_N(a, b, cov_fn, theta_cov)
-    )(tu))(tu)
-    Kuu = Kuu.swapaxes(1, 2).reshape(n_pseudo*N, n_pseudo*N)
-    Ksu = vmap(lambda b:vmap(lambda a:
-        comp_K_N(a, b, cov_fn, theta_cov))(tu))(t)
-    Ksu = Ksu.swapaxes(1, 2).reshape(T*N, n_pseudo*N)
-    kss = vmap(
-        lambda tc: vmap(lambda t: cov_fn(t, t, tc))(t)
-        )(theta_cov)
 
-    # compute parameters for \tilde{q(s)}
-    What = vmap(fill_triu, in_axes=(1, None), out_axes=-1)(What, N)
-    WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
-    L = js.linalg.block_diag(*jnp.moveaxis(
-      jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
-    LK = L@Kuu
-    lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
-    KyyWTy = custom_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
-    #KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
-    mu_s = Ksu @ KyyWTy
-    cov_solve = custom_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
-    cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
-          in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    #cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
-    #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    s, rng = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
-        cov_s, shape=(nsamples, T)), rng)
+    # solve for sample and add mean
+    s_zero = vmap(lambda x: vmap(custom_choL_solve)(L, x.reshape(T, N)), in_axes=1)(
+        solves[:, 1:n_s_samples+1])
+    s = m[None] + s_zero
 
-    # compute E_{\tilde{q(s)}}[log_p(x_t|s_t)]
+    # compute likelihood expectation
     Elogpx = jnp.mean(
-        jnp.sum(vmap(lambda _: vmap(logpx,(1, 0, None))(x, _, theta_x))(s), 1)
+        jnp.sum(vmap(lambda _: vmap(logpx, (1, 0, None))(x, _, theta_x))(s), 1)
     )
 
-    # compute KL[q(u)|p(u)]
-    tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
-    h = Kuu@KyyWTy
-    logZ = 0.5*(jnp.dot(WTy.squeeze(), h)
-                -jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
-    KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
-    return Elogpx-KLqpu, s
+    # compute logdet approximation
+    ew, eV = jnp.linalg.eigh(T_mats[n_s_samples+1:])
+    logdet_A_tilde = N*T * (jnp.log(ew) * eV[:, 0, :]**2).sum(1).mean()
+    logdet_A = logdet_A_tilde - 2*jnp.log(jnp.diag(P_val)).sum()
+    logdet_J = 2*jnp.log(jnp.einsum('ijj->ij', L)).sum()
+    logdet = -logdet_A-logdet_J
+
+    # compute trace approximation
+    ste = vmap(jnp.dot, (1, 1))(solves[:, n_s_samples+1:],
+                                K@(P_val.T@(P_val@Z_tilde))).mean()
+
+    # compute mJm
+    Lm = vmap(jnp.matmul)(L.swapaxes(1, 2), m)
+    mJm = (Lm**2).sum()
+
+    # compute KL & vlb
+    KL = 0.5*((h*m).sum()-mJm-ste-logdet)
+    vlb_s = Elogpx - KL
+    #jax_print((Elogpx, KL))
+
+    # "exact" validation
+    #J = js.linalg.block_diag(*jnp.matmul(L, L.swapaxes(1, 2)))
+    #m_x = jnp.linalg.solve(J+jnp.linalg.inv(K), h.reshape(-1))
+    #Cov = jnp.linalg.inv(J+jnp.linalg.inv(K))
+    ##solves2 = jnp.linalg.solve(jnp.linalg.inv(J)+K, K@h.reshape(-1))
+
+    ##m_x2 = jnp.linalg.solve(J, solves[:,0])
+    ##m_x2 = jnp.linalg.solve(J, solves2)
+    ###jax_print(jnp.max(jnp.abs((solves[:, 0]-solves2))).round(2))
+
+    #tr_x = jnp.trace(jnp.linalg.solve(jnp.linalg.inv(J)+K, K))
+    #mJm_x = jnp.dot(m_x, jnp.matmul(J, m_x))
+    #logdet_A_x = jnp.linalg.slogdet(jnp.linalg.solve(jnp.linalg.inv(J)+K,
+    #                                         jnp.linalg.inv(J)))[1]
+    #kl_x = 0.5*(jnp.dot(m_x, h.reshape(-1)) - tr_x - mJm_x - logdet_A_x)
+    return vlb_s, s, (P_dense, P_idx)
 
 
 def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
@@ -254,7 +310,7 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     Calculate average negative elbo over training samples
     """
     T = t.shape[0]
-    max_G_rank = nsamples[2]
+    max_G_rank = nsamples[1]
     # unpack kernel params
     theta_x, theta_cov = theta[:2]
     N = theta_x[0][0][0].shape[0]
@@ -277,12 +333,12 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
                     max_G_rank, 1e-8, lax.stop_gradient(G), _identity)
 
     # compute elbo
-    vlb, s, P = vmap(elbo_fn, (0, None, 0, None, None, 0,
-                               None, None, None, None, 0))(
-        jr.split(rng, x.shape[0]), theta, phi_n, logpx, cov_fn, x, t, nsamples,
-        K, lax.stop_gradient(G), P
+    vlb, s, P = vmap(elbo_fn, (0, None, 0, None, 0, None, None, None, None, 0))(
+        jr.split(rng, x.shape[0]), theta, phi_n, logpx, x, t, nsamples, K,
+        lax.stop_gradient(G), P
     )
     return -vlb.mean(), (s, G, P)
+
 
 avg_neg_tp_elbo = Partial(avg_neg_elbo, elbo_fn=structured_elbo)
 avg_neg_gp_elbo = Partial(avg_neg_elbo, elbo_fn=gp_elbo)
