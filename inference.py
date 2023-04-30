@@ -91,16 +91,14 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 
 
     # calculate preconditioner for inverse(cho_factor(A))
-    P0 = jnp.eye(N*T)
-    P0 = P0.at[jnp.arange(N*T)[:, None], P[1]].set(P[0])
+    #P0 = jnp.eye(N*T)
+    #P0 = P0.at[jnp.arange(N*T)[:, None], P[1]].set(P[0])
     P_val, _ = lax.stop_gradient(fsai(lax.stop_gradient(A), 5, max_P_rank,
-                                      1e-8, P0, _identity))
+                                      1e-8, None, _identity))
     Minv_mvp = lambda b: jnp.matmul(P_val.T, jnp.matmul(P_val, b))
     #Minv_mvp = lambda b: jnp.matmul(P_val.T, vmap(lambda a, i:
     #                                          jnp.matmul(a[i],b[i]))(P_val, P_idx))
     #A_mvp2 = lambda _: P_val@A_mvp(P_val.T@_)
-    jax_print(jnp.linalg.cond(A))
-    jax_print(jnp.linalg.cond(P_val@(A_mvp(P_val.T))))
 
     # set up an run mbcg
     Z_tilde = custom_tril_solve(P_val, Z[:, 2*n_s_samples:])
