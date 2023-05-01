@@ -5,6 +5,7 @@ import matplotlib
 from matplotlib import projections
 #matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+#import addcopyfighandler
 
 import argparse
 import pdb
@@ -68,13 +69,19 @@ def parse():
     # inference, training and optimization args
     parser.add_argument('--num-s-samples', type=int, default=3,
                         help="num. of samples from q(s|tau) in elbo")
-    parser.add_argument('--num-tau-samples', type=int, default=3,
+    parser.add_argument('--num-tau-samples', type=int, default=6,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--max-precond-rank-K', type=int, default=10,
-                        help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--max-precond-rank-A', type=int, default=10,
-                        help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--max-cg-iters', type=int, default=20,
+    parser.add_argument('--max-nonzeros-G', type=int, default=50,
+                        help="num-non-zeros in precond. of K")
+    parser.add_argument('--max-nonzeros-P', type=int, default=25,
+                        help="num-non-zeros in precond. of A")
+    parser.add_argument('--num-fsai-iters-G', type=int, default=2,
+                        help="num. of FSAI iters for computing precond. of K")
+    parser.add_argument('--num-fsai-iters-P', type=int, default=5,
+                        help="num. of FSAI iters for computing precond. of A")
+    parser.add_argument('--kry-subspace-dim', type=int, default=20,
+                        help="dim. of Krylov subspace in approx. sampling of s")
+    parser.add_argument('--max-cg-iters', type=int, default=60,
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--num-probe-vectors', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")

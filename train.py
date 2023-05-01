@@ -41,22 +41,27 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     theta_lr = args.theta_learning_rate
     phi_lr = args.phi_learning_rate
     if args.GP:
-        nsamples = (args.num_s_samples, args.max_precond_rank_K,
-                    args.max_precond_rank_A, args.max_cg_iters,
-                    args.num_probe_vectors)
+        nsamples = args.num_s_samples
+        infer_args = (args.max_nonzeros_G, args.num_fsai_iters_G,
+                      args.max_nonzeros_P, args.num_fsai_iters_P,
+                      args.max_cg_iters, args.num_probe_vectors,
+                      args.kry_subspace_dim)
         gt_Q, gt_mixer_params, gt_kernel_params = params
     else:
-        nsamples = (args.num_s_samples, args.max_precond_rank_K,
-                    args.max_precond_rank_A, args.max_cg_iters,
-                    args.num_probe_vectors, args.num_tau_samples)
+        nsamples = (args.num_s_samples, args.num_tau_samples)
+        infer_args = (args.max_nonzeros_G, args.num_fsai_iters_G,
+                      args.max_nonzeros_P, args.num_fsai_iters_P,
+                      args.max_cg_iters, args.num_probe_vectors,
+                      args.kry_subspace_dim)
         gt_Q, gt_mixer_params, gt_kernel_params, gt_tau = params
 
     # initialize generative model params (theta)
     if not args.GP:
         theta_tau, key = rngcall(
             lambda _k: vmap(lambda _: rdm_df(_, min_val=args.tp_df,
-                                             max_val=args.tp_df))(jr.split(_k, N)),
-            key
+                                             max_val=args.tp_df+2))(
+                                                 jr.split(_k, N)
+                                             ), key
         )
         theta_tau = jnp.log(theta_tau)
         if args.repeat_dfs:
@@ -116,9 +121,9 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
 
     # set up training details
     G = jnp.eye(N*T)
-    P_all = (jnp.ones((n_data, N*T, args.max_precond_rank_A)),
+    P_all = (jnp.ones((n_data, N*T, args.max_nonzeros_P)),
              jnp.repeat(jnp.outer(jnp.arange(N*T),
-                        jnp.ones(args.max_precond_rank_A,
+                        jnp.ones(args.max_nonzeros_P,
                                  dtype=jnp.int64))[None, :, :], n_data, 0))
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
@@ -135,8 +140,8 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
 
 
     # define training step
-    def make_training_step(logpx, kernel_fn, t, nsamples, use_gt_settings,
-                           optimizers, is_gp):
+    def make_training_step(logpx, kernel_fn, t, nsamples, inference_args,
+                           use_gt_settings, optimizers, is_gp):
         if is_gp:
             @jit
             def gp_training_step(key, theta, phi_n, theta_opt_state,
@@ -144,7 +149,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 (nvlb, (s, G, P_n)), g = value_and_grad(
                     avg_neg_gp_elbo, argnums=(1, 2), has_aux=True)(
                         key, theta, phi_n, logpx, kernel_fn, x, t,
-                        nsamples, G, P_n
+                        nsamples, inference_args, G, P_n
                     )
                 theta_g, phi_n_g = g
 
@@ -180,7 +185,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 (nvlb, (s, G, P_n)), g = value_and_grad(
                     avg_neg_tp_elbo, argnums=(1, 2), has_aux=True)(
                         key, theta, phi_n, logpx, kernel_fn, x, t,
-                        nsamples, G, P_n
+                        nsamples, inference_args, G, P_n
                     )
                 theta_g, phi_n_g = g
 
@@ -223,7 +228,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                                    nsamples, elbo_fn)
     else:
         training_step = make_training_step(
-            nica_logpx, kernel_fn, t ,nsamples, use_gt_settings,
+            nica_logpx, kernel_fn, t ,nsamples, infer_args, use_gt_settings,
             (theta_optimizer, phi_optimizer), args.GP
         )
 
