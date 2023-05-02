@@ -69,17 +69,17 @@ def parse():
     # inference, training and optimization args
     parser.add_argument('--num-s-samples', type=int, default=3,
                         help="num. of samples from q(s|tau) in elbo")
-    parser.add_argument('--num-tau-samples', type=int, default=6,
+    parser.add_argument('--num-tau-samples', type=int, default=3,
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--max-nonzeros-G', type=int, default=50,
                         help="num-non-zeros in precond. of K")
     parser.add_argument('--max-nonzeros-P', type=int, default=25,
                         help="num-non-zeros in precond. of A")
-    parser.add_argument('--num-fsai-iters-G', type=int, default=2,
+    parser.add_argument('--num-fsai-iters-G', type=int, default=20,
                         help="num. of FSAI iters for computing precond. of K")
     parser.add_argument('--num-fsai-iters-P', type=int, default=5,
                         help="num. of FSAI iters for computing precond. of A")
-    parser.add_argument('--kry-subspace-dim', type=int, default=20,
+    parser.add_argument('--kry-subspace-dim', type=int, default=50,
                         help="dim. of Krylov subspace in approx. sampling of s")
     parser.add_argument('--max-cg-iters', type=int, default=60,
                         help="num. of samples from q(tau) in elbo")
@@ -214,5 +214,5 @@ def main():
 
 
 if __name__=="__main__":
-    with jax.debug_nans(True):
-        sys.exit(main())
+    #with jax.debug_nans(True):
+    sys.exit(main())

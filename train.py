@@ -323,6 +323,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 if args.headless:
                     plt.savefig("s_vs_sest.png")
                 else:
+                    plt.savefig("s_vs_sest.png")
                     plt.show(block=False)
                     plt.pause(10.)
                 plt.close()
@@ -361,6 +362,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
             if args.headless:
                 plt.savefig("elbo_mcc_hist.png")
             else:
+                plt.savefig("elbo_mcc_hist.png")
                 plt.show(block=False)
                 plt.pause(5.)
             plt.close()
