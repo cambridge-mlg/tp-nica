@@ -1,6 +1,6 @@
 from functools import partial
 from jax.config import config
-config.update("jax_enable_x64", True)
+#config.update("jax_enable_x64", True)
 
 
 import jax.numpy as jnp
@@ -330,6 +330,7 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
         r = A[idx].T @ p[idx]
         alpha = jnp.dot(p[idx], phi_grad[idx])/jnp.dot(p[idx], r[idx])
         alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
+        alpha = cond(jnp.isinf(alpha), tree_zeros_like, _identity, alpha)
         _g_i = g_i + alpha*p
         idx = naive_top_k(jnp.abs(_g_i), nz_max)[1]
         g_i_new = jnp.zeros_like(_g_i).at[idx].set(_g_i[idx])
