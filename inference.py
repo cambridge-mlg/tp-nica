@@ -338,6 +338,10 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     G, _ = fsai(lax.stop_gradient(K.swapaxes(1, 2).reshape(N*T, N*T)), G_iters,
                     max_nonzeros_G, 1e-8, lax.stop_gradient(G), _identity)
 
+    # for debuging
+    #jax_print(jnp.linalg.cond(K.swapaxes(1, 2).reshape(N*T, N*T)))
+    #jax_print(jnp.linalg.cond(G@(K.swapaxes(1, 2).reshape(N*T, N*T) @ G.T)))
+
     # compute elbo
     vlb, s, P = vmap(elbo_fn, (0, None, 0, None, 0, None, None, None, None,
                                None, 0))(
