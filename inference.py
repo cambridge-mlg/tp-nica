@@ -44,7 +44,7 @@ from time import perf_counter
 
 
 def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
-                      inference_args, K, G, P):
+                      inference_args, K, G):
     theta_x, _ = theta[:2]
     L, h = phi_s
     N = h.shape[1]
@@ -92,8 +92,6 @@ def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
 
 
     # calculate preconditioner for inverse(cho_factor(A))
-    #P0 = jnp.eye(N*T)
-    #P0 = P0.at[jnp.arange(N*T)[:, None], P[1]].set(P[0])
     P_val, _ = lax.stop_gradient(fsai(lax.stop_gradient(A), P_iters, max_nonzeros_P,
                                       1e-8, None, _identity))
     Minv_mvp = lambda b: jnp.matmul(P_val.T, jnp.matmul(P_val, b))
@@ -103,12 +101,14 @@ def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
 
     # set up an run mbcg
     Z_tilde = custom_tril_solve(P_val, Z[:, 2*n_s_samples:])
-    jax_print(Z_tilde)
+
+    out = (P_val, Z[:, 2*n_s_samples:]) ##
 
     B = jnp.hstack((K@h.reshape(-1, 1), K@u, Z_tilde))
     solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=Minv_mvp)
     #solves, T_mats = mbcg(A_mvp2, P_val@B, maxiter=max_cg_iters, M=None)
     #solves = P_val.T@solves
+    jax_print(jnp.sum(jnp.isnan(solves[:, n_s_samples+1:])))
 
     # compute m 
     m = vmap(custom_choL_solve)(
@@ -158,14 +158,14 @@ def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
     #                                         jnp.linalg.inv(J)))[1]
     #hm = jnp.dot(m_x, h.reshape(-1))
     #kl_x = 0.5*(hm - tr_x - mJm_x - logdet_A_x)
-    jax_print((0, (h*m).sum(), mJm, ste, logdet))
+    #jax_print((0, (h*m).sum(), mJm, ste, logdet))
     #jax_print((1, hm, mJm_x, tr_x, logdet_A_x))
-    return vlb_s, s, P_val
+    return vlb_s, s, out
 
 
 # compute elbo estimate, assumes q(tau) is gamma
 def structured_elbo(rng, theta, phi, logpx, x, t, nsamples, inference_args,
-                    K, G, P):
+                    K, G):
     nsamples_s, nsamples_tau = nsamples
     theta_tau = theta[2]
     theta_tau = jnp.exp(theta_tau)
@@ -184,20 +184,17 @@ def structured_elbo(rng, theta, phi, logpx, x, t, nsamples, inference_args,
             gamma_natparams_fromstandard(phi_tau),
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0
     )
-    vlb_s, s, P_val = vmap(structured_elbo_s, (0, None, None, None, None,
-             None, 0, None, None, None, None, None))(jr.split(rng, nsamples_tau),
+    vlb_s, s, out = vmap(structured_elbo_s, (0, None, None, None, None,
+             None, 0, None, None, None, None))(jr.split(rng, nsamples_tau),
                                          theta, phi_s, logpx, x, t, tau,
-                                               nsamples_s, inference_args, K, G, P)
+                                               nsamples_s, inference_args, K, G)
 
     # comput average preconditioner over tau samples
-    P_avg = jnp.median(P_val, 0)
-    P_idx = vmap(lambda _: naive_top_k(_, max_nonzeros_P)[1])(jnp.abs(P_avg))
-    P_dense = P_avg[jnp.arange(P_avg.shape[0])[:, None], P_idx]
-    return jnp.mean(vlb_s, 0) - kl, s, (P_dense, P_idx)
+    return jnp.mean(vlb_s, 0) - kl, s, out
 
 
 def gp_elbo(key, theta, phi_s, logpx, x, t, n_s_samples, inference_args,
-            K, G, P):
+            K, G):
     theta_x, _ = theta[:2]
     L, h = phi_s
     N = h.shape[1]
@@ -238,19 +235,12 @@ def gp_elbo(key, theta, phi_s, logpx, x, t, n_s_samples, inference_args,
 
 
     # calculate preconditioner for inverse(cho_factor(A))
-    #P0 = jnp.eye(N*T)
-    #P0 = P0.at[jnp.arange(N*T)[:, None], P[1]].set(P[0]) 
-
-    #!! NOTICE NONE BELOW HARD-CODED FOR NOW!!
     P_val, P_idx = lax.stop_gradient(fsai(lax.stop_gradient(A), P_iters,
                                           max_nonzeros_P, 1e-8, None, _identity))
     Minv_mvp = lambda b: jnp.matmul(P_val.T, jnp.matmul(P_val, b))
     #Minv_mvp = lambda b: jnp.matmul(P_val.T, vmap(lambda a, i:
     #                                          jnp.matmul(a[i],b[i]))(P_val, P_idx))
     #A_mvp2 = lambda _: P_val@A_mvp(P_val.T@_)
-
-    # save P for next iteration (turned off for now; see None input into fsai)
-    P_dense = P_val[jnp.arange(P_val.shape[0])[:, None], P_idx]
 
     # set up an run mbcg
     Z_tilde = custom_tril_solve(P_val, Z[:, 2*n_s_samples:])
@@ -309,11 +299,11 @@ def gp_elbo(key, theta, phi_s, logpx, x, t, n_s_samples, inference_args,
     #logdet_A_x = jnp.linalg.slogdet(jnp.linalg.solve(jnp.linalg.inv(J)+K,
     #                                         jnp.linalg.inv(J)))[1]
     #kl_x = 0.5*(jnp.dot(m_x, h.reshape(-1)) - tr_x - mJm_x - logdet_A_x)
-    return vlb_s, s, (P_dense, P_idx)
+    return vlb_s, s
 
 
 def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
-                 nsamples, inference_args, G, P, elbo_fn):
+                 nsamples, inference_args, G, elbo_fn):
     """
     Calculate average negative elbo over training samples
     """
@@ -346,12 +336,12 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     #jax_print(jnp.linalg.cond(G@(K.swapaxes(1, 2).reshape(N*T, N*T) @ G.T)))
 
     # compute elbo
-    vlb, s, P = vmap(elbo_fn, (0, None, 0, None, 0, None, None, None, None,
-                               None, 0))(
+    vlb, s, out = vmap(elbo_fn, (0, None, 0, None, 0, None, None, None, None,
+                               None))(
         jr.split(rng, x.shape[0]), theta, phi_n, logpx, x, t, nsamples,
-        inference_args[2:], K, lax.stop_gradient(G), P
+        inference_args[2:], K, lax.stop_gradient(G),
     )
-    return -vlb.mean(), (s, G, P)
+    return -vlb.mean(), (s, G, out)
 
 
 avg_neg_tp_elbo = Partial(avg_neg_elbo, elbo_fn=structured_elbo)

@@ -73,7 +73,7 @@ def parse():
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--max-nonzeros-G', type=int, default=50,
                         help="num-non-zeros in precond. of K")
-    parser.add_argument('--max-nonzeros-P', type=int, default=25,
+    parser.add_argument('--max-nonzeros-P', type=int, default=100,
                         help="num-non-zeros in precond. of A")
     parser.add_argument('--num-fsai-iters-G', type=int, default=2,
                         help="num. of FSAI iters for computing precond. of K")
@@ -85,9 +85,9 @@ def parse():
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--num-probe-vectors', type=int, default=10,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--phi-learning-rate', type=float, default=0.28,
+    parser.add_argument('--phi-learning-rate', type=float, default=3e-3,
                         help="learning rate for variational params")
-    parser.add_argument('--theta-learning-rate', type=float, default=0.004,
+    parser.add_argument('--theta-learning-rate', type=float, default=3e-3,
                         help="learning rate for model params")
     parser.add_argument('--minib-size', type=int, default=8,
                         help="minibatch size")

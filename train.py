@@ -121,10 +121,6 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
 
     # set up training details
     G = jnp.eye(N*T)
-    P_all = (jnp.ones((n_data, N*T, args.max_nonzeros_P)),
-             jnp.repeat(jnp.outer(jnp.arange(N*T),
-                        jnp.ones(args.max_nonzeros_P,
-                                 dtype=jnp.int64))[None, :, :], n_data, 0))
     num_full_minibs, remainder = divmod(n_data, minib_size)
     num_minibs = num_full_minibs + bool(remainder)
     theta_optimizer = optax.adam(theta_lr)
@@ -145,11 +141,11 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         if is_gp:
             @jit
             def gp_training_step(key, theta, phi_n, theta_opt_state,
-                                 phi_n_opt_states, x, burn_in, G, P_n):
+                                 phi_n_opt_states, x, burn_in, G):
                 (nvlb, (s, G, P_n)), g = value_and_grad(
                     avg_neg_gp_elbo, argnums=(1, 2), has_aux=True)(
                         key, theta, phi_n, logpx, kernel_fn, x, t,
-                        nsamples, inference_args, G, P_n
+                        nsamples, inference_args, G
                     )
                 theta_g, phi_n_g = g
 
@@ -176,17 +172,22 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                     phi_n_g, phi_n_opt_states, phi_n)
                 phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
                 return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states,\
-                        G, P_n
+                        G
             return gp_training_step
         else:
             @jit
             def tp_training_step(key, theta, phi_n, theta_opt_state,
-                                 phi_n_opt_states, x, burn_in, G, P_n):
-                (nvlb, (s, G, P_n)), g = value_and_grad(
+                                 phi_n_opt_states, x, burn_in, G):
+                (nvlb, (s, G, out)), g = value_and_grad(
                     avg_neg_tp_elbo, argnums=(1, 2), has_aux=True)(
                         key, theta, phi_n, logpx, kernel_fn, x, t,
-                        nsamples, inference_args, G, P_n
+                        nsamples, inference_args, G,
                     )
+
+                import jax.numpy as jn
+                jdb.breakpoint()
+
+
                 theta_g, phi_n_g = g
 
                 # set up gradient updates for theta 
@@ -214,7 +215,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                     phi_n_g, phi_n_opt_states, phi_n)
                 phi_n = vmap(optax.apply_updates)(phi_n, phi_n_updates)
                 return nvlb, s, theta, phi_n, theta_opt_state, phi_n_opt_states,\
-                        G, P_n
+                        G
             return tp_training_step
 
 
@@ -262,23 +263,20 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
             idx_set_it = shuffle_idx[it*minib_size:(it+1)*minib_size]
             phi_it = tree_get_idx(phi, idx_set_it)
             phi_opt_states_it = tree_get_idx(phi_opt_states, idx_set_it)
-            P_all_it = tree_get_idx(P_all, idx_set_it)
 
             # training step (or evaluation)
             if args.eval_only:
                 nvlb, s_sample = eval_step(key, theta, phi_it, x_it)
             else:
                 (nvlb, s_sample, theta, phi_it, theta_opt_state,
-                 phi_opt_states_it, G, P_all_it), key = rngcall(
+                 phi_opt_states_it, G), key = rngcall(
                     training_step, key, theta, phi_it, theta_opt_state,
-                    phi_opt_states_it, x_it, burn_in, G, P_all_it)
+                    phi_opt_states_it, x_it, burn_in, G)
 
                 # update the full variational parameter pytree at right indices
                 phi = tree_map(lambda a, b: a.at[idx_set_it].set(b), phi, phi_it)
                 phi_opt_states = tree_map(lambda a, b: a.at[idx_set_it].set(b),
                                           phi_opt_states, phi_opt_states_it)
-                P_all = tree_map(lambda a, b: a.at[idx_set_it].set(b),
-                                 P_all, P_all_it)
 
             # evaluate
             s_sample = s_sample.swapaxes(-1, -2)
