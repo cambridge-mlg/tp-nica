@@ -461,7 +461,10 @@ def krylov_subspace_sampling(key, A, v1, m):
     v1 = v1 / b
     T, V = lanczos_pro(key, A, v1, m)
     # use svd here as svd=eigh for p.d matrices, but ensures >0 sing vals
-    eV, ew, _ = jnp.linalg.svd(T, full_matrices=False)
+
+    #eV, ew, _ = jnp.linalg.svd(T, full_matrices=False)
+    ew, eV = jnp.linalg.eigh(T)
+
     T_neg_sqrt_v1 = eV @ ((ew**-0.5)*eV[0])
     return b*(V @ T_neg_sqrt_v1)
 

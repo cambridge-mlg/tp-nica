@@ -75,11 +75,11 @@ def parse():
                         help="num-non-zeros in precond. of K")
     parser.add_argument('--max-nonzeros-P', type=int, default=25,
                         help="num-non-zeros in precond. of A")
-    parser.add_argument('--num-fsai-iters-G', type=int, default=20,
+    parser.add_argument('--num-fsai-iters-G', type=int, default=2,
                         help="num. of FSAI iters for computing precond. of K")
     parser.add_argument('--num-fsai-iters-P', type=int, default=5,
                         help="num. of FSAI iters for computing precond. of A")
-    parser.add_argument('--kry-subspace-dim', type=int, default=50,
+    parser.add_argument('--kry-subspace-dim', type=int, default=25,
                         help="dim. of Krylov subspace in approx. sampling of s")
     parser.add_argument('--max-cg-iters', type=int, default=60,
                         help="num. of samples from q(tau) in elbo")

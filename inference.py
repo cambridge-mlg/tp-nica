@@ -103,8 +103,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
 
     # set up an run mbcg
     Z_tilde = custom_tril_solve(P_val, Z[:, 2*n_s_samples:])
-    Z2 = jnp.linalg.solve(P_val, Z[:, 2*n_s_samples:])
-    jax_print(jnp.min(jnp.diag(P_val)))
+    jax_print(Z_tilde)
 
     B = jnp.hstack((K@h.reshape(-1, 1), K@u, Z_tilde))
     solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=Minv_mvp)
