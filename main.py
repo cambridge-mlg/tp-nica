@@ -12,7 +12,7 @@ import pdb
 import sys
 
 from jax.config import config
-#config.update("jax_enable_x64", True)
+config.update("jax_enable_x64", True)
 
 from sklearn.linear_model import LinearRegression as LR
 

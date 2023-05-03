@@ -433,7 +433,7 @@ def lanczos_pro(key, A, r1, m, macheps=2**-52):
         W = W.at[-1].set(jnp.where(
             ro_idx, macheps*(1.5**0.5)*jr.normal(key_c, (m,)), W[-1]))
         y = (do_pro & (y == 0))*1
-        return (key, r2, b2, q1, all_a, all_b, all_Q, W, y), (q1, a1, b1)
+        return (key, r2, _b2, q1, all_a, all_b, all_Q, W, y), (q1, a1, b1)
 
 
     d = r1.shape[0]
@@ -460,23 +460,18 @@ def krylov_subspace_sampling(key, A, v1, m):
     b = jnp.linalg.norm(v1)
     v1 = v1 / b
     T, V = lanczos_pro(key, A, v1, m)
-    ew, eV = jnp.linalg.eigh(T)
+    # use svd here as svd=eigh for p.d matrices, but ensures >0 sing vals
+    eV, ew, _ = jnp.linalg.svd(T, full_matrices=False)
     T_neg_sqrt_v1 = eV @ ((ew**-0.5)*eV[0])
     return b*(V @ T_neg_sqrt_v1)
-
 
 
 if __name__ == "__main__":
     key = jr.PRNGKey(8)
     Q = jr.normal(key, (6000, 6000))
     A = Q.T@Q
-
-    P = fsai_og(A, 100, 100, 1e-8, G0=None, Minv_f=_identity)
-    L = js.linalg.cho_factor(A, lower=True)[0]
-    Pt = jnp.linalg.inv(L)
-    print(jit(jnp.linalg.cond)(A))
-    print(jit(jnp.linalg.cond)((P@(A@P.T))))
-
-
-    pdb.set_trace()
+    print(jnp.linalg.eigh(A)[0])
+    key1, key0 = jr.split(key)
+    v1 = jr.normal(key0, (A.shape[0],))
+    T, _ = lanczos_pro(jr.split(key)[1], lambda _: A@_, v1, 100, macheps=2**-52)
 

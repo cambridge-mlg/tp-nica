@@ -71,6 +71,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
     key, key_z, key_u = jr.split(key, 3)
     Z = jr.normal(key_z, shape=(N*T, 2*n_s_samples + n_probe_vecs))
     K_mvp = lambda _: G@(K@(G.T@_))
+
     u0 = Z.T[:n_s_samples].reshape(-1, T, N)
     u0 = vmap(vmap(jnp.matmul), (None, 0))(L, u0)
     u1 = vmap(lambda _: krylov_subspace_sampling(key_u, K_mvp, _, kry_dim),
@@ -102,6 +103,9 @@ def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
 
     # set up an run mbcg
     Z_tilde = custom_tril_solve(P_val, Z[:, 2*n_s_samples:])
+    Z2 = jnp.linalg.solve(P_val, Z[:, 2*n_s_samples:])
+    jax_print(jnp.min(jnp.diag(P_val)))
+
     B = jnp.hstack((K@h.reshape(-1, 1), K@u, Z_tilde))
     solves, T_mats = mbcg(A_mvp, B, maxiter=max_cg_iters, M=Minv_mvp)
     #solves, T_mats = mbcg(A_mvp2, P_val@B, maxiter=max_cg_iters, M=None)
@@ -155,7 +159,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
     #                                         jnp.linalg.inv(J)))[1]
     #hm = jnp.dot(m_x, h.reshape(-1))
     #kl_x = 0.5*(hm - tr_x - mJm_x - logdet_A_x)
-    #jax_print((0, (h*m).sum(), mJm, ste, logdet))
+    jax_print((0, (h*m).sum(), mJm, ste, logdet))
     #jax_print((1, hm, mJm_x, tr_x, logdet_A_x))
     return vlb_s, s, P_val
 
