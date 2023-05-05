@@ -52,7 +52,7 @@ def parse():
                         help="number of latent input locations")
     parser.add_argument('-D', type=int, default=2,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=512,
+    parser.add_argument('--num-data', type=int, default=128,
                         help="total number of data samples to generate")
     parser.add_argument('--L-data', type=int, default=0,
                         help="data gen: number of nonlinear layers; 0 = linear ICA")
@@ -62,7 +62,7 @@ def parse():
                         help="zero (zero mean assumed),")
     parser.add_argument('--kernel', type=str, default="se",
                         help="se (squared exponential),")
-    parser.add_argument('--tp-df', type=float, default=8.0,
+    parser.add_argument('--tp-df', type=float, default=4.0,
                         help="df of t-process for simulated data")
     parser.add_argument('--GP', action='store_true', default=False,
                         help="generate and train from GP latents instead of TP")
@@ -73,13 +73,13 @@ def parse():
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--max-nonzeros-G', type=int, default=50,
                         help="num-non-zeros in precond. of K")
-    parser.add_argument('--max-nonzeros-P', type=int, default=100,
+    parser.add_argument('--max-nonzeros-P', type=int, default=50,
                         help="num-non-zeros in precond. of A")
     parser.add_argument('--num-fsai-iters-G', type=int, default=2,
                         help="num. of FSAI iters for computing precond. of K")
     parser.add_argument('--num-fsai-iters-P', type=int, default=5,
                         help="num. of FSAI iters for computing precond. of A")
-    parser.add_argument('--kry-subspace-dim', type=int, default=25,
+    parser.add_argument('--kry-subspace-dim', type=int, default=100,
                         help="dim. of Krylov subspace in approx. sampling of s")
     parser.add_argument('--max-cg-iters', type=int, default=60,
                         help="num. of samples from q(tau) in elbo")
