@@ -453,18 +453,18 @@ def lanczos_pro(key, A, r1, m, macheps=2**-52):
     return T, V.T
 
 
-def krylov_subspace_sampling(key, A, v1, m, eps):
+def krylov_subspace_sampling(key, A, v1, m):
     ''' Samples N(0, inv(A))'''
     #import numpy as np
     b = jnp.linalg.norm(v1)
     v1 = v1 / b
     T, V = lanczos_pro(key, A, v1, m)
-    T = T + eps*jnp.eye(T.shape[0])
+    T = T + jnp.finfo(T.dtype).eps*jnp.linalg.norm(lax.stop_gradient(T))*jnp.eye(T.shape[0])
     # use svd here as svd=eigh for p.d matrices, but ensures >0 sing vals
     #eV, ew, _ = jnp.linalg.svd(T, full_matrices=False)
     ew, eV = jnp.linalg.eigh(T)
     T_neg_sqrt_v1 = eV @ ((ew**-0.5)*eV[0])
-    return b*(V @ T_neg_sqrt_v1), jnp.min(jnp.abs(ew))
+    return b*(V @ T_neg_sqrt_v1)
 
 
 if __name__ == "__main__":
