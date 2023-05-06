@@ -44,7 +44,7 @@ from time import perf_counter
 
 
 def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
-                      inference_args, K, G):
+                      inference_args, K, G, P_val):
     theta_x, _ = theta[:2]
     L, h = phi_s
     N = h.shape[1]
@@ -58,10 +58,10 @@ def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
     L = vmap(fill_tril, in_axes=(0, None))(L, N)
     L = vmap(lambda x: x.at[jnp.diag_indices_from(x)].set(
       jnp.exp(jnp.diag(x))))(L)
-    L_inv = vmap(custom_tril_solve, (0, None))(L, jnp.eye(N))
-    J_inv = jnp.matmul(L_inv.swapaxes(1, 2), L_inv)
-    A = K.at[jnp.arange(T), jnp.arange(T)].add(J_inv).swapaxes(
-      1, 2).reshape(N*T, N*T)
+    #L_inv = vmap(custom_tril_solve, (0, None))(L, jnp.eye(N))
+    #J_inv = jnp.matmul(L_inv.swapaxes(1, 2), L_inv)
+    #A = K.at[jnp.arange(T), jnp.arange(T)].add(J_inv).swapaxes(
+    #  1, 2).reshape(N*T, N*T)
     K = K.swapaxes(1, 2).reshape(N*T, N*T)
 
     # scale preconditioner of inverse(cho_factor(K)) with current tau samples
@@ -94,10 +94,10 @@ def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
     # calculate preconditioner for inverse(cho_factor(A))
     #P_val, _ = lax.stop_gradient(fsai(lax.stop_gradient(A), P_iters, max_nonzeros_P,
     #                                  1e-8, None, _identity))
-    P_val = jnp.eye(N*T)
+    #P_val = jnp.eye(N*T)
     Minv_mvp = lambda b: jnp.matmul(P_val.T, jnp.matmul(P_val, b))
-
-    #jax_print(jnp.linalg.cond(P_val@A_mvp(P_val.T)))
+    #jax_print((0, jnp.linalg.cond(A)))
+    #jax_print((1, jnp.linalg.cond(P_val@A_mvp(P_val.T))))
 
     #Minv_mvp = lambda b: jnp.matmul(P_val.T, vmap(lambda a, i:
     #                                          jnp.matmul(a[i],b[i]))(P_val, P_idx))
@@ -175,8 +175,10 @@ def structured_elbo(rng, theta, phi, logpx, x, t, nsamples, inference_args,
     theta_tau = theta[2]
     theta_tau = jnp.exp(theta_tau)
     phi_s, phi_tau = phi[:2]
+    L, h = phi_s
     N = phi_tau[0].shape[0]
-    max_nonzeros_P = inference_args[0]
+    T = t.shape[0]
+    max_nonzeros_P, P_iters, *_ = inference_args
 
     # in case df param is replicated to be same for all ICs
     theta_tau = theta_tau.repeat(N-theta_tau.shape[0]+1)
@@ -189,11 +191,24 @@ def structured_elbo(rng, theta, phi, logpx, x, t, nsamples, inference_args,
             gamma_natparams_fromstandard(phi_tau),
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0
     )
+
+    # toplevel preconditioner 
+    tau_means = (phi_tau[0] / phi_tau[1])
+    K_m = K / tau_means[None, None, None, :]
+    L = vmap(fill_tril, in_axes=(0, None))(L, N)
+    L = vmap(lambda x: x.at[jnp.diag_indices_from(x)].set(
+             jnp.exp(jnp.diag(x))))(L)
+    L_inv = vmap(custom_tril_solve, (0, None))(L, jnp.eye(N))
+    J_inv = jnp.matmul(L_inv.swapaxes(1, 2), L_inv)
+    A = K_m.at[jnp.arange(T), jnp.arange(T)].add(J_inv).swapaxes(
+      1, 2).reshape(N*T, N*T)
+    P_val, _ = lax.stop_gradient(fsai(lax.stop_gradient(A), P_iters,
+                                      max_nonzeros_P, 1e-8, None, _identity))
     vlb_s, s = vmap(structured_elbo_s, (0, None, None, None, None,
-             None, 0, None, None, None, None))(jr.split(rng, nsamples_tau),
+             None, 0, None, None, None, None, None))(jr.split(rng, nsamples_tau),
                                          theta, phi_s, logpx, x, t, tau,
                                                nsamples_s, inference_args, K,
-                                               G)
+                                               G, P_val)
     return jnp.mean(vlb_s, 0) - kl, s
 
 
