@@ -363,6 +363,59 @@ def fsai(A, num_iter, nz_max, eps, G0, Minv_f):
     return G, idx
 
 
+#@partial(jit, static_argnames=['nz_max', 'Minv_f'])
+def fsai_A(A_f, num_iter, nz_max, eps, G0, Minv_f):
+    n = G0.shape[0]
+
+    def _G_i_update_fun(k, value):
+        i, g_i, phi_grad, p, idx = value
+        idx = naive_top_k(jnp.abs(phi_grad), nz_max)[1]
+        r = A_f(p, idx)
+        alpha = jnp.dot(p[idx], phi_grad[idx])/jnp.dot(p[idx], r[idx])
+        alpha = cond(jnp.isnan(alpha), tree_zeros_like, _identity, alpha)
+        alpha = cond(jnp.isinf(alpha), tree_zeros_like, _identity, alpha)
+        _g_i = g_i + alpha*p
+        idx = naive_top_k(jnp.abs(_g_i), nz_max)[1]
+        g_i_new = jnp.zeros_like(_g_i).at[idx].set(_g_i[idx])
+        # below done just in case diag falls out of top_k (?shouldnt happen?) 
+        g_i_new = g_i_new.at[i].set(_g_i[i])
+        #phi_grad = jnp.where(jnp.arange(n) < i, 2*A.T @ g_i_new, 0)
+        phi_grad = jnp.where(jnp.arange(n) < i,
+                 jnp.zeros_like(g_i).at[idx].set((phi_grad-alpha*r)[idx]), 0)
+        p = Minv_f(phi_grad)
+        return (i, g_i_new, phi_grad, p, idx)
+
+
+    def _calc_G_i(i, G0_i):
+        idx = naive_top_k(jnp.abs(G0_i), nz_max)[1]
+        grad = -A_f(G0_i, idx)
+        phi_grad = jnp.where(jnp.arange(n) < i, grad, 0)
+        p = Minv_f(phi_grad)
+        init_val = (i, G0_i, phi_grad, p, idx)
+        i, Gk_i, *_, idx = fori_loop(0, num_iter, _G_i_update_fun, init_val)
+        d_ii = jnp.dot(Gk_i[idx], A_f(Gk_i, idx)[idx])**-0.5
+        return d_ii*Gk_i, idx
+
+
+    if G0 == None:
+        G0_tilde = jnp.eye(n)
+    else:
+        G0_tilde = (1/jnp.einsum('ii->i', G0))[:, None] * G0
+
+    G, idx = vmap(_calc_G_i)(jnp.arange(n), G0_tilde)
+    return G, idx
+
+
+
+
+
+
+
+
+
+
+
+
 def lanczos_tridiag(A, v1, m):
     '''Performs Lanczos tridiagonalization of pos.def. matrix.'''
     def _lanczos_step(carry, x):
@@ -395,7 +448,9 @@ def reorth(r, Q, w, macheps):
     return r, ro_idx
 
 
-def lanczos_pro(key, A, r1, m, macheps=2**-52):
+def lanczos_pro(key, A, r1, m):
+    macheps = jnp.finfo(jnp.ones(1).dtype).eps
+
     '''Performs Lanczos tridiagonalization of pos.def. matrix.'''
     def _lanczos_step(carry, i):
         key, r1, b1, q0, all_a, all_b, all_Q, W, y = carry

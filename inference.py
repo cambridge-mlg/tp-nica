@@ -32,6 +32,7 @@ from utils import (
     mbcg,
     _identity,
     fsai,
+    fsai_A,
     krylov_subspace_sampling,
     lanczos_tridiag
 )
@@ -71,7 +72,6 @@ def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
     key, key_z, key_u = jr.split(key, 3)
     Z = jr.normal(key_z, shape=(N*T, 2*n_s_samples + n_probe_vecs))
     K_mvp = lambda _: G@(K@(G.T@_))
-
     u0 = Z.T[:n_s_samples].reshape(-1, T, N)
     u0 = vmap(vmap(jnp.matmul), (None, 0))(L, u0)
     u1 = vmap(lambda a: krylov_subspace_sampling(key_u, K_mvp, a, kry_dim),
@@ -91,7 +91,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, x, t, tau, n_s_samples,
         return Jinvx + K@x
 
 
-    # calculate preconditioner for inverse(cho_factor(A))
+    # calculate prec  onditioner for inverse(cho_factor(A))
     #P_val, _ = lax.stop_gradient(fsai(lax.stop_gradient(A), P_iters, max_nonzeros_P,
     #                                  1e-8, None, _identity))
     #P_val = jnp.eye(N*T)
@@ -192,18 +192,28 @@ def structured_elbo(rng, theta, phi, logpx, x, t, nsamples, inference_args,
             gamma_natparams_fromstandard((theta_tau/2, theta_tau/2))), 0
     )
 
-    # toplevel preconditioner 
+
+    # toplevel preconditioner
     tau_means = (phi_tau[0] / phi_tau[1])
     K_m = K / tau_means[None, None, None, :]
+    K_m = K_m.swapaxes(1, 2).reshape(N*T, N*T)
     L = vmap(fill_tril, in_axes=(0, None))(L, N)
     L = vmap(lambda x: x.at[jnp.diag_indices_from(x)].set(
              jnp.exp(jnp.diag(x))))(L)
-    L_inv = vmap(custom_tril_solve, (0, None))(L, jnp.eye(N))
-    J_inv = jnp.matmul(L_inv.swapaxes(1, 2), L_inv)
-    A = K_m.at[jnp.arange(T), jnp.arange(T)].add(J_inv).swapaxes(
-      1, 2).reshape(N*T, N*T)
-    P_val, _ = lax.stop_gradient(fsai(lax.stop_gradient(A), P_iters,
-                                      max_nonzeros_P, 1e-8, None, _identity))
+
+
+    def A_fsai(x, nz_idx):
+        Jinvx = vmap(custom_choL_solve)(
+            L, x.reshape(L.shape[0], -1)).reshape(-1)
+        return Jinvx + K_m[nz_idx].T@x[nz_idx]
+
+
+    #L_inv = vmap(custom_tril_solve, (0, None))(L, jnp.eye(N))
+    #J_inv = jnp.matmul(L_inv.swapaxes(1, 2), L_inv)
+    #A = K_m.at[jnp.arange(T), jnp.arange(T)].add(J_inv).swapaxes(
+    #  1, 2).reshape(N*T, N*T)
+    P_val, _ = lax.stop_gradient(fsai_A(A_fsai, P_iters,
+                                 max_nonzeros_P, 1e-8, jnp.eye(N*T), _identity))
     vlb_s, s = vmap(structured_elbo_s, (0, None, None, None, None,
              None, 0, None, None, None, None, None))(jr.split(rng, nsamples_tau),
                                          theta, phi_s, logpx, x, t, tau,
@@ -351,6 +361,7 @@ def avg_neg_elbo(rng, theta, phi_n, logpx, cov_fn, x, t,
     # calculate unscaled kernel (same for all samples in batch)
     # and update unscaled preconditioner
     K = K_TN_blocks(t, t, cov_fn, theta_cov, 1.)
+    jdb.breakpoint()
     G, _ = fsai(lax.stop_gradient(K.swapaxes(1, 2).reshape(N*T, N*T)), G_iters,
                     max_nonzeros_G, 1e-8, lax.stop_gradient(G), _identity)
 
