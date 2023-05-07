@@ -50,10 +50,8 @@ def rdm_SE_kernel_params(key, min_lscale=25., max_lscale=100.,
     return (sd, lscale)
 
 
-def rdm_df(key, maxval=4):
+def rdm_df(key, min_val, max_val):
     """
-    Note: df > 2 has been hard-coded
-    Note: forcing alpha=beta=nu/2
-    Note: max_val is exclusive
+    Note: df > 2 needed
     """
-    return jr.uniform(key, minval=2, maxval=maxval)
+    return jr.uniform(key, minval=min_val, maxval=max_val)

@@ -51,8 +51,24 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples):
     kss = vmap(K_N_diag, in_axes=(0, 0, None, None, None))(
        t, t, cov_fn, theta_cov, tau)
 
+
+    #Kuu2 = K_TN_blocks(tu, tu, cov_fn, theta_cov, 1.)
+    #Kuu2 = Kuu2 / tau[None, None, None, :]
+    #Kuu2 = Kuu2.swapaxes(1, 2).reshape(n_pseudo, N, -1)
+
+
+    #Ksu2 = K_TN_blocks(t, tu, cov_fn, theta_cov, 1.)
+    #Ksu2 = Ksu2 / tau[None, None, None, :]
+    #Ksu2 = Ksu2.swapaxes(1, 2).reshape(T, N, -1)
+
+    #import numpy as np
+    #jdb.breakpoint()
+
+
     # compute parameters for \tilde{q(s|tau)}
     W = vmap(fill_tril, in_axes=(1, None))(W, N)
+    W = vmap(lambda x: x.at[jnp.diag_indices_from(x)].set(
+      jnp.exp(jnp.diag(x))))(W)
     L = jnp.matmul(W, W.swapaxes(1, 2))
     LK = jnp.matmul(L, Kuu).reshape(-1, Kuu.shape[-1])
     Jyy = jnp.eye(LK.shape[0])+LK
@@ -102,8 +118,8 @@ def structured_elbo(key, theta, phi, logpx, cov_fn, x, t, nsamples):
 #@jit
 def gp_elbo(key, theta, phi_s, logpx, cov_fn, x, t, nsamples):
     theta_x, theta_cov = theta[:2]
-    What, yhat, tu = phi_s
-    N, n_pseudo = yhat.shape
+    W, m, tu = phi_s
+    N, n_pseudo = m.shape
     T = t.shape[0]
     theta_cov = tree_map(jnp.exp, theta_cov)
     # repeat in case the same kernel replicated for all ICs
@@ -127,34 +143,30 @@ def gp_elbo(key, theta, phi_s, logpx, cov_fn, x, t, nsamples):
         )(theta_cov)
 
     # compute parameters for \tilde{q(s)}
-    What = vmap(fill_triu, in_axes=(1, None), out_axes=-1)(What, N)
-    WTy = jnp.einsum('ijk,ik->jk', What, yhat).T.reshape(-1, 1)
-    L = js.linalg.block_diag(*jnp.moveaxis(
-      jnp.einsum('ijk, ilk->jlk', What, What), -1, 0))
-    LK = L@Kuu
-    lu_fact = jit(js.linalg.lu_factor)(jnp.eye(L.shape[0])+LK)
-    KyyWTy = custom_lu_solve(jnp.eye(L.shape[0])+LK, WTy, lu_fact)
-    #KyyWTy = js.linalg.lu_solve(lu_fact, WTy)
-    mu_s = Ksu @ KyyWTy
-    cov_solve = custom_lu_solve(jnp.eye(L.shape[0])+LK, L, lu_fact)
-    cov_s = vmap(lambda X, y: jnp.diag(y)-X@cov_solve@X.T,
-          in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    #cov_s = vmap(lambda X, y: jnp.diag(y)-X@js.linalg.lu_solve(lu_fact, L)@X.T,
-    #      in_axes=(0, -1))(Ksu.reshape(T, N, -1), kss)
-    s, key = rngcall(lambda _: jr.multivariate_normal(_, mu_s.reshape(T, N),
-        cov_s, shape=(nsamples, T)), key)
+    W = vmap(fill_tril, in_axes=(1, None))(W, N)
+    W = vmap(lambda x: x.at[jnp.diag_indices_from(x)].set(
+      jnp.exp(jnp.diag(x))))(W)
+    L = jnp.matmul(W, W.swapaxes(1, 2))
+    LK = jnp.matmul(L, Kuu).reshape(-1, Kuu.shape[-1])
+    Jyy = jnp.eye(LK.shape[0])+LK
+    lu_fact = js.linalg.lu_factor(Jyy)
+    Kyy_m = custom_lu_solve(Jyy, m.T.reshape(-1), lu_fact)
+    mu_s = jnp.matmul(Ksu, Kyy_m)
+    Kyy_L = custom_lu_solve(Jyy, js.linalg.block_diag(*L), lu_fact)
+    cov_s = vmap(approx_cov, in_axes=(0, 0, None))(kss, Ksu, Kyy_L)
+    s = jr.multivariate_normal(key, mu_s, cov_s, shape=(nsamples, T))
 
-    # compute E_{\tilde{q(s)}}[log_p(x_t|s_t)]
-    Elogpx = jnp.mean(
-        jnp.sum(vmap(lambda _: vmap(logpx,(1, 0, None))(x, _, theta_x))(s), 1)
-    )
+    # compute E_{\tilde{q(s}}[log_p(x_t|s_t)]
+    Elogpx = jnp.sum(vmap(vmap(logpx, (1, 0, None)), (None, 0, None))(
+            x, s, theta_x), 1).mean()
 
     # compute KL[q(u)|p(u)]
-    tr = jnp.trace(js.linalg.lu_solve(lu_fact, LK.T, trans=1).T)
-    h = Kuu@KyyWTy
-    logZ = 0.5*(jnp.dot(WTy.squeeze(), h)
-                -jnp.linalg.slogdet(jnp.eye(L.shape[0])+LK)[1])
-    KLqpu = -0.5*(tr+h.T@L@h)+WTy.T@h - logZ
+    h = Kuu.reshape(-1, Kuu.shape[-1])@Kyy_m
+    logZ = 0.5*(jnp.dot(m.T.reshape(-1), h) - jnp.linalg.slogdet(Jyy)[1])
+    tr = jnp.trace(Kuu.reshape(-1, Kuu.shape[-1])@Kyy_L)
+    h = h.reshape(n_pseudo, -1)
+    KLqpu = -0.5*(tr + vmap(quad_form)(h, L).sum()) + jnp.dot(
+        m.T.reshape(-1), h.reshape(-1)) - logZ
     return Elogpx-KLqpu, s
 
 
@@ -165,9 +177,6 @@ def avg_neg_elbo(key, theta, phi_n, logpx, cov_fn, x, t, nsamples, elbo_fn):
     vlb, s = vmap(elbo_fn, (0, None, 0, None, None, 0, None, None))(
         jr.split(key, x.shape[0]), theta, phi_n, logpx, cov_fn, x, t, nsamples)
     return -vlb.mean(), s
-
-
-
 
 
 avg_neg_tp_elbo = Partial(avg_neg_elbo, elbo_fn=structured_elbo)

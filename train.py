@@ -47,7 +47,10 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     # initialize generative model params (theta)
     if not args.GP:
         theta_tau, key = rngcall(
-            lambda _k: vmap(lambda _: rdm_df(_, maxval=4))(jr.split(_k, N)), key
+            lambda _k: vmap(lambda _: rdm_df(_, min_val=args.tp_df,
+                                             max_val=args.tp_df+2))(
+                                                 jr.split(_k, N)
+                                             ), key
         )
         theta_tau = jnp.log(theta_tau)
         if args.repeat_dfs:
@@ -60,9 +63,8 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         )
     elif args.D == 2:
         theta_k, key = rngcall(
-            lambda _k: vmap(lambda _: rdm_SE_kernel_params(
-                _, min_lscale=4., max_lscale=10.))(jr.split(_k, N)),
-            key
+            lambda _k: vmap(rdm_SE_kernel_params, in_axes=(0, None, None))(
+                jr.split(_k, N), 4., 10.), key
         )
     theta_k = tree_map(jnp.log, theta_k)
     if args.repeat_kernels:
@@ -80,7 +82,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     if args.use_gt_kernel:
         theta_k = tree_map(jnp.log, gt_kernel_params)
     if args.use_gt_tau and not args.GP:
-        theta_tau = jnp.log(gt_tau)
+        theta_tau = jnp.log(gt_tau-2) # see inference.py for why -2 needed
 
     if args.GP:
         use_gt_settings = (args.use_gt_nica, args.use_gt_kernel)
@@ -94,7 +96,8 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
             shape=(n_pseudo,), replace=False))(jr.split(_, n_data)), key)
     W, key = rngcall(
         lambda _k: vmap(lambda _: jnp.linalg.cholesky(
-            sample_wishart(_, jnp.array(N+1.), 10*jnp.eye(N))
+            10*jnp.eye(N)
+            #sample_wishart(_, jnp.array(N+1.), 10*jnp.eye(N))
         )[jnp.tril_indices(N)], out_axes=-1)(jr.split(_k, n_pseudo)), key
     )
     phi_s = (jnp.repeat(W[None, :], n_data, 0),
@@ -102,7 +105,8 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
     if args.GP:
         phi = phi_s
     else:
-        phi_df, key = rngcall(lambda _:vmap(rdm_df)(jr.split(_, n_data*N)), key)
+        phi_df, key = rngcall(lambda _: vmap(lambda _k: rdm_df(
+            _k, min_val=args.tp_df, max_val=args.tp_df))(jr.split(_, n_data*N)), key)
         phi_df = jnp.log(phi_df.reshape(n_data, N))
         phi_tau = (phi_df, phi_df)
         phi = (phi_s, phi_tau)

@@ -52,7 +52,7 @@ def parse():
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=2,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=1024,
+    parser.add_argument('--num-data', type=int, default=128,
                         help="total number of data samples to generate")
     parser.add_argument('--L-data', type=int, default=0,
                         help="data gen: number of nonlinear layers; 0 = linear ICA")
@@ -62,7 +62,7 @@ def parse():
                         help="zero (zero mean assumed),")
     parser.add_argument('--kernel', type=str, default="se",
                         help="se (squared exponential),")
-    parser.add_argument('--tp-df', type=float, default=2.01,
+    parser.add_argument('--tp-df', type=float, default=4.01,
                         help="df of t-process for simulated data")
     parser.add_argument('--GP', action='store_true', default=False,
                         help="generate and train from GP latents instead of TP")
@@ -147,19 +147,30 @@ def main():
         assert jnp.sqrt(args.T) % 1 == 0
         t = gen_2d_locations(args.T)
 
-    if args.GP:
-        x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
+
+    mean_nrs = 1.0
+    noise_factor = 0.1
+    while mean_nrs < 1.05 or mean_nrs > 1.15:
+        data_key, _ = jr.split(data_key)
+        if args.GP:
+            x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
                                   args.L_data, args.num_data, mu_fn, k_fn,
+                                  noise_factor=noise_factor,
                                   repeat_kernels=args.repeat_kernels)
-    else:
-        x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
+        else:
+            x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
                                   args.L_data, args.num_data, mu_fn, k_fn,
                                   args.tp_df, repeat_kernels=args.repeat_kernels,
+                                  noise_factor=noise_factor,
                                   repeat_dfs=args.repeat_dfs)
 
-    # check that noise is appropriate level
-    mean_nrs = jnp.mean(x.var(2) / z.var(2), 0).mean()
-    print("Noise-ratio mean.: {0:.2f}".format(mean_nrs))
+        # check that noise is appropriate level
+        mean_nrs = jnp.mean(x.var(2) / z.var(2), 0).mean()
+        print("Noise-ratio mean.: {0:.2f}".format(mean_nrs))
+        if mean_nrs < 1.05:
+            noise_factor = 1.5*noise_factor
+        elif mean_nrs > 1.15:
+            noise_factor = 0.5*noise_factor
 
     # measure nonlinearity
     nl_metrics = []
@@ -168,7 +179,6 @@ def main():
             s[i, :, :].T, z[i, :, :].T))
     print("Linearity (R2): {0:.2f}".format(jnp.median((jnp.array(nl_metrics)))))
 
-    # just to plot data for now:
     #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))
     #ax = plt.axes(projection='3d')
     #ax.plot_surface(X, Y, s[0][0, :].reshape(32, 32), rstride=1, cstride=1,

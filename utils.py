@@ -91,7 +91,7 @@ def custom_triu_solve(u, b):
         return js.linalg.solve_triangular(u, x)
     def _trans_solve(vecmat, x):
         return js.linalg.solve_triangular(u, x, trans=1)
-    matvec = partial(jnp.dot, u)
+    matvec = partial(jnp.matmul, u)
     return custom_linear_solve(matvec, b, _solve, _trans_solve)
 
 
@@ -104,16 +104,24 @@ def custom_tril_solve(u, b):
     return custom_linear_solve(matvec, b, _solve, _trans_solve)
 
 
-def custom_chol_solve(a, b, chol_factor):
+def custom_choL_solve(L, b, chol_factor):
     def _solve(matvec, x):
-        return js.linalg.cho_solve(chol_factor, x)
-    matvec = partial(jnp.dot, a)
+        return js.linalg.cho_solve((L, True), x)
+    matvec = lambda _: L @ (L.T @ _)
     return custom_linear_solve(matvec, b, _solve, symmetric=True)
 
 
-def K_N_diag(x, y, cov_fn, theta_cov, scaler):
+@partial(jit, static_argnames=['cov_fn'])
+def comp_K_N(t1, t2, cov_fn, theta_cov):
     N = theta_cov[0].shape[0]
-    scaled_diag = vmap(cov_fn, in_axes=(None, None, 0))(x, y, theta_cov)/scaler
+    out = vmap(lambda a: vmap(
+        lambda b: comp_k_n(t1, t2, a, b, cov_fn, theta_cov)
+    )(jnp.arange(N)))(jnp.arange(N))
+    return out
+
+
+def K_N_diag(x, y, cov_fn, theta_cov, scaler):
+    scaled_diag = cov_fn(x, y, theta_cov)/scaler
     return jnp.diag(scaled_diag)
 
 

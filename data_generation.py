@@ -72,7 +72,7 @@ def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
 @partial(jit, static_argnames=( "N", "M", "L", "num_samples", "mu_func",
     "kernel_func", "repeat_dfs", "repeat_kernels"))
 def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
-                    tp_df=2.01, noise_factor=0.15, repeat_layers=False,
+                    tp_df=4.01, noise_factor=0.15, repeat_layers=False,
                     repeat_dfs=False, repeat_kernels=False):
     # set-up Gamma prior and GP parameters (used for all samples)
     D = t.shape[-1]
@@ -81,7 +81,8 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     if repeat_dfs:
         dfs = jnp.ones((N,))*tp_df
     else:
-        dfs = vmap(rdm_df)(jnp.vstack(gamma_keys))
+        dfs = vmap(lambda _: rdm_df(_, min_val=tp_df, max_val=tp_df+2))(
+            jnp.vstack(gamma_keys))
     if repeat_kernels:
         k_keys = [k_keys[0]]*len(k_keys)
     if D == 1:
@@ -101,12 +102,12 @@ def gen_tpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     z, s, tau = lax.map(sample_fun, jnp.vstack(sample_keys))
 
     # add noise
-    #x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
-    #Q = jnp.eye(M)*noise_factor
-    z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(
-        axis=(2,), keepdims=True).mean(0, keepdims=True)
-    x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
-    Q = noise_factor*jnp.eye(M)
+    x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
+    Q = jnp.eye(M)*noise_factor
+    #z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(
+    #    axis=(2,), keepdims=True).mean(0, keepdims=True)
+    #x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
+    #Q = noise_factor*jnp.eye(M)
     return x, z, s, tau, Q, mixer_params, k_params, dfs
 
 
@@ -137,12 +138,12 @@ def gen_gpnica_data(key, t, N, M, L, num_samples, mu_func, kernel_func,
     z, s = lax.map(sample_fun, jnp.vstack(sample_keys))
 
     # add noise
-    #x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
-    #Q = jnp.eye(M)*noise_factor
-    z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(
-        axis=(2,), keepdims=True).mean(0, keepdims=True)
-    x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
-    Q = noise_factor*jnp.eye(M)
+    x = z + jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
+    Q = jnp.eye(M)*noise_factor
+    #z = (z-z.mean(axis=(0, 2), keepdims=True)) / z.std(
+    #    axis=(2,), keepdims=True).mean(0, keepdims=True)
+    #x = z+jnp.sqrt(noise_factor)*jr.normal(key, shape=z.shape)
+    #Q = noise_factor*jnp.eye(M)
     return x, z, s, Q, mixer_params, k_params
 
 
