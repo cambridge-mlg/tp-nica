@@ -75,7 +75,7 @@ def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,
 def structured_elbo(key, theta, phi, logpx, cov_fn, x, t, nsamples, kss):
     nsamples_s, nsamples_tau = nsamples
     theta_x, theta_cov, theta_tau = theta
-    theta_tau = 2.+jnp.exp(theta_tau)
+    theta_tau = 2.+jnp.exp(theta_tau[0]) # [0] needed here; see avg_neg_elb
     phi_s, phi_tau = phi[:2]
     W, m, tu = phi_s
     N = phi_tau[0].shape[0]
@@ -163,8 +163,7 @@ def avg_neg_elbo(key, theta, phi_n, logpx, cov_fn, x, t, nsamples, elbo_fn):
         ls_min=jnp.min(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)]),
         ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
     )
-    theta = (theta_x, theta_cov, theta[2])
-
+    theta = (theta_x, theta_cov, theta[2:])
     # pre-compute diagonal cov as it's same for all samples at same locations
     kss = vmap(K_N_diag, in_axes=(0, 0, None, None, None))(
        t, t, cov_fn, theta_cov, 1.)
