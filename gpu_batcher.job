@@ -1,17 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=tp_head_multi
+#SBATCH --job-name=tp_l0_d2
 #SBATCH -M ukko
-#SBATCH -p gpu
-#SBATCH -o tp_head_multi.txt
+#SBATCH -p gpu,gpu-long
+#SBATCH -o tp_l0_d2.txt
 #SBATCH -c 2
 #SBATCH -t 23:59:00
-#SBATCH --mem-per-cpu=16G
+#SBATCH --mem-per-cpu=64G
 #SBATCH --gres=gpu:1
-#SBATCH --array=1-4
+#SBATCH --array=1-2
 
 module purge
-module load CUDA
-module load cuDNN
-conda activate tpnica
+mamba activate tpnica
 
-srun --unbuffered python main.py --headless -N6 -M12 -T1024 --num-pseudo 50 -D1 --num-data 1024 --L-est 0 --L-data 0 --num-s-samples 3 --num-tau-samples 3 --data-seed $SLURM_ARRAY_TASK_ID --theta-learning-rate 0.004 --phi-learning-rate 0.28 --burn-in-len 100 --minib-size 8
+srun --unbuffered python main.py --headless -D2 --minib-size 64 --data-seed $SLURM_ARRAY_TASK_ID --L-data 0 --L-est 0
