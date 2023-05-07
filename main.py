@@ -109,7 +109,7 @@ def parse():
                         help="set nonlinear ica params to ground-truth values")
     parser.add_argument('--use-gt-kernel', action='store_true', default=False,
                         help="set GP kernel params to ground-truth values")
-    parser.add_argument('--use-gt-tau', action='store_true', default=False,
+    parser.add_argument('--use-gt-tau', action='store_true', default=True,
                         help="set tau to ground-truth values")
     # server settings
     parser.add_argument('--headless', action='store_true', default=False,
@@ -198,4 +198,5 @@ def main():
 
 
 if __name__=="__main__":
+    #with jax.debug_nans():
     sys.exit(main())

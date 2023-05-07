@@ -111,6 +111,12 @@ def custom_choL_solve(L, b, chol_factor):
     return custom_linear_solve(matvec, b, _solve, symmetric=True)
 
 
+def comp_k_n(t1, t2, n1, n2, cov_fn, theta_cov):
+    return cond(n1==n2, lambda a, b, c: cov_fn(a, b, c),
+                lambda a, b, c: jnp.array(0.),
+                t1, t2, tree_get_idx(theta_cov, n1))
+
+
 @partial(jit, static_argnames=['cov_fn'])
 def comp_K_N(t1, t2, cov_fn, theta_cov):
     N = theta_cov[0].shape[0]
@@ -130,6 +136,17 @@ def K_TN_blocks(x, y, cov_fn, theta_cov, scaler):
                 in_axes=(0, None, None, None, None))(x, y, cov_fn, theta_cov,
                                                      scaler)
 
+
+def K_N_diag_old(x, y, cov_fn, theta_cov, scaler):
+    N = theta_cov[0].shape[0]
+    scaled_diag = vmap(cov_fn, in_axes=(None, None, 0))(x, y, theta_cov)/scaler
+    return jnp.diag(scaled_diag)
+
+
+def K_TN_blocks_old(x, y, cov_fn, theta_cov, scaler):
+    return vmap(vmap(K_N_diag, in_axes=(None, 0, None, None, None)),
+                in_axes=(0, None, None, None, None))(x, y, cov_fn, theta_cov,
+                                                     scaler)
 
 @Partial(jit, static_argnames=['N'])
 def fill_triu(triu_elements, N):
