@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=tp_l0_d2
+#SBATCH --job-name=tp_l3_d2_large
 #SBATCH -M ukko
 #SBATCH -p gpu,gpu-long
-#SBATCH -o tp_l0_d2.txt
+#SBATCH -o tp_l3_d2_large.txt
 #SBATCH -c 2
 #SBATCH -t 23:59:00
 #SBATCH --mem-per-cpu=64G
@@ -12,4 +12,4 @@
 module purge
 mamba activate tpnica
 
-srun --unbuffered python main.py --headless -D2 --minib-size 64 --data-seed $SLURM_ARRAY_TASK_ID --L-data 0 --L-est 0
+srun --unbuffered python main.py --headless -N 12 -M 24 --num-pseudo 100 -D2 --data-seed $SLURM_ARRAY_TASK_ID --L-data 3 --L-est 3
