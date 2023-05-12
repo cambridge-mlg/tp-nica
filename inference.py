@@ -4,7 +4,7 @@ import jax.scipy as js
 import jax.debug as jdb
 import pdb
 
-from jax import vmap, jit, lax
+from jax import vmap, jit, lax, grad
 from jax.tree_util import tree_map, Partial
 
 from kernels import (
@@ -28,8 +28,8 @@ from util import *
 from gamma import *
 
 
-def approx_cov(kss_diag_t, Ksu_t, Kyy_L):
-    return kss_diag_t-Ksu_t@Kyy_L@Ksu_t.T
+def approx_cov(kss_diag_t, Ksu_t, Kyy_L, jitter=1e-6):
+    return kss_diag_t-Ksu_t@Kyy_L@Ksu_t.T + jnp.eye(kss_diag_t.shape[0])*jitter
 
 
 def structured_elbo_s(key, theta, phi_s, logpx, cov_fn, x, t, tau, nsamples,

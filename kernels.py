@@ -30,7 +30,8 @@ def se_kernel_fn(x, y, params):
 def bound_se_kernel_params(params, sigma_min=1e-3, ls_min=1, ls_max=900):
     sigma, lscale = params
     sigma = tree_map(lambda _: _+sigma_min, sigma)
-    lscale = tree_map(lambda _: ls_max/(_ + 1.) + ls_min, lscale)
+    #lscale = tree_map(lambda _: ls_max/(_ + 1.) + ls_min, lscale)
+    lscale = tree_map(lambda _: jnp.clip(_, ls_min, ls_max), lscale)
     return (sigma, lscale)
 
 
