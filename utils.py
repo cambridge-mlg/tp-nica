@@ -206,7 +206,8 @@ def save_checkpoint(params, hist, train_args):
     if not os.path.isdir(train_args.out_dir):
         os.mkdir(train_args.out_dir)
     relev_args_dict = {k: train_args.__dict__[k] for k
-                       in train_args.__dict__ if k not in ['out_dir',
+                       in train_args.__dict__ if k not in
+                       ['out_dir', 'cv4a_dir',
                         'eval_only', 'resume_ckpt', 'headless', 'plot_freq']}
     file_id = ["".join([k[0] for k in str(i).split('_')])+str(j)
            for i,j in zip(relev_args_dict.keys(),

@@ -10,6 +10,7 @@ import argparse
 import pdb
 import sys
 
+from cv4a_data import get_cv4a_data
 from jax.config import config
 config.update("jax_enable_x64", True)
 
@@ -27,7 +28,7 @@ import seaborn as sns
 
 print(jax.devices())
 
-from train import train
+from train_cv4a import train
 from data_generation import (
     gen_tpnica_data,
     gen_gpnica_data,
@@ -92,7 +93,7 @@ def parse():
     parser.add_argument('--eval-only', action='store_true', default=False,
                         help="evaluate only, from checkpoint, no training")
     # server settings
-    parser.add_argument('--headless', action='store_true', default=False,
+    parser.add_argument('--headless', action='store_true', default=True,
                         help="switch behaviour on server")
     args = parser.parse_args()
     return args
@@ -117,7 +118,7 @@ def main():
     else:
         raise NotImplementedError
 
-    assert args.minib_size <= args.num_data
+#    assert args.minib_size <= args.num_data
 
     # create folder to save checkpoints    
     if not os.path.isdir(args.out_dir):
@@ -127,8 +128,33 @@ def main():
     if args.eval_only:
         assert args.resume_ckpt, "'Eval only' requires --resume-ckpt=True"
 
-    # train model
-    elbo_hist, mcc_hist = train(x, z, s, t, mu_fn, k_fn, params, args, est_key)
+    # set up observed data
+    T_t = 6
+    x, areas, field_masks, labels, dates = get_cv4a_data(args.cv4a_dir)
+    x = jnp.swapaxes(x, 1, 2)
+    x_tr = x[:, :, :T_t, :, :]
+    x_te = x[:, :, T_t:2*T_t, :, :]
+    num_data, M, _T_t, T_x, T_y = x_tr.shape
+    assert _T_t == T_t
+    x_tr = x_tr.reshape(num_data, M, -1)
+    x_te = x_te.reshape(num_data, M, -1)
+
+    # set up input locations
+    t = gen_2d_locations(T_x*T_y)[:, [1, 0]] # this doesnt actually matter
+    t = (t-t.mean())/t.std()
+    dates = jnp.array([(dates[i] - dates[0]).days for i in
+                          range(len(dates))])
+    dates = (dates-dates.mean())/dates.std()
+    dates_tr = dates[:T_t]
+    dates_te = dates[T_t:2*T_t]
+
+    t_tr = jnp.hstack((jnp.repeat(dates_tr, T_x*T_y)[:, None],
+                       jnp.tile(t, (T_t, 1))))
+    t_te = jnp.hstack((jnp.repeat(dates_te, T_x*T_y)[:, None],
+                       jnp.tile(t, (T_t, 1))))
+
+    # train
+    elbo_hist, mcc_hist = train(x_tr, t_tr, mu_fn, k_fn, args, est_key)
 
 
 if __name__=="__main__":

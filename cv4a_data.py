@@ -2,6 +2,7 @@ import numpy as np
 import os
 import argparse
 import matplotlib.pyplot as plt
+import datetime
 
 from sklearn.model_selection import StratifiedShuffleSplit
 
@@ -50,9 +51,21 @@ def get_cv4a_data(data_path):
     areas = areas[gts > -1]
     field_masks = field_masks[gts > -1]
     gts = gts[gts > -1]
-    return imgs, areas, field_masks, gts
 
 
 
-
-pdb.set_trace()
+    # dates
+    dates = [datetime.datetime(2019, 6, 6, 8, 10, 7),
+             datetime.datetime(2019, 7, 1, 8, 10, 4),
+             datetime.datetime(2019, 7, 6, 8, 10, 8),
+             datetime.datetime(2019, 7, 11, 8, 10, 4),
+             datetime.datetime(2019, 7, 21, 8, 10, 4),
+             datetime.datetime(2019, 8, 5, 8, 10, 7),
+             datetime.datetime(2019, 8, 15, 8, 10, 6),
+             datetime.datetime(2019, 8, 25, 8, 10, 4),
+             datetime.datetime(2019, 9, 9, 8, 9, 58),
+             datetime.datetime(2019, 9, 19, 8, 9, 59),
+             datetime.datetime(2019, 9, 24, 8, 9, 59),
+             datetime.datetime(2019, 10, 4, 8, 10),
+             datetime.datetime(2019, 11, 3, 8, 10)]
+    return imgs, areas, field_masks, gts, dates
