@@ -105,7 +105,7 @@ def train(x, t, mean_fn, kernel_fn, args, key):
     if args.resume_ckpt:
         ckpt, hist = load_checkpoint(args)
         ckpt_epoch, key, theta, phi, theta_opt_state, phi_opt_states = ckpt
-        elbo_hist, mcc_hist = hist
+        elbo_hist = hist
 
 
     # define training step
@@ -202,7 +202,6 @@ def train(x, t, mean_fn, kernel_fn, args, key):
         tic = time.perf_counter()
         shuffle_idx, key = rngcall(jr.permutation, key, n_data)
         shuff_data = train_data[shuffle_idx]
-        mcc_epoch_hist = []
         elbo_epoch_hist = []
         burn_in = epoch < args.burn_in_len
         # iterate over all minibatches
