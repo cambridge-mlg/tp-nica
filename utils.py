@@ -225,11 +225,12 @@ def load_checkpoint(train_args):
         os.mkdir(train_args.out_dir)
     relev_args_dict = {k: train_args.__dict__[k] for k in train_args.__dict__
                        if k not in ['out_dir', 'eval_only', 'resume_ckpt',
-                                    'headless', 'plot_freq']}
+                                    'headless', 'plot_freq', 'cv4a_dir']}
     file_id = ["".join([k[0] for k in str(i).split('_')])+str(j)
            for i,j in zip(relev_args_dict.keys(),
                           relev_args_dict.values())]
     ckpt_file_name = "_".join(file_id) + "_ckpt.pkl"
+    pdb.set_trace()
     ckpt_file_path = os.path.join(train_args.out_dir, ckpt_file_name)
     hist_file_name = "_".join(file_id) + "_hist.pkl"
     hist_file_path = os.path.join(train_args.out_dir, hist_file_name)

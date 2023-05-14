@@ -43,7 +43,7 @@ def parse():
     """
     # synthetic data generation args
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('-N', type=int, default=3,
+    parser.add_argument('-N', type=int, default=4,
                         help="number of ICs")
     parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
