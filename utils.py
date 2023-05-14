@@ -230,7 +230,6 @@ def load_checkpoint(train_args):
            for i,j in zip(relev_args_dict.keys(),
                           relev_args_dict.values())]
     ckpt_file_name = "_".join(file_id) + "_ckpt.pkl"
-    pdb.set_trace()
     ckpt_file_path = os.path.join(train_args.out_dir, ckpt_file_name)
     hist_file_name = "_".join(file_id) + "_hist.pkl"
     hist_file_path = os.path.join(train_args.out_dir, hist_file_name)
