@@ -1,22 +1,22 @@
 import os
-#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
 from matplotlib import projections
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
 import pdb
 import sys
 
-from cv4a_data import get_cv4a_data
-#from cv4a_test import classification_test
 from jax.config import config
 config.update("jax_enable_x64", True)
-from jax.dlpack import to_dlpack
-from sklearn.linear_model import LinearRegression as LR
 
+from sklearn.linear_model import LinearRegression as LR
+from sklearn.decomposition import FastICA
+
+from utils import matching_sources_corr
 ###DEBUG##############################
 #config.update('jax_disable_jit', True)
 #config.update("jax_debug_nans", True)
@@ -29,7 +29,7 @@ import seaborn as sns
 
 print(jax.devices())
 
-from train_cv4a import train, train_phi
+from train import train
 from data_generation import (
     gen_tpnica_data,
     gen_gpnica_data,
@@ -44,20 +44,28 @@ def parse():
     """
     # synthetic data generation args
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('-N', type=int, default=4,
+    parser.add_argument('-N', type=int, default=6,
                         help="number of ICs")
+    parser.add_argument('-M', type=int, default=12,
+                        help="dimension of each observed data point")
+    parser.add_argument('-T', type=int, default=1024,
+                        help="number of latent input locations")
     parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
-    parser.add_argument('--L-est', type=int, default=2,
+    parser.add_argument('-D', type=int, default=2,
+                        help="dimension of latent input locations")
+    parser.add_argument('--num-data', type=int, default=128,
+                        help="total number of data samples to generate")
+    parser.add_argument('--L-data', type=int, default=0,
+                        help="data gen: number of nonlinear layers; 0 = linear ICA")
+    parser.add_argument('--L-est', type=int, default=0,
                         help="model: number of nonlinear layers; 0 = linear ICA")
     parser.add_argument('--mean-function', type=str, default="zero",
                         help="zero (zero mean assumed),")
     parser.add_argument('--kernel', type=str, default="se",
                         help="se (squared exponential),")
     parser.add_argument('--tp-df', type=float, default=4.01,
-                        help="initialization of df tprocess")
-    parser.add_argument('--fix-df', action='store_true', default=False,
-                        help="fix df at init value for whole training")
+                        help="df of t-process for simulated data")
     parser.add_argument('--GP', action='store_true', default=False,
                         help="generate and train from GP latents instead of TP")
     # inference, training and optimization args
@@ -69,15 +77,16 @@ def parse():
                         help="learning rate for variational params")
     parser.add_argument('--theta-learning-rate', type=float, default=0.004,
                         help="learning rate for model params")
-    parser.add_argument('--minib-size', type=int, default=8,
-                        help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")
-    parser.add_argument('--num-epochs-infer', type=int, default=1000,
-                        help="number of training epochs")
-    parser.add_argument('--burn-in-len', type=int, default=0,
+    parser.add_argument('--burn-in-len', type=int, default=100,
                         help="number of epochs to keep theta params fixed")
     # set all ICs to have same distribs
+    parser.add_argument('--repeat-dfs', action='store_true', default=False,
+                        help="force all tprocesses to same degrees of freedom")
+    parser.add_argument('--repeat-kernels', action='store_true', default=False,
+                        help="force all t-processes to use the same kernel")
+    # set seeds
     parser.add_argument('--data-seed', type=int, default=1,
                         help="seed for initializing data generation")
     parser.add_argument('--est-seed', type=int, default=50,
@@ -90,13 +99,18 @@ def parse():
     # checkpoint saving, loading, and evaluation
     parser.add_argument('--out-dir', type=str, default="output/",
                         help="location where data is saved")
-    parser.add_argument('--cv4a-dir', type=str, default="cv4a_data/",
-                        help="location where data is saved")
     parser.add_argument('--resume-ckpt', action='store_true', default=False,
                         help="resume training if checkpoint for matching\
                         settings exists")
     parser.add_argument('--eval-only', action='store_true', default=False,
                         help="evaluate only, from checkpoint, no training")
+    # for debugging
+    parser.add_argument('--use-gt-nica', action='store_true', default=False,
+                        help="set nonlinear ica params to ground-truth values")
+    parser.add_argument('--use-gt-kernel', action='store_true', default=False,
+                        help="set GP kernel params to ground-truth values")
+    parser.add_argument('--use-gt-tau', action='store_true', default=True,
+                        help="set tau to ground-truth values")
     # server settings
     parser.add_argument('--headless', action='store_true', default=False,
                         help="switch behaviour on server")
@@ -123,58 +137,58 @@ def main():
     else:
         raise NotImplementedError
 
-#    assert args.minib_size <= args.num_data
+    import time
 
-    # create folder to save checkpoints    
-    if not os.path.isdir(args.out_dir):
-        os.mkdir(args.out_dir)
+    # generate synthetic data
+    if args.D == 1:
+        t = gen_1d_locations(args.T)
+    elif args.D == 2:
+        assert jnp.sqrt(args.T) % 1 == 0
+        t = gen_2d_locations(args.T)
 
-    # ensure there checkpoint will be loaded if only evaluating
-    if args.eval_only:
-        assert args.resume_ckpt, "'Eval only' requires --resume-ckpt=True"
 
-    # set up observed data
-    T_t = 6
-    x, areas, field_masks, labels, dates = get_cv4a_data(args.cv4a_dir)
-    x = jnp.swapaxes(x, 1, 2)
-    x_tr_orig = x[:, :, :T_t, :, :]
-    x_te_orig = x[:, :, T_t:2*T_t, :, :]
-    num_data, M, _T_t, T_x, T_y = x_tr_orig.shape
-    assert _T_t == T_t
-    x_tr = x_tr_orig.reshape(num_data, M, -1)
-    x_te = x_te_orig.reshape(num_data, M, -1)
+    mean_nrs = 1.0
+    noise_factor = 0.1
+    while mean_nrs < 1.05 or mean_nrs > 1.15:
+        data_key, _ = jr.split(data_key)
+        if args.GP:
+            x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
+                                  args.L_data, args.num_data, mu_fn, k_fn,
+                                  noise_factor=noise_factor,
+                                  repeat_kernels=args.repeat_kernels)
+        else:
+            x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
+                                  args.L_data, args.num_data, mu_fn, k_fn,
+                                  args.tp_df, repeat_kernels=args.repeat_kernels,
+                                  noise_factor=noise_factor,
+                                  repeat_dfs=args.repeat_dfs)
+
+        # check that noise is appropriate level
+        mean_nrs = jnp.mean(x.var(2) / z.var(2), 0).mean()
+        print("Noise-ratio mean.: {0:.2f}".format(mean_nrs))
+        if mean_nrs < 1.05:
+            noise_factor = 1.5*noise_factor
+        elif mean_nrs > 1.15:
+            noise_factor = 0.5*noise_factor
+
+    # measure nonlinearity
+    nl_metrics = []
+    for i in range(args.num_data):
+        nl_metrics.append(LR().fit(s[i, :, :].T, z[i, :, :].T).score(
+            s[i, :, :].T, z[i, :, :].T))
+    print("Linearity (R2): {0:.2f}".format(jnp.median((jnp.array(nl_metrics)))))
+
+
+    x = x.swapaxes(-1, -2)
+    s = s.swapaxes(-1, -2)
+    X = jnp.vstack(x)
+    S = jnp.vstack(s)
+    ica = FastICA(args.N)
+    S_est = ica.fit_transform(X)
+    mcc, _, sort_idx = matching_sources_corr(S.T, S_est.T)
+
+
     pdb.set_trace()
-
-#    # set up input locations
-#    t = gen_2d_locations(T_x*T_y)[:, [1, 0]] # this doesnt actually matter
-#    t = (t-t.mean())/t.std()
-#    dates = jnp.array([(dates[i] - dates[0]).days for i in
-#                          range(len(dates))])
-#    dates = (dates-dates.mean())/dates.std()
-#    dates_tr = dates[:T_t]
-#    dates_te = dates[T_t:2*T_t]
-#
-#    t_tr = jnp.hstack((jnp.repeat(dates_tr, T_x*T_y)[:, None],
-#                       jnp.tile(t, (T_t, 1))))
-#    t_te = jnp.hstack((jnp.repeat(dates_te, T_x*T_y)[:, None],
-#                       jnp.tile(t, (T_t, 1))))
-#
-#    # train
-#    if not args.eval_only:
-#        elbo_hist = train(x_tr, t_tr, mu_fn, k_fn, args, est_key)
-#    # perform feature extraction
-#    else:
-#        key, infer_key = jr.split(est_key)
-#        elbo_hist, s_features = train_phi(x_te, t_te, mu_fn, k_fn, args, infer_key)
-#
-#    # test features
-#    s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
-#    out = classification_test(to_dlpack(s_features, True), labels,
-#                              field_masks, True)
-#    #out = classification_test(to_dlpack(x_tr_orig, True), labels, field_masks,
-#    #                              False)
-#    #out = classification_test(to_dlpack(x_tr_orig, True), labels, field_masks,
-#    #                          False)
 
 
 if __name__=="__main__":
