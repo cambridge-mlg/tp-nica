@@ -143,40 +143,6 @@ def main():
     assert _T_t == T_t
     x_tr = x_tr_orig.reshape(num_data, M, -1)
     x_te = x_te_orig.reshape(num_data, M, -1)
-<<<<<<< HEAD
-    pdb.set_trace()
-
-#    # set up input locations
-#    t = gen_2d_locations(T_x*T_y)[:, [1, 0]] # this doesnt actually matter
-#    t = (t-t.mean())/t.std()
-#    dates = jnp.array([(dates[i] - dates[0]).days for i in
-#                          range(len(dates))])
-#    dates = (dates-dates.mean())/dates.std()
-#    dates_tr = dates[:T_t]
-#    dates_te = dates[T_t:2*T_t]
-#
-#    t_tr = jnp.hstack((jnp.repeat(dates_tr, T_x*T_y)[:, None],
-#                       jnp.tile(t, (T_t, 1))))
-#    t_te = jnp.hstack((jnp.repeat(dates_te, T_x*T_y)[:, None],
-#                       jnp.tile(t, (T_t, 1))))
-#
-#    # train
-#    if not args.eval_only:
-#        elbo_hist = train(x_tr, t_tr, mu_fn, k_fn, args, est_key)
-#    # perform feature extraction
-#    else:
-#        key, infer_key = jr.split(est_key)
-#        elbo_hist, s_features = train_phi(x_te, t_te, mu_fn, k_fn, args, infer_key)
-#
-#    # test features
-#    s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
-#    out = classification_test(to_dlpack(s_features, True), labels,
-#                              field_masks, True)
-#    #out = classification_test(to_dlpack(x_tr_orig, True), labels, field_masks,
-#    #                              False)
-#    #out = classification_test(to_dlpack(x_tr_orig, True), labels, field_masks,
-#    #                          False)
-=======
 
     # set up input locations
     t = gen_2d_locations(T_x*T_y)[:, [1, 0]] # this doesnt actually matter
@@ -206,7 +172,6 @@ def main():
     #                          field_masks, True)
     out = classification_test(to_dlpack(x_tr_orig, True), labels, field_masks,
                                   False)
->>>>>>> b895820 (trying to train cv4 inference)
 
 
 if __name__=="__main__":
