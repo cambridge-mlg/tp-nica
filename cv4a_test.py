@@ -144,7 +144,7 @@ def classification_test(features, labels, masks, nica_features=True):
     device = ("cuda" if torch.cuda.is_available() else "cpu")
     labels = torch.from_numpy(labels)
     masks = torch.from_numpy(masks)[:, None, :, :, :]
-    features = torch.from_dlpack(features).to(torch.float32) * masks.to(device)
+    features = torch.from_dlpack(features).to(torch.float32)
     num_classes = len(torch.unique(labels))
     n_data, N, D, H, W = features.shape
 

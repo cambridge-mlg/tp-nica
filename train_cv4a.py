@@ -302,7 +302,8 @@ def train_phi(x, t, mean_fn, kernel_fn, args, key):
 
     W, key = rngcall(
         lambda _k: vmap(lambda _: jnp.linalg.cholesky(
-            sample_wishart(_, jnp.array(N+1.), jnp.eye(N))
+            jnp.eye(N)
+            #sample_wishart(_, jnp.array(N+1.), jnp.eye(N))
         )[jnp.tril_indices(N)], out_axes=-1)(jr.split(_k, n_pseudo)), key
     )
 
@@ -314,7 +315,7 @@ def train_phi(x, t, mean_fn, kernel_fn, args, key):
         phi_df, key = rngcall(lambda _: vmap(lambda _k: rdm_df(
             _k, min_val=args.tp_df, max_val=args.tp_df))(jr.split(_, n_data*N)), key)
         phi_df = jnp.log(phi_df.reshape(n_data, N))
-        phi_tau = (phi_df, 10*phi_df)
+        phi_tau = (phi_df, phi_df)
         phi = (phi_s, phi_tau)
 
     # optionally load from checkpoint
