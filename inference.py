@@ -163,7 +163,7 @@ def avg_neg_elbo(key, theta, phi_n, logpx, cov_fn, x, t, nsamples, elbo_fn):
         ls_min=jnp.min(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)]),
         ls_max=jnp.max(t_dist_mat[jnp.triu_indices_from(t_dist_mat, k=1)])
     )
-    theta = (theta_x, theta_cov, theta[2:])
+    theta = (theta_x, theta_cov, theta[2:]) # above l.78 comment refers to this
     # pre-compute diagonal cov as it's same for all samples at same locations
     kss = vmap(K_N_diag, in_axes=(0, 0, None, None, None))(
        t, t, cov_fn, theta_cov, 1.)

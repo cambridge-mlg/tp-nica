@@ -11,9 +11,10 @@ import pdb
 import sys
 
 from cv4a_data import get_cv4a_data
+from cv4a_test import classification_test
 from jax.config import config
 config.update("jax_enable_x64", True)
-
+from jax.dlpack import to_dlpack
 from sklearn.linear_model import LinearRegression as LR
 
 ###DEBUG##############################
@@ -28,7 +29,7 @@ import seaborn as sns
 
 print(jax.devices())
 
-from train_cv4a import train
+from train_cv4a import train, train_phi
 from data_generation import (
     gen_tpnica_data,
     gen_gpnica_data,
@@ -54,7 +55,9 @@ def parse():
     parser.add_argument('--kernel', type=str, default="se",
                         help="se (squared exponential),")
     parser.add_argument('--tp-df', type=float, default=4.01,
-                        help="df of t-process for simulated data")
+                        help="initialization of df tprocess")
+    parser.add_argument('--fix-df', action='store_true', default=False,
+                        help="fix df at init value for whole training")
     parser.add_argument('--GP', action='store_true', default=False,
                         help="generate and train from GP latents instead of TP")
     # inference, training and optimization args
@@ -69,6 +72,8 @@ def parse():
     parser.add_argument('--minib-size', type=int, default=8,
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
+                        help="number of training epochs")
+    parser.add_argument('--num-epochs-infer', type=int, default=1000,
                         help="number of training epochs")
     parser.add_argument('--burn-in-len', type=int, default=0,
                         help="number of epochs to keep theta params fixed")
@@ -132,12 +137,12 @@ def main():
     T_t = 6
     x, areas, field_masks, labels, dates = get_cv4a_data(args.cv4a_dir)
     x = jnp.swapaxes(x, 1, 2)
-    x_tr = x[:, :, :T_t, :, :]
-    x_te = x[:, :, T_t:2*T_t, :, :]
-    num_data, M, _T_t, T_x, T_y = x_tr.shape
+    x_tr_orig = x[:, :, :T_t, :, :]
+    x_te_orig = x[:, :, T_t:2*T_t, :, :]
+    num_data, M, _T_t, T_x, T_y = x_tr_orig.shape
     assert _T_t == T_t
-    x_tr = x_tr.reshape(num_data, M, -1)
-    x_te = x_te.reshape(num_data, M, -1)
+    x_tr = x_tr_orig.reshape(num_data, M, -1)
+    x_te = x_te_orig.reshape(num_data, M, -1)
 
     # set up input locations
     t = gen_2d_locations(T_x*T_y)[:, [1, 0]] # this doesnt actually matter
@@ -154,7 +159,21 @@ def main():
                        jnp.tile(t, (T_t, 1))))
 
     # train
-    elbo_hist, mcc_hist = train(x_tr, t_tr, mu_fn, k_fn, args, est_key)
+    if not args.eval_only:
+        elbo_hist = train(x_tr, t_tr, mu_fn, k_fn, args, est_key)
+    # perform feature extraction
+    else:
+        key, infer_key = jr.split(est_key)
+        elbo_hist, s_features = train_phi(x_te, t_te, mu_fn, k_fn, args, infer_key)
+
+    # test features
+    s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
+    out = classification_test(to_dlpack(s_features, True), labels,
+                              field_masks, True)
+    #out = classification_test(to_dlpack(x_tr_orig, True), labels, field_masks,
+    #                              False)
+    #out = classification_test(to_dlpack(x_tr_orig, True), labels, field_masks,
+    #                          False)
 
 
 if __name__=="__main__":
