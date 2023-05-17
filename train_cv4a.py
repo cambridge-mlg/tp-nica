@@ -93,7 +93,7 @@ def train(x, t, mean_fn, kernel_fn, args, key):
         phi_df, key = rngcall(lambda _: vmap(lambda _k: rdm_df(
             _k, min_val=args.tp_df, max_val=args.tp_df))(jr.split(_, n_data*N)), key)
         phi_df = jnp.log(phi_df.reshape(n_data, N))
-        phi_tau = (phi_df, 10*phi_df)
+        phi_tau = (phi_df, phi_df)
         phi = (phi_s, phi_tau)
 
     ## set up training details
@@ -236,6 +236,8 @@ def train(x, t, mean_fn, kernel_fn, args, key):
                 phi_opt_states = tree_map(lambda a, b: a.at[idx_set_it].set(b),
                                           phi_opt_states, phi_opt_states_it)
 
+            pdb.set_trace()
+
             elbo_epoch_hist.append(-nvlb.item())
             print("*Epoch: [{0}/{1}]\t"
                   "Minibatch: [{2}/{3}]\t"
@@ -287,14 +289,16 @@ def train_phi(x, t, mean_fn, kernel_fn, args, key):
     n_data = x.shape[0]
     n_pseudo = args.num_pseudo
     minib_size = args.minib_size
-    minib_size = 64 ### TEST ###
-    num_epochs = args.num_epochs_infer
+    minib_size = 8 ### TEST ###
+    num_epochs = 1000
     #phi_lr = args.phi_learning_rate
     phi_lr = 3e-2
     if args.GP:
-        nsamples = args.num_s_samples
+#        nsamples = args.num_s_samples
+        nsamples = 25
     else:
-        nsamples = (args.num_s_samples, args.num_tau_samples)
+#        nsamples = (args.num_s_samples, args.num_tau_samples)
+        nsamples = (5, 5)
 
     # initialize variational parameters (phi) with pseudo-points (tu)
     tu = kmeans2(t, k=n_pseudo, minit='points')[0]
@@ -404,8 +408,12 @@ def train_phi(x, t, mean_fn, kernel_fn, args, key):
                                          -nvlb))
 
             # compute average sample
-            s_sample_avg = s_sample.mean((1, 2))
-            s_samples_all.append(s_sample_avg)
+            s_sample = s_sample.swapaxes(-1, -2)
+            if args.GP:
+                s_sample = s_sample.mean(axis=(1,))
+            else:
+                s_sample = s_sample.mean(axis=(1, 2))
+            s_samples_all.append(s_sample)
 
             toc = time.perf_counter()
 

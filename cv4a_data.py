@@ -50,6 +50,7 @@ def get_cv4a_data(data_path):
     imgs = imgs[gts > -1]
     areas = areas[gts > -1]
     field_masks = field_masks[gts > -1]
+    fields_arr = fields_arr[gts > -1]
     gts = gts[gts > -1]
 
 
@@ -68,4 +69,4 @@ def get_cv4a_data(data_path):
              datetime.datetime(2019, 9, 24, 8, 9, 59),
              datetime.datetime(2019, 10, 4, 8, 10),
              datetime.datetime(2019, 11, 3, 8, 10)]
-    return imgs, areas, field_masks, gts, dates
+    return imgs, areas, fields_arr, field_masks, gts, dates

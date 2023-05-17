@@ -42,7 +42,7 @@ def parse():
     """
     # synthetic data generation args
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('-N', type=int, default=3,
+    parser.add_argument('-N', type=int, default=6,
                         help="number of ICs")
     parser.add_argument('-M', type=int, default=12,
                         help="dimension of each observed data point")
