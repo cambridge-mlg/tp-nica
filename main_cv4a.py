@@ -162,53 +162,60 @@ def main():
 
     # train
     if not args.eval_only:
-        elbo_hist = train(x_tr, t_tr, mu_fn, k_fn, args, est_key)
+        elbo_hist, s_features, shuff_idx = train(x_tr, t_tr, mu_fn,
+                                                 k_fn, args, est_key)
     # perform feature extraction
     else:
         key, infer_key = jr.split(est_key)
         elbo_hist, s_features = train_phi(x_te, t_te, mu_fn, k_fn, args, infer_key)
 
 
+    sf = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
+    sf = sf.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
+    time_classes = jnp.tile(jnp.arange(T_t), num_data)
 
-    def get_field_pxs(x, field_masks, labels, fields, dim, T):
-        x2 = x*field_masks[:, None, :, :, :]
-        pxs = []
-        pxs_labs = []
-        pxs_fields = []
-        for i in range(x2.shape[0]):
-            print(i)
-            px = x2[i].reshape(dim, T, -1)
-            px = np.moveaxis(px, -1, 0)
-            idx = np.argwhere(px.sum((1, 2)) != 0)
-            pxs.append(px[idx])
-            _lab = labels[i]
-            _fld = fields[i]
-            pxs_labs.extend([_lab]*len(idx))
-            pxs_fields.extend([_fld]*len(idx))
-        px_x = jnp.vstack(pxs).squeeze()
-        px_y = jnp.array(pxs_labs)
-        px_id = jnp.array(pxs_fields)
-        return px_x, px_y, px_id
+    pdb.set_trace()
 
 
+    #def get_field_pxs(x, field_masks, labels, fields, dim, T):
+    #    x2 = x*field_masks[:, None, :, :, :]
+    #    pxs = []
+    #    pxs_labs = []
+    #    pxs_fields = []
+    #    for i in range(x2.shape[0]):
+    #        print(i)
+    #        px = x2[i].reshape(dim, T, -1)
+    #        px = np.moveaxis(px, -1, 0)
+    #        idx = np.argwhere(px.sum((1, 2)) != 0)
+    #        pxs.append(px[idx])
+    #        _lab = labels[i]
+    #        _fld = fields[i]
+    #        pxs_labs.extend([_lab]*len(idx))
+    #        pxs_fields.extend([_fld]*len(idx))
+    #    px_x = jnp.vstack(pxs).squeeze()
+    #    px_y = jnp.array(pxs_labs)
+    #    px_id = jnp.array(pxs_fields)
+    #    return px_x, px_y, px_id
 
-    ## test features
-    nd = 1000
-    s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
-    x_use = s_features
-    #x_use = x_te_orig
-    x_use = x_use[:nd]
-    f_masks = field_masks[:nd]
-    lab_use = labels[:nd]
-    f_use = fields[:nd]
-
-    px_x, px_y, px_id = get_field_pxs(x_use, f_masks, lab_use, f_use, M, T_t)
-    px_x = px_x.reshape(px_x.shape[0], -1)
 
 
-    losses, accs = test_rf(px_x, px_y)
+    ### test features
+    #nd = 1000
+    #s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
+    #x_use = s_features
+    ##x_use = x_te_orig
+    #x_use = x_use[:nd]
+    #f_masks = field_masks[:nd]
+    #lab_use = labels[:nd]
+    #f_use = fields[:nd]
+
+    #px_x, px_y, px_id = get_field_pxs(x_use, f_masks, lab_use, f_use, M, T_t)
+    #px_x = px_x.reshape(px_x.shape[0], -1)
+
+
+    #losses, accs = test_rf(px_x, px_y)
 
 
 if __name__=="__main__":
-    with jax.debug_nans():
-        sys.exit(main())
+    #with jax.debug_nans():
+    sys.exit(main())

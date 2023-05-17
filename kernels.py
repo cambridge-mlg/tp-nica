@@ -24,7 +24,7 @@ def squared_euclid_dist_mat(x):
 def se_kernel_fn(x, y, params):
     sigma, lscale = params
     k = sigma**2 * jnp.exp(-0.5*squared_euclid_dist(x, y) / lscale**2)
-    return lax.cond(jnp.all(x == y), lambda _: _ + 1e-5, _identity, k)
+    return lax.cond(jnp.all(x == y), lambda _: _ + 1e-4, _identity, k)
 
 
 def bound_se_kernel_params(params, sigma_min=1e-3, ls_min=1, ls_max=900):

@@ -13,4 +13,4 @@ module load CUDA
 module load cuDNN
 mamba activate tpnica
 
-srun --unbuffered python main_cv4a.py -N6 --L-est 2 --GP
+srun --unbuffered python main_cv4a.py -N6 --L-est 2 --tp-df 4.01 --fix-df --phi-learning-rate 3e-2 --theta-learning-rate 3e-4 --resume-ckpt --GP

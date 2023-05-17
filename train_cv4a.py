@@ -38,6 +38,10 @@ def train(x, t, mean_fn, kernel_fn, args, key):
     n_pseudo = args.num_pseudo
     minib_size = args.minib_size
     num_epochs = args.num_epochs
+
+    # manual over-ride for debuggin -- be careful!
+    num_epochs = 1
+
     theta_lr = args.theta_learning_rate
     phi_lr = args.phi_learning_rate
     if args.GP:
@@ -200,6 +204,7 @@ def train(x, t, mean_fn, kernel_fn, args, key):
     train_data = x.copy()
     if args.resume_ckpt:
         start_epoch = ckpt_epoch+1
+        num_epochs = start_epoch+num_epochs
         if args.eval_only:
             start_epoch = 0
             num_epochs = 1
@@ -215,6 +220,7 @@ def train(x, t, mean_fn, kernel_fn, args, key):
         elbo_epoch_hist = []
         burn_in = epoch < args.burn_in_len
         # iterate over all minibatches
+        s_samples_all = []
         for it in range(num_minibs):
             x_it = shuff_data[it*minib_size:(it+1)*minib_size]
             # select variational parameters of the observations in minibatch
@@ -236,7 +242,6 @@ def train(x, t, mean_fn, kernel_fn, args, key):
                 phi_opt_states = tree_map(lambda a, b: a.at[idx_set_it].set(b),
                                           phi_opt_states, phi_opt_states_it)
 
-            pdb.set_trace()
 
             elbo_epoch_hist.append(-nvlb.item())
             print("*Epoch: [{0}/{1}]\t"
@@ -246,6 +251,16 @@ def train(x, t, mean_fn, kernel_fn, args, key):
 
             toc = time.perf_counter()
 
+            # saving sample
+            s_sample = s_sample.swapaxes(-1, -2)
+            if args.GP:
+                s_sample = s_sample.mean(axis=(1,))
+            else:
+                s_sample = s_sample.mean(axis=(1, 2))
+            s_samples_all.append(s_sample)
+
+
+        s_samples = jnp.vstack(s_samples_all)
         epoch_avg_elbo = jnp.mean(jnp.array(elbo_epoch_hist))
         print("Epoch [{0}/{1}] took: {2:.2f}\t"
               "AVG. ELBO: {3:.2f}\t"
@@ -276,7 +291,7 @@ def train(x, t, mean_fn, kernel_fn, args, key):
                 plt.show(block=False)
                 plt.pause(5.)
             plt.close()
-    return elbo_hist
+    return elbo_hist, s_samples, shuffle_idx
 
 
 
@@ -418,7 +433,7 @@ def train_phi(x, t, mean_fn, kernel_fn, args, key):
             toc = time.perf_counter()
 
         epoch_avg_elbo = jnp.mean(jnp.array(elbo_epoch_hist))
-        s_samples = jnp.swapaxes(jnp.vstack(s_samples_all), -1, -2)
+        s_samples = jnp.vstack(s_samples_all)
         print("Inference epoch [{0}/{1}] took: {2:.2f}\t"
               "AVG. ELBO: {3:.2f}\t"
               "data seed: {4}\t"
