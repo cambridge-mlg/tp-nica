@@ -38,10 +38,6 @@ def train(x, t, mean_fn, kernel_fn, args, key):
     n_pseudo = args.num_pseudo
     minib_size = args.minib_size
     num_epochs = args.num_epochs
-
-    # manual over-ride for debuggin -- be careful!
-    num_epochs = 1
-
     theta_lr = args.theta_learning_rate
     phi_lr = args.phi_learning_rate
     if args.GP:
@@ -163,7 +159,7 @@ def train(x, t, mean_fn, kernel_fn, args, key):
                 theta_updates = (theta_updates[0], theta_updates[1],
                                  tau_updates)
 
-                # freeze during burn-in...oxymoron?
+                # freeze during burn-in
                 theta_updates = lax.cond(burn_in, tree_zeros_like,
                                          _identity, theta_updates)
 
@@ -193,7 +189,7 @@ def train(x, t, mean_fn, kernel_fn, args, key):
         else:
             elbo_fn = avg_neg_tp_elbo
         eval_step = make_eval_step(nica_logpx, kernel_fn, t,
-                                   nsamples, elbo_fn)
+                                       nsamples, elbo_fn)
     else:
         training_step = make_training_step(
             nica_logpx, kernel_fn, t ,nsamples,

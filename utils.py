@@ -202,7 +202,7 @@ def plot_ic(s_n, s_est_n, ax, ax1):
     #ax1.plot(s_est_n, color='red')
 
 
-def save_checkpoint(params, hist, train_args, is_inference=False):
+def save_checkpoint(params, hist, train_args, extra_id, is_inference=False):
     if not os.path.isdir(train_args.out_dir):
         os.mkdir(train_args.out_dir)
     relev_args_dict = {k: train_args.__dict__[k] for k

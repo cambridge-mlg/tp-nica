@@ -61,13 +61,13 @@ def parse():
     parser.add_argument('--GP', action='store_true', default=False,
                         help="generate and train from GP latents instead of TP")
     # inference, training and optimization args
-    parser.add_argument('--num-s-samples', type=int, default=3,
+    parser.add_argument('--num-s-samples', type=int, default=5,
                         help="num. of samples from q(s|tau) in elbo")
-    parser.add_argument('--num-tau-samples', type=int, default=3,
+    parser.add_argument('--num-tau-samples', type=int, default=5,
                         help="num. of samples from q(tau) in elbo")
-    parser.add_argument('--phi-learning-rate', type=float, default=0.28,
+    parser.add_argument('--phi-learning-rate', type=float, default=3e-2,
                         help="learning rate for variational params")
-    parser.add_argument('--theta-learning-rate', type=float, default=0.004,
+    parser.add_argument('--theta-learning-rate', type=float, default=3e-4,
                         help="learning rate for model params")
     parser.add_argument('--minib-size', type=int, default=8,
                         help="minibatch size")
@@ -134,7 +134,6 @@ def main():
         assert args.resume_ckpt, "'Eval only' requires --resume-ckpt=True"
 
     # set up observed data
-    import numpy as np
     T_t = 6
     x, areas, fields, field_masks, labels, dates = get_cv4a_data(args.cv4a_dir)
     x = jnp.swapaxes(x, 1, 2)
@@ -161,20 +160,14 @@ def main():
                        jnp.tile(t, (T_t, 1))))
 
     # train
-    if not args.eval_only:
-        elbo_hist, s_features, shuff_idx = train(x_tr, t_tr, mu_fn,
-                                                 k_fn, args, est_key)
-    # perform feature extraction
-    else:
-        key, infer_key = jr.split(est_key)
-        elbo_hist, s_features = train_phi(x_te, t_te, mu_fn, k_fn, args, infer_key)
+    #if not args.eval_only:
+    #    elbo_hist, s_features, shuff_idx = train(x_tr, t_tr, mu_fn,
+    #                                             k_fn, args, est_key)
+    ## perform feature extraction
+    #else:
+    #    key, infer_key = jr.split(est_key)
+    #    elbo_hist, s_features = train_phi(x_te, t_te, mu_fn, k_fn, args, infer_key)
 
-
-    sf = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
-    sf = sf.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
-    time_classes = jnp.tile(jnp.arange(T_t), num_data)
-
-    pdb.set_trace()
 
 
     #def get_field_pxs(x, field_masks, labels, fields, dim, T):
@@ -211,10 +204,21 @@ def main():
 
     #px_x, px_y, px_id = get_field_pxs(x_use, f_masks, lab_use, f_use, M, T_t)
     #px_x = px_x.reshape(px_x.shape[0], -1)
+###############################
 
+    #s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
+    #sf_use = s_features
+    ##sf_use = x_te_orig
+    #sf_use = jr.normal(jr.PRNGKey(args.test_seed), (num_data, args.N,
+    #                                                T_t, T_x, T_y))
+    #sf = sf_use.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
+    #time_classes = jnp.tile(jnp.arange(T_t), num_data)
 
-    #losses, accs = test_rf(px_x, px_y)
-
+    ##n_ic = 0
+    ##sf = sf[:, n_ic, :, :]
+    #sf = sf.reshape(sf.shape[0], -1)
+    #pdb.set_trace()
+    #losses, accs = test_rf(sf, time_classes)
 
 if __name__=="__main__":
     #with jax.debug_nans():

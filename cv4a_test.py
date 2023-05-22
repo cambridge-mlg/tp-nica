@@ -206,7 +206,7 @@ def test_rf(data, labels):
         X_te = data[val_index]
         y_te = labels[val_index]
 
-        rf = RandomForestClassifier(n_estimators=100)
+        rf = RandomForestClassifier(n_estimators=500, n_jobs=-1)
         rf.fit(X_tr, y_tr)
         preds = rf.predict_proba(X_te)
         yhat = rf.predict(X_te)
@@ -220,8 +220,6 @@ def test_rf(data, labels):
         print('Accuracy: ', acc)
 
     return loss_list, acc_list
-
-
 
 
 
