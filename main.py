@@ -52,7 +52,7 @@ def parse():
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=2,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=128,
+    parser.add_argument('--num-data', type=int, default=256,
                         help="total number of data samples to generate")
     parser.add_argument('--L-data', type=int, default=0,
                         help="data gen: number of nonlinear layers; 0 = linear ICA")
@@ -67,9 +67,9 @@ def parse():
     parser.add_argument('--GP', action='store_true', default=False,
                         help="generate and train from GP latents instead of TP")
     # inference, training and optimization args
-    parser.add_argument('--num-s-samples', type=int, default=3,
+    parser.add_argument('--num-s-samples', type=int, default=4,
                         help="num. of samples from q(s|tau) in elbo")
-    parser.add_argument('--num-tau-samples', type=int, default=3,
+    parser.add_argument('--num-tau-samples', type=int, default=4,
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--phi-learning-rate', type=float, default=0.28,
                         help="learning rate for variational params")
@@ -85,7 +85,11 @@ def parse():
     parser.add_argument('--repeat-dfs', action='store_true', default=False,
                         help="force all tprocesses to same degrees of freedom")
     parser.add_argument('--repeat-kernels', action='store_true', default=False,
-                        help="force all t-processes to use the same kernel")
+                        help="force all processes have same kernel params")
+    parser.add_argument('--gen-repeat-dfs', action='store_true', default=False,
+                        help="generate all processes to same degrees of freedom")
+    parser.add_argument('--gen-repeat-kernels', action='store_true', default=False,
+                        help="generate all processes to use the same kernel")
     # set seeds
     parser.add_argument('--data-seed', type=int, default=1,
                         help="seed for initializing data generation")
@@ -156,13 +160,13 @@ def main():
             x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
                                   args.L_data, args.num_data, mu_fn, k_fn,
                                   noise_factor=noise_factor,
-                                  repeat_kernels=args.repeat_kernels)
+                                  repeat_kernels=args.gen_repeat_kernels)
         else:
             x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
                                   args.L_data, args.num_data, mu_fn, k_fn,
-                                  args.tp_df, repeat_kernels=args.repeat_kernels,
+                                  args.tp_df, repeat_kernels=args.gen_repeat_kernels,
                                   noise_factor=noise_factor,
-                                  repeat_dfs=args.repeat_dfs)
+                                  repeat_dfs=args.gen_repeat_dfs)
 
         # check that noise is appropriate level
         mean_nrs = jnp.mean(x.var(2) / z.var(2), 0).mean()

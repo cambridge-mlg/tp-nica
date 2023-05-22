@@ -10,6 +10,7 @@ import cloudpickle
 
 from jax import vmap, jit, value_and_grad, lax
 from jax.tree_util import tree_map
+from scipy.cluster.vq import kmeans2
 
 from kernels import rdm_SE_kernel_params, rdm_df
 from nn import init_nica_params, nica_logpx
@@ -92,12 +93,13 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         theta = (theta_x, theta_k, theta_tau)
 
     # initialize variational parameters (phi) with pseudo-points (tu)
-    tu, key = rngcall(lambda _: vmap(lambda k: jr.choice(k, t,
-            shape=(n_pseudo,), replace=False))(jr.split(_, n_data)), key)
+    tu = kmeans2(t, k=n_pseudo, minit='points')[0]
+    tu = jnp.tile(tu, (n_data, 1, 1))
+
     W, key = rngcall(
         lambda _k: vmap(lambda _: jnp.linalg.cholesky(
-            10*jnp.eye(N)
-            #sample_wishart(_, jnp.array(N+1.), 10*jnp.eye(N))
+            #10*jnp.eye(N)
+            sample_wishart(_, jnp.array(N+1.), jnp.eye(N))
         )[jnp.tril_indices(N)], out_axes=-1)(jr.split(_k, n_pseudo)), key
     )
     phi_s = (jnp.repeat(W[None, :], n_data, 0),
