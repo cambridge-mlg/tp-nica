@@ -46,7 +46,7 @@ def parse():
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('-N', type=int, default=6,
                         help="number of ICs")
-    parser.add_argument('--num-pseudo', type=int, default=50,
+    parser.add_argument('--num-pseudo', type=int, default=100,
                         help="number of pseudo latent points to use")
     parser.add_argument('--L-est', type=int, default=2,
                         help="model: number of nonlinear layers; 0 = linear ICA")
@@ -160,13 +160,13 @@ def main():
                        jnp.tile(t, (T_t, 1))))
 
     # train
-    #if not args.eval_only:
-    #    elbo_hist, s_features, shuff_idx = train(x_tr, t_tr, mu_fn,
-    #                                             k_fn, args, est_key)
-    ## perform feature extraction
-    #else:
-    #    key, infer_key = jr.split(est_key)
-    #    elbo_hist, s_features = train_phi(x_te, t_te, mu_fn, k_fn, args, infer_key)
+    if not args.eval_only:
+        elbo_hist, s_features, shuff_idx = train(x_tr, t_tr, mu_fn,
+                                                 k_fn, args, est_key)
+    # perform feature extraction
+    else:
+        key, infer_key = jr.split(est_key)
+        elbo_hist, s_features = train_phi(x_te, t_te, mu_fn, k_fn, args, infer_key)
 
 
 

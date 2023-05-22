@@ -126,7 +126,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
         ckpt, hist = load_checkpoint(args)
         ckpt_epoch, key, theta, phi, theta_opt_state, phi_opt_states = ckpt
         elbo_hist, mcc_hist = hist
-    pdb.set_trace()
+
 
 
     # define training step

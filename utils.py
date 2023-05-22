@@ -202,7 +202,7 @@ def plot_ic(s_n, s_est_n, ax, ax1):
     #ax1.plot(s_est_n, color='red')
 
 
-def save_checkpoint(params, hist, train_args, extra_id, is_inference=False):
+def save_checkpoint(params, hist, train_args, extra_id=""):
     if not os.path.isdir(train_args.out_dir):
         os.mkdir(train_args.out_dir)
     relev_args_dict = {k: train_args.__dict__[k] for k
@@ -212,19 +212,15 @@ def save_checkpoint(params, hist, train_args, extra_id, is_inference=False):
     file_id = ["".join([k[0] for k in str(i).split('_')])+str(j)
            for i,j in zip(relev_args_dict.keys(),
                           relev_args_dict.values())]
-    if is_inference:
-        ckpt_file_name = "_".join(file_id) + "_inference_ckpt.pkl"
-        hist_file_name = "_".join(file_id) + "_inference_hist.pkl"
-    else:
-        ckpt_file_name = "_".join(file_id) + "_ckpt.pkl"
-        hist_file_name = "_".join(file_id) + "_hist.pkl"
+    ckpt_file_name = "_".join(file_id) + "_ckpt_" + extra_id + "_.pkl"
+    hist_file_name = "_".join(file_id) + "_hist_" + extra_id + "_.pkl"
     cloudpickle.dump(params, open(os.path.join(train_args.out_dir,
                                                ckpt_file_name), 'wb'))
     cloudpickle.dump(hist, open(os.path.join(train_args.out_dir,
                                              hist_file_name), 'wb'))
 
 
-def load_checkpoint(train_args, is_inference=False):
+def load_checkpoint(train_args, extra_id=""):
     if not os.path.isdir(train_args.out_dir):
         os.mkdir(train_args.out_dir)
     relev_args_dict = {k: train_args.__dict__[k] for k in train_args.__dict__
@@ -234,12 +230,8 @@ def load_checkpoint(train_args, is_inference=False):
     file_id = ["".join([k[0] for k in str(i).split('_')])+str(j)
            for i,j in zip(relev_args_dict.keys(),
                           relev_args_dict.values())]
-    if is_inference:
-        ckpt_file_name = "_".join(file_id) + "_inference_ckpt.pkl"
-        hist_file_name = "_".join(file_id) + "_inference_hist.pkl"
-    else:
-        ckpt_file_name = "_".join(file_id) + "_ckpt.pkl"
-        hist_file_name = "_".join(file_id) + "_hist.pkl"
+    ckpt_file_name = "_".join(file_id) + "_ckpt_" + extra_id + ".pkl"
+    hist_file_name = "_".join(file_id) + "_hist_" + extra_id + ".pkl"
     ckpt_file_path = os.path.join(train_args.out_dir, ckpt_file_name)
     hist_file_path = os.path.join(train_args.out_dir, hist_file_name)
     assert os.path.isfile(ckpt_file_path), "No checkpoint found for these settings!"

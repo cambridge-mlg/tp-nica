@@ -106,7 +106,7 @@ def train(x, t, mean_fn, kernel_fn, args, key):
 
     # optionally load from checkpoint
     if args.resume_ckpt:
-        ckpt, hist = load_checkpoint(args)
+        ckpt, hist = load_checkpoint(args, "cv4a")
         ckpt_epoch, key, theta, phi, theta_opt_state, phi_opt_states = ckpt
         elbo_hist = hist
 
@@ -275,14 +275,15 @@ def train(x, t, mean_fn, kernel_fn, args, key):
                 print("**Saving checkpoint (best elbo thus far)**")
                 best_elbo = epoch_avg_elbo
                 save_checkpoint((epoch, key, theta, phi, theta_opt_state,
-                                 phi_opt_states), (elbo_hist), args)
+                                 phi_opt_states), (elbo_hist), args,
+                                "cv4a")
 
         # plot training histories
         if epoch % args.plot_freq == 0 or args.eval_only:
             plt.plot(elbo_hist)
             plt.tight_layout()
             if args.headless:
-                plt.savefig("INFER_cv4a_elbo_hist.png")
+                plt.savefig("cv4a_elbo_hist.png")
             else:
                 plt.show(block=False)
                 plt.pause(5.)
@@ -334,7 +335,7 @@ def train_phi(x, t, mean_fn, kernel_fn, args, key):
         phi = (phi_s, phi_tau)
 
     # optionally load from checkpoint
-    ckpt, hist = load_checkpoint(args)
+    ckpt, hist = load_checkpoint(args, "cv4a")
     _, _, theta, _, _, _ = ckpt
     elbo_hist = hist
     ## set up training details
@@ -443,14 +444,14 @@ def train_phi(x, t, mean_fn, kernel_fn, args, key):
         if epoch_avg_elbo > best_elbo:
             print("**Saving checkpoint (best elbo thus far)**")
             best_elbo = epoch_avg_elbo
-            save_checkpoint((phi, s_samples), (elbo_hist), args, True)
+            save_checkpoint((phi, s_samples), (elbo_hist), args, "cv4a_infer")
 
         # plot training histories
         if epoch % args.plot_freq == 0 or args.eval_only:
             plt.plot(elbo_hist)
             plt.tight_layout()
             if args.headless:
-                plt.savefig("cv4a_elbo_hist.png")
+                plt.savefig("infer_cv4a_elbo_hist.png")
             else:
                 plt.show(block=False)
                 plt.pause(5.)
