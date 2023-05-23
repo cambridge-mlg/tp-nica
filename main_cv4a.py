@@ -46,7 +46,7 @@ def parse():
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('-N', type=int, default=6,
                         help="number of ICs")
-    parser.add_argument('--num-pseudo', type=int, default=100,
+    parser.add_argument('--num-pseudo', type=int, default=50,
                         help="number of pseudo latent points to use")
     parser.add_argument('--L-est', type=int, default=2,
                         help="model: number of nonlinear layers; 0 = linear ICA")
@@ -61,9 +61,9 @@ def parse():
     parser.add_argument('--GP', action='store_true', default=False,
                         help="generate and train from GP latents instead of TP")
     # inference, training and optimization args
-    parser.add_argument('--num-s-samples', type=int, default=5,
+    parser.add_argument('--num-s-samples', type=int, default=3,
                         help="num. of samples from q(s|tau) in elbo")
-    parser.add_argument('--num-tau-samples', type=int, default=5,
+    parser.add_argument('--num-tau-samples', type=int, default=3,
                         help="num. of samples from q(tau) in elbo")
     parser.add_argument('--phi-learning-rate', type=float, default=3e-2,
                         help="learning rate for variational params")
