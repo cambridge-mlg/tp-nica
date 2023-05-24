@@ -42,9 +42,13 @@ def train(x, t, mean_fn, kernel_fn, args, key):
     phi_lr = args.phi_learning_rate
     if args.GP:
         nsamples = args.num_s_samples
+        if args.eval_only:
+            nsamples = 5*args.num_s_samples
         fix_df = None
     else:
         nsamples = (args.num_s_samples, args.num_tau_samples)
+        if args.eval_only:
+            nsamples = (5*args.num_s_samples, 5*args.num_tau_samples)
         fix_df = args.fix_df
 
     # initialize generative model params (theta)
