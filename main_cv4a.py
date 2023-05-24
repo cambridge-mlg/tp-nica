@@ -1,9 +1,9 @@
 import os
-#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
 from matplotlib import projections
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -16,6 +16,7 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 from jax.dlpack import to_dlpack
 from sklearn.linear_model import LinearRegression as LR
+from sklearn.decomposition import FastICA
 
 ###DEBUG##############################
 #config.update('jax_disable_jit', True)
@@ -90,7 +91,7 @@ def parse():
     # checkpoint saving, loading, and evaluation
     parser.add_argument('--out-dir', type=str, default="output/",
                         help="location where data is saved")
-    parser.add_argument('--cv4a-dir', type=str, default="/projappl/project_2006413/tp-nica/cv4a_data",
+    parser.add_argument('--cv4a-dir', type=str, default="cv4a_data/",
                         help="location where data is saved")
     parser.add_argument('--resume-ckpt', action='store_true', default=False,
                         help="resume training if checkpoint for matching\
@@ -100,7 +101,7 @@ def parse():
     parser.add_argument('--linear-ica', action='store_true', default=False,
                         help="evaluate using linear ICA")
     # server settings
-    parser.add_argument('--headless', action='store_true', default=False,
+    parser.add_argument('--headless', action='store_true', default=True,
                         help="switch behaviour on server")
     args = parser.parse_args()
     return args
@@ -171,20 +172,16 @@ def main():
         s_features = ica.fit_transform(x_tr)
 
 
+    s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
+    sf_use = s_features
+    #sf_use = x_te_orig
+    sf_use = jr.normal(jr.PRNGKey(args.test_seed), (num_data, args.N,
+                                                    T_t, T_x, T_y))
+    sf = sf_use.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
+    time_classes = jnp.tile(jnp.arange(T_t), num_data)
 
-    #s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
-    #sf_use = s_features
-    ##sf_use = x_te_orig
-    #sf_use = jr.normal(jr.PRNGKey(args.test_seed), (num_data, args.N,
-    #                                                T_t, T_x, T_y))
-    #sf = sf_use.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
-    #time_classes = jnp.tile(jnp.arange(T_t), num_data)
-
-    ##n_ic = 0
-    ##sf = sf[:, n_ic, :, :]
-    #sf = sf.reshape(sf.shape[0], -1)
-    #pdb.set_trace()
-    #losses, accs = test_rf(sf, time_classes)
+    sf = sf.reshape(sf.shape[0], -1)
+    losses, accs = test_rf(sf, time_classes)
 
 
     ###here add code to eval on test data

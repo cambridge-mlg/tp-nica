@@ -207,7 +207,7 @@ def save_checkpoint(params, hist, train_args, extra_id=""):
         os.mkdir(train_args.out_dir)
     relev_args_dict = {k: train_args.__dict__[k] for k
                        in train_args.__dict__ if k not in
-                       ['out_dir', 'cv4a_dir', 'num_epochs_infer',
+                       ['out_dir', 'cv4a_dir', 'num_epochs_infer', 'linear_ica',
                         'eval_only', 'resume_ckpt', 'headless', 'plot_freq']}
     file_id = ["".join([k[0] for k in str(i).split('_')])+str(j)
            for i,j in zip(relev_args_dict.keys(),
@@ -225,13 +225,13 @@ def load_checkpoint(train_args, extra_id=""):
         os.mkdir(train_args.out_dir)
     relev_args_dict = {k: train_args.__dict__[k] for k in train_args.__dict__
                        if k not in ['out_dir', 'eval_only', 'resume_ckpt',
-                                    'num_epochs_infer',
+                                    'num_epochs_infer', 'linear_ica',
                                     'headless', 'plot_freq', 'cv4a_dir']}
     file_id = ["".join([k[0] for k in str(i).split('_')])+str(j)
            for i,j in zip(relev_args_dict.keys(),
                           relev_args_dict.values())]
-    ckpt_file_name = "_".join(file_id) + "_ckpt_" + extra_id + ".pkl"
-    hist_file_name = "_".join(file_id) + "_hist_" + extra_id + ".pkl"
+    ckpt_file_name = "_".join(file_id) + "_ckpt_" + extra_id + "_.pkl"
+    hist_file_name = "_".join(file_id) + "_hist_" + extra_id + "_.pkl"
     ckpt_file_path = os.path.join(train_args.out_dir, ckpt_file_name)
     hist_file_path = os.path.join(train_args.out_dir, hist_file_name)
     assert os.path.isfile(ckpt_file_path), "No checkpoint found for these settings!"
