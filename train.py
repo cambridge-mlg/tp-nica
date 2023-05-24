@@ -278,6 +278,7 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
             else:
                 s_sample = s_sample.mean(axis=(1, 2))
             minib_mccs = []
+
             for j in range(minib_size):
                 mcc, _, sort_idx = matching_sources_corr(s_sample[j], s_it[j])
                 minib_mccs.append(mcc)

@@ -13,6 +13,7 @@ import sys
 from jax.config import config
 config.update("jax_enable_x64", True)
 
+from linear_baseline import linearICA_eval
 from sklearn.linear_model import LinearRegression as LR
 
 ###DEBUG##############################
@@ -52,7 +53,7 @@ def parse():
                         help="number of pseudo latent points to use")
     parser.add_argument('-D', type=int, default=2,
                         help="dimension of latent input locations")
-    parser.add_argument('--num-data', type=int, default=256,
+    parser.add_argument('--num-data', type=int, default=128,
                         help="total number of data samples to generate")
     parser.add_argument('--L-data', type=int, default=0,
                         help="data gen: number of nonlinear layers; 0 = linear ICA")
@@ -106,6 +107,8 @@ def parse():
     parser.add_argument('--resume-ckpt', action='store_true', default=False,
                         help="resume training if checkpoint for matching\
                         settings exists")
+    parser.add_argument('--eval-linear-ica', action='store_true', default=False,
+                        help="evaluate linear ICA baseline on data")
     parser.add_argument('--eval-only', action='store_true', default=False,
                         help="evaluate only, from checkpoint, no training")
     # for debugging
@@ -176,12 +179,10 @@ def main():
         elif mean_nrs > 1.15:
             noise_factor = 0.5*noise_factor
 
-    # measure nonlinearity
-    nl_metrics = []
-    for i in range(args.num_data):
-        nl_metrics.append(LR().fit(s[i, :, :].T, z[i, :, :].T).score(
-            s[i, :, :].T, z[i, :, :].T))
-    print("Linearity (R2): {0:.2f}".format(jnp.median((jnp.array(nl_metrics)))))
+    # evaluate by linear ICA
+    if args.eval_linear_ica:
+        s_lica, lica_mcc = linearICA_eval(x, s)
+    print("Linear ICA: {0:.2f}".format(lica_mcc))
 
     #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))
     #ax = plt.axes(projection='3d')
