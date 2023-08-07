@@ -9,6 +9,7 @@ import jax.random as jr
 import pdb
 
 from jax import vmap, lax, jit
+from jax.nn import sigmoid
 from nn import init_nica_params, nica_mlp
 from kernels import rdm_df, rdm_SE_kernel_params, compute_K, se_kernel_fn
 from functools import partial
@@ -53,9 +54,56 @@ def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
     sample_fun = lambda _: sample_tprocess(_[0], t, gp_mu_fn, gp_k_fn,
                                            _[1], _[2])
     s, tau = lax.map(sample_fun, (jnp.vstack(s_key), gp_k_params, df))
+    pdb.set_trace()
     # mix the ICs
     z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
     return z, s, tau
+
+
+
+def rational_quad(y_u, y_l, d_u, d_l, eps, s_k):
+    rq = (y_u - y_l) * (s_k * eps ** 2 + d_l * eps * (1 - eps))
+    rq = y_l + rq / (s_k + (d_u + d_l - 2*s_k)*eps*(1-eps))
+    return rq
+
+
+def fit_rational_quad(x, x_knots, y_knots, deltas):
+    u_idx = jnp.argmax(x_knots - x > 0)
+    l_idx = u_idx - 1
+    x_u = x_knots[u_idx]
+    x_l = x_knots[l_idx]
+    y_u = y_knots[u_idx]
+    y_l = y_knots[l_idx]
+    d_u = deltas[u_idx]
+    d_l = deltas[l_idx]
+    eps = (x - x_l) / (x_u - x_l)
+    s_k = (y_u - y_l) / (x_u - x_l)
+    rq  = rational_quad(y_u, y_l, d_u, d_l, eps, s_k)
+    return rq
+
+
+def mono_spline(key, x, minval=-1, maxval=1, delta_max=5., num_knots=5):
+    internal_knots = jnp.sort(jr.uniform(key, minval=minval,
+                              maxval=maxval, shape=(2, num_knots)))
+    knots = jnp.hstack((jnp.ones((2, 1)) * minval, internal_knots,
+                        jnp.ones((2, 1))*maxval))
+    key, key_b = jr.split(key)
+    internal_deltas = jr.uniform(key_b, minval=0, maxval=delta_max,
+                                  shape=(num_knots,))
+    deltas = jnp.hstack((1., internal_deltas, 1.))
+    x_knots = knots[0]
+    y_knots = knots[1]
+    spline = vmap(lambda _: fit_rational_quad(_, x_knots, y_knots, deltas))(x)
+    sgn = jr.choice(key, jnp.array([-1., 1.]))
+    return sgn * spline
+
+
+def mono_spline_layer(key, x, out_dim):
+    #x = sigmoid(x)
+    key, key_b = jr.split(key)
+    y = vmap(mono_spline)(jr.split(key_b, x.shape[0]), x)
+    A = jr.uniform(key, minval=-1, maxval=1, shape=(out_dim, x.shape[0]))
+    return A@x #A@y
 
 
 def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):

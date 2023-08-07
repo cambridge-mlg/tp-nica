@@ -3,7 +3,7 @@ os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
 from matplotlib import projections
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -17,7 +17,7 @@ from linear_baseline import linearICA_eval
 from sklearn.linear_model import LinearRegression as LR
 
 ###DEBUG##############################
-#config.update('jax_disable_jit', True)
+config.update('jax_disable_jit', True)
 #config.update("jax_debug_nans", True)
 ######################################
 
