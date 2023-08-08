@@ -13,7 +13,7 @@ from jax.tree_util import tree_map
 from scipy.cluster.vq import kmeans2
 
 from kernels import rdm_SE_kernel_params, rdm_df
-from nn import init_nica_params, nica_logpx
+from nn import init_nica_params, init_mlp_params, nica_logpx
 from utils import (
     sample_wishart,
     tree_zeros_like,
@@ -75,6 +75,14 @@ def train(x, z, s, t, mean_fn, kernel_fn, params, args, key):
                 minval=-1, maxval=1), key)
     theta_mix, key = rngcall(lambda _: init_nica_params(
         _, N, M, L, repeat_layers=False), key)
+
+
+############### TEST
+    theta_mix, key = rngcall(lambda _: init_mlp_params(
+        _, N, 128, M, L, repeat_layers=False), key)
+##################
+
+
     theta_x = (theta_mix, theta_var)
 
     # for debugging: set some params to ground-truths

@@ -70,6 +70,20 @@ def init_nica_params(key, N, M, nonlin_layers, repeat_layers):
             in zip(layer_sizes[:-1], layer_sizes[1:], keys)]
 
 
+def init_mlp_params(key, N, H, M, nonlin_layers, repeat_layers):
+    '''BEWARE: Assumes factorized distribution
+        and equal width in all hidden layers'''
+    layer_sizes = [N] + [H]*nonlin_layers + [M]
+    keys = jrandom.split(key, len(layer_sizes)-1)
+    if repeat_layers:
+        _keys = keys
+        keys = jnp.repeat(_keys[0][None], _keys.shape[0], 0)
+        if N != M:
+            keys = keys.at[1:].set(_keys[-1])
+    return [unif_nica_layer(n, m, k) for (n, m, k)
+            in zip(layer_sizes[:-1], layer_sizes[1:], keys)]
+
+
 @jit
 def nica_mlp(params, s, activation='xtanh', slope=0.01):
     """Forward-pass of mixing function.
@@ -82,8 +96,9 @@ def nica_mlp(params, s, activation='xtanh', slope=0.01):
 
     act = xtanh(slope) # add option to switch to smoothleakyrelu
     z = s
-    z = lax.cond(len(params) > 1, lambda a, B: _fwd_pass(a, B),
-                 lambda a, B: a@B[0], z, params)
+    #z = lax.cond(len(params) > 1, lambda a, B: _fwd_pass(a, B),
+    #             lambda a, B: a@B[0], z, params)
+    z = _fwd_pass(z, params)
     return z
 
 
@@ -93,7 +108,4 @@ def nica_logpx(x, s, theta_x):
     mu = nica_mlp(theta_mix, s)
     S = jnp.diag(jnp.exp(theta_var))
     return jsp.stats.multivariate_normal.logpdf(x, mu, S)
-
-
-
 

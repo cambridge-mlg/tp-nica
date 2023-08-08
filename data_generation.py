@@ -27,40 +27,6 @@ def gen_2d_locations(T):
     return jnp.hstack((t1.flatten()[:, None], t2.flatten()[:, None]))
 
 
-def sample_tprocess(key, latent_inputs, gp_mu_fn, gp_kernel_fn,
-                    gp_kernel_params, df):
-    # sample tau from Gamma prior
-    tau_key, tp_key = jr.split(key)
-    tau_sample = jr.gamma(tau_key, df/2, shape=())/(df/2)
-    # define GP parameters
-    mu = vmap(gp_mu_fn)(latent_inputs)
-    K = compute_K(latent_inputs, gp_kernel_fn, gp_kernel_params)
-    # sample
-    tp_sample = jr.multivariate_normal(tp_key, mu, (1/tau_sample)*K)
-    return tp_sample, tau_sample
-
-
-def sample_gp(key, latent_inputs, gp_mu_fn, gp_kernel_fn, gp_kernel_params):
-    # define GP parameters
-    mu = vmap(gp_mu_fn)(latent_inputs)
-    K = compute_K(latent_inputs, gp_kernel_fn, gp_kernel_params)
-    return jr.multivariate_normal(key, mu, K)
-
-
-def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
-    # sample each IC as a t-process
-    N = df.shape[0]
-    key, *s_key = jr.split(key, N+1)
-    sample_fun = lambda _: sample_tprocess(_[0], t, gp_mu_fn, gp_k_fn,
-                                           _[1], _[2])
-    s, tau = lax.map(sample_fun, (jnp.vstack(s_key), gp_k_params, df))
-    pdb.set_trace()
-    # mix the ICs
-    z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
-    return z, s, tau
-
-
-
 def rational_quad(y_u, y_l, d_u, d_l, eps, s_k):
     rq = (y_u - y_l) * (s_k * eps ** 2 + d_l * eps * (1 - eps))
     rq = y_l + rq / (s_k + (d_u + d_l - 2*s_k)*eps*(1-eps))
@@ -98,12 +64,60 @@ def mono_spline(key, x, minval=-1, maxval=1, delta_max=5., num_knots=5):
     return sgn * spline
 
 
+def gen_matrix(key, in_dim, out_dim):
+    A = jr.uniform(key, (out_dim, in_dim), minval= -2., maxval=2.)
+    cond = jnp.linalg.cond(A)
+    return A, cond
+
+
 def mono_spline_layer(key, x, out_dim):
-    #x = sigmoid(x)
     key, key_b = jr.split(key)
     y = vmap(mono_spline)(jr.split(key_b, x.shape[0]), x)
-    A = jr.uniform(key, minval=-1, maxval=1, shape=(out_dim, x.shape[0]))
-    return A@x #A@y
+    keys = jr.split(key, 1000)
+    As, conds = vmap(gen_matrix, (0, None, None))(keys, x.shape[0], out_dim)
+    target_cond = jnp.percentile(conds, 25)
+    target_idx = jnp.argmin(jnp.abs(conds-target_cond))
+    return As[target_idx] @ y
+
+
+def multilayer_spline(key, x, n_layers, out_dim):
+    for _ in range(n_layers):
+        x = mono_spline_layer(key, x, out_dim)
+        key, _ = jr.split(key)
+    return x
+
+
+def sample_tprocess(key, latent_inputs, gp_mu_fn, gp_kernel_fn,
+                    gp_kernel_params, df):
+    # sample tau from Gamma prior
+    tau_key, tp_key = jr.split(key)
+    tau_sample = jr.gamma(tau_key, df/2, shape=())/(df/2)
+    # define GP parameters
+    mu = vmap(gp_mu_fn)(latent_inputs)
+    K = compute_K(latent_inputs, gp_kernel_fn, gp_kernel_params)
+    # sample
+    tp_sample = jr.multivariate_normal(tp_key, mu, (1/tau_sample)*K)
+    return tp_sample, tau_sample
+
+
+def sample_gp(key, latent_inputs, gp_mu_fn, gp_kernel_fn, gp_kernel_params):
+    # define GP parameters
+    mu = vmap(gp_mu_fn)(latent_inputs)
+    K = compute_K(latent_inputs, gp_kernel_fn, gp_kernel_params)
+    return jr.multivariate_normal(key, mu, K)
+
+
+def sample_tpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, df, mixer_params):
+    # sample each IC as a t-process
+    N = df.shape[0]
+    key, *s_key = jr.split(key, N+1)
+    sample_fun = lambda _: sample_tprocess(_[0], t, gp_mu_fn, gp_k_fn,
+                                           _[1], _[2])
+    s, tau = lax.map(sample_fun, (jnp.vstack(s_key), gp_k_params, df))
+    # mix the ICs
+    #z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
+    z = multilayer_spline(key, s, len(mixer_params), mixer_params[0].shape[1])
+    return z, s, tau
 
 
 def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
@@ -113,7 +127,8 @@ def sample_gpnica(key, t, gp_mu_fn, gp_k_fn, gp_k_params, mixer_params):
     sample_fun = lambda _: sample_gp(_[0], t, gp_mu_fn, gp_k_fn, _[1])
     s = lax.map(sample_fun, (jnp.vstack(s_key), gp_k_params))
     # mix the ICs
-    z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
+    #z = vmap(nica_mlp, (None, 1), 1)(mixer_params, s)
+    z = multilayer_spline(key, s, len(mixer_params), mixer_params[0].shape[1])
     return z, s
 
 

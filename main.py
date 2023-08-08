@@ -3,7 +3,7 @@ os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
 from matplotlib import projections
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
@@ -17,7 +17,7 @@ from linear_baseline import linearICA_eval
 from sklearn.linear_model import LinearRegression as LR
 
 ###DEBUG##############################
-config.update('jax_disable_jit', True)
+#config.update('jax_disable_jit', True)
 #config.update("jax_debug_nans", True)
 ######################################
 
@@ -80,7 +80,7 @@ def parse():
                         help="minibatch size")
     parser.add_argument('--num-epochs', type=int, default=10000,
                         help="number of training epochs")
-    parser.add_argument('--burn-in-len', type=int, default=100,
+    parser.add_argument('--burn-in-len', type=int, default=10,
                         help="number of epochs to keep theta params fixed")
     # set all ICs to have same distribs
     parser.add_argument('--repeat-dfs', action='store_true', default=False,
@@ -182,7 +182,7 @@ def main():
     # evaluate by linear ICA
     if args.eval_linear_ica:
         s_lica, lica_mcc = linearICA_eval(x, s)
-    print("Linear ICA: {0:.2f}".format(lica_mcc))
+        print("Linear ICA: {0:.2f}".format(lica_mcc))
 
     #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))
     #ax = plt.axes(projection='3d')
