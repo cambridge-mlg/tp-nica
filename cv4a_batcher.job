@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=tp_l3_cv4a_fix4
+#SBATCH --job-name=tp_l1_cv4a_fix4000_EVAL
 #SBATCH -M ukko
 #SBATCH -p gpu,gpu-long
-#SBATCH -o tp_l3_cv4a_fix4.txt
+#SBATCH -o tp_l1_cv4a_fix4000_EVAL.txt
 #SBATCH -c 2
 #SBATCH -t 23:59:00
 #SBATCH --mem-per-cpu=64G
@@ -13,4 +13,4 @@ module load CUDA
 module load cuDNN
 mamba activate tpnica
 
-srun --unbuffered python main_cv4a.py -N6 --L-est 3 --tp-df 4.01 --fix-df
+srun --unbuffered python main_cv4a.py -N6 --L-est 3 --tp-df 4000.01 --fix-df --resume-ckpt --eval-only

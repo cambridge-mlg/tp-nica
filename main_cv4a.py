@@ -175,8 +175,6 @@ def main():
     s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
     sf_use = s_features
     #sf_use = x_te_orig
-    sf_use = jr.normal(jr.PRNGKey(args.test_seed), (num_data, args.N,
-                                                    T_t, T_x, T_y))
     sf = sf_use.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
     time_classes = jnp.tile(jnp.arange(T_t), num_data)
 
