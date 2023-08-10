@@ -21,10 +21,10 @@ def squared_euclid_dist_mat(x):
 
 
 @jit
-def se_kernel_fn(x, y, params):
+def se_kernel_fn(x, y, params, jitter=1e-5):
     sigma, lscale = params
     k = sigma**2 * jnp.exp(-0.5*squared_euclid_dist(x, y) / lscale**2)
-    return lax.cond(jnp.all(x == y), lambda _: _ + 1e-4, _identity, k)
+    return lax.cond(jnp.all(x == y), lambda _: _ + jitter, _identity, k)
 
 
 def bound_se_kernel_params(params, sigma_min=1e-3, ls_min=1, ls_max=900):
@@ -39,7 +39,7 @@ def compute_K(x, kernel_fn, params):
     return vmap(vmap(kernel_fn, (None, 0, None)), (0, None, None))(x, x, params)
 
 
-def rdm_SE_kernel_params(key, min_lscale=25., max_lscale=100.,
+def rdm_SE_kernel_params(key, min_lscale=0.1, max_lscale=0.5,
                          sd_min=0.1, sd_max=1.):
     """
     Note: x is needed to find reasonable length-scale thats not too smooth

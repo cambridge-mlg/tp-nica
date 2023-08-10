@@ -1,14 +1,16 @@
 import os
-os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
+#os.environ["MPLCONFIGDIR"] = "/proj/herhal/.cache/"
 
 import matplotlib
 from matplotlib import projections
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import argparse
 import pdb
 import sys
+
+from numpy import dtype
 
 from jax.config import config
 config.update("jax_enable_x64", True)
@@ -17,7 +19,7 @@ from linear_baseline import linearICA_eval
 from sklearn.linear_model import LinearRegression as LR
 
 ###DEBUG##############################
-#config.update('jax_disable_jit', True)
+config.update('jax_disable_jit', True)
 #config.update("jax_debug_nans", True)
 ######################################
 
@@ -30,8 +32,7 @@ print(jax.devices())
 
 from train import train
 from data_generation import (
-    gen_tpnica_data,
-    gen_gpnica_data,
+    gen_data,
     gen_1d_locations,
     gen_2d_locations
 )
@@ -159,17 +160,11 @@ def main():
     noise_factor = 0.1
     while mean_nrs < 1.05 or mean_nrs > 1.15:
         data_key, _ = jr.split(data_key)
-        if args.GP:
-            x, z, s, *params = gen_gpnica_data(data_key, t, args.N, args.M,
-                                  args.L_data, args.num_data, mu_fn, k_fn,
-                                  noise_factor=noise_factor,
-                                  repeat_kernels=args.gen_repeat_kernels)
-        else:
-            x, z, s, tau, *params = gen_tpnica_data(data_key, t, args.N, args.M,
-                                  args.L_data, args.num_data, mu_fn, k_fn,
-                                  args.tp_df, repeat_kernels=args.gen_repeat_kernels,
-                                  noise_factor=noise_factor,
-                                  repeat_dfs=args.gen_repeat_dfs)
+        x, z, s, tau, *params = gen_data(data_key, t, args.N, args.M,
+                              args.L_data, args.num_data, mu_fn, k_fn,
+                              args.tp_df, repeat_kernels=args.gen_repeat_kernels,
+                              noise_factor=noise_factor,
+                              repeat_dfs=args.gen_repeat_dfs, tp=not args.GP)
 
         # check that noise is appropriate level
         mean_nrs = jnp.mean(x.var(2) / z.var(2), 0).mean()
@@ -179,16 +174,21 @@ def main():
         elif mean_nrs > 1.15:
             noise_factor = 0.5*noise_factor
 
+
     # evaluate by linear ICA
     if args.eval_linear_ica:
         s_lica, lica_mcc = linearICA_eval(x, s)
         print("Linear ICA: {0:.2f}".format(lica_mcc))
 
-    #X, Y = jnp.meshgrid(jnp.arange(32), jnp.arange(32))
-    #ax = plt.axes(projection='3d')
-    #ax.plot_surface(X, Y, s[0][0, :].reshape(32, 32), rstride=1, cstride=1,
-    #                cmap='viridis')
-    #plt.show()
+
+    # visualize example in 3D
+    if args.D == 2:
+        T_sqrt = int(jnp.sqrt(args.T))
+        X, Y = jnp.meshgrid(jnp.arange(T_sqrt), jnp.arange(T_sqrt))
+        ax = plt.axes(projection='3d')
+        ax.plot_surface(X, Y, s[0][0, :].reshape(T_sqrt, T_sqrt),
+                        rstride=1, cstride=1, cmap='viridis')
+        plt.show()
 
     # create folder to save checkpoints    
     if not os.path.isdir(args.out_dir):
