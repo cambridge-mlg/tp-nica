@@ -11,7 +11,7 @@ import pdb
 import sys
 
 from cv4a_data import get_cv4a_data
-from cv4a_test import test_rf
+from cv4a_test import test_rf, test_mlp
 from jax.config import config
 config.update("jax_enable_x64", True)
 from jax.dlpack import to_dlpack
@@ -163,8 +163,8 @@ def main():
                        jnp.tile(t, (T_t, 1))))
 
     # train
-    elbo_hist, s_features, shuff_idx = train(x_tr, t_tr, mu_fn,
-                                             k_fn, args, est_key)
+    #elbo_hist, s_features, shuff_idx = train(x_tr, t_tr, mu_fn,
+    #                                         k_fn, args, est_key)
 
 
     if args.linear_ica:
@@ -172,14 +172,24 @@ def main():
         s_features = ica.fit_transform(x_tr)
 
 
+<<<<<<< HEAD
     s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
     sf_use = s_features
     #sf_use = x_te_orig
+=======
+    #s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
+    #sf_use = s_features
+    sf_use = x_te_orig
+    sf_use = jr.normal(jr.PRNGKey(args.test_seed), (num_data, args.N,
+                                                    T_t, T_x, T_y))
+>>>>>>> 022116b (adding test_mlp for cv4a)
     sf = sf_use.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
     time_classes = jnp.tile(jnp.arange(T_t), num_data)
 
     sf = sf.reshape(sf.shape[0], -1)
     losses, accs = test_rf(sf, time_classes)
+    #losses, accs = test_mlp(sf, time_classes)
+
 
 
     ###here add code to eval on test data

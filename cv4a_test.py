@@ -10,6 +10,7 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from cv4a_data import get_cv4a_data
 
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import log_loss, accuracy_score
 
 import pdb
@@ -221,6 +222,34 @@ def test_rf(data, labels):
 
     return loss_list, acc_list
 
+
+def test_mlp(data, labels, hidden_layer_sizes=(100, 100)):
+    n_data = len(labels)
+    sss = StratifiedShuffleSplit(n_splits=10, test_size=0.15, random_state=0)
+    fold = 0
+    loss_list = []
+    acc_list = []
+    for train_index, val_index in sss.split(np.zeros(n_data), labels):
+        fold += 1
+        X_tr = data[train_index]
+        y_tr = labels[train_index]
+        X_te = data[val_index]
+        y_te = labels[val_index]
+
+        rf = MLPClassifier(n_iter=10000)
+        rf.fit(X_tr, y_tr)
+        preds = rf.predict_proba(X_te)
+        yhat = rf.predict(X_te)
+        xe_loss = log_loss(y_te, preds)
+        acc = accuracy_score(y_te, yhat)
+        loss_list.append(xe_loss)
+        acc_list.append(acc)
+
+        print('--Fold ', fold,'--')
+        print('X-entropy: ', xe_loss)
+        print('Accuracy: ', acc)
+
+    return loss_list, acc_list
 
 
 
