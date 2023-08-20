@@ -171,26 +171,17 @@ def main():
         ica = FastICA(n_components=args.N)
         s_features = ica.fit_transform(x_tr)
 
-
-<<<<<<< HEAD
-    s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
-    sf_use = s_features
-    #sf_use = x_te_orig
-=======
     #s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
     #sf_use = s_features
     sf_use = x_te_orig
     sf_use = jr.normal(jr.PRNGKey(args.test_seed), (num_data, args.N,
                                                     T_t, T_x, T_y))
->>>>>>> 022116b (adding test_mlp for cv4a)
     sf = sf_use.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
     time_classes = jnp.tile(jnp.arange(T_t), num_data)
 
     sf = sf.reshape(sf.shape[0], -1)
     losses, accs = test_rf(sf, time_classes)
     #losses, accs = test_mlp(sf, time_classes)
-
-
 
     ###here add code to eval on test data
     # perform feature extraction

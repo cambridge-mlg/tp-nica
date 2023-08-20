@@ -19,7 +19,7 @@ from linear_baseline import linearICA_eval
 from sklearn.linear_model import LinearRegression as LR
 
 ###DEBUG##############################
-config.update('jax_disable_jit', True)
+#config.update('jax_disable_jit', True)
 #config.update("jax_debug_nans", True)
 ######################################
 
@@ -179,10 +179,7 @@ def main():
     if args.eval_linear_ica:
         s_lica, lica_mcc = linearICA_eval(x, s)
         print("Linear ICA: {0:.2f}".format(lica_mcc))
-<<<<<<< HEAD
 
-=======
->>>>>>> 022116b (adding test_mlp for cv4a)
 
     # visualize example in 3D
     if args.D == 2:
