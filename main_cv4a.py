@@ -167,9 +167,9 @@ def main():
     #                                         k_fn, args, est_key)
 
 
-    if args.linear_ica:
-        ica = FastICA(n_components=args.N)
-        s_features = ica.fit_transform(x_tr)
+    #if args.linear_ica:
+    #    ica = FastICA(n_components=args.N)
+    #    s_features = ica.fit_transform(x_tr)
 
     #s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
     #sf_use = s_features

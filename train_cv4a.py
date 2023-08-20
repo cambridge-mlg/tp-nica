@@ -261,6 +261,7 @@ def train(x, t, mean_fn, kernel_fn, args, key):
 
 
         s_samples = jnp.vstack(s_samples_all)
+        pdb.set_trace()
         epoch_avg_elbo = jnp.mean(jnp.array(elbo_epoch_hist))
         print("Epoch [{0}/{1}] took: {2:.2f}\t"
               "AVG. ELBO: {3:.2f}\t"
