@@ -223,7 +223,7 @@ def test_rf(data, labels):
     return loss_list, acc_list
 
 
-def test_mlp(data, labels, hidden_layer_sizes=(100, 100)):
+def test_mlp(data, labels, hidden_layer_sizes=(100, 100,)):
     n_data = len(labels)
     sss = StratifiedShuffleSplit(n_splits=10, test_size=0.15, random_state=0)
     fold = 0

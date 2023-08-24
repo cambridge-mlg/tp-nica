@@ -32,8 +32,6 @@ print(jax.devices())
 
 from train_cv4a import train, train_phi
 from data_generation import (
-    gen_tpnica_data,
-    gen_gpnica_data,
     gen_1d_locations,
     gen_2d_locations
 )
@@ -147,7 +145,6 @@ def main():
     x_tr = x_tr_orig.reshape(num_data, M, -1)
     x_te = x_te_orig.reshape(num_data, M, -1)
 
-
     # set up input locations
     t = gen_2d_locations(T_x*T_y)[:, [1, 0]] # this doesnt actually matter
     t = (t-t.mean())/t.std()
@@ -180,8 +177,8 @@ def main():
     time_classes = jnp.tile(jnp.arange(T_t), num_data)
 
     sf = sf.reshape(sf.shape[0], -1)
-    losses, accs = test_rf(sf, time_classes)
-    #losses, accs = test_mlp(sf, time_classes)
+    #losses, accs = test_rf(sf, time_classes)
+    losses, accs = test_mlp(sf, time_classes)
 
     ###here add code to eval on test data
     # perform feature extraction
