@@ -15,6 +15,7 @@ from cv4a_test import test_rf, test_mlp
 from jax.config import config
 config.update("jax_enable_x64", True)
 from jax.dlpack import to_dlpack
+from ivae import train_ivae
 from sklearn.linear_model import LinearRegression as LR
 from sklearn.decomposition import FastICA
 
@@ -159,6 +160,10 @@ def main():
     t_te = jnp.hstack((jnp.repeat(dates_te, T_x*T_y)[:, None],
                        jnp.tile(t, (T_t, 1))))
 
+    # ivae baseline
+    ivae_s_features, ivae_loss_hist = train_ivae(x_tr, t_tr, args.N, args.L_est)
+
+
     # train
     #elbo_hist, s_features, shuff_idx = train(x_tr, t_tr, mu_fn,
     #                                         k_fn, args, est_key)
@@ -170,15 +175,15 @@ def main():
 
     #s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
     #sf_use = s_features
-    sf_use = x_te_orig
-    sf_use = jr.normal(jr.PRNGKey(args.test_seed), (num_data, args.N,
-                                                    T_t, T_x, T_y))
-    sf = sf_use.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
-    time_classes = jnp.tile(jnp.arange(T_t), num_data)
+    #sf_use = x_te_orig
+    #sf_use = jr.normal(jr.PRNGKey(args.test_seed), (num_data, args.N,
+    #                                                T_t, T_x, T_y))
+    #sf = sf_use.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
+    #time_classes = jnp.tile(jnp.arange(T_t), num_data)
 
-    sf = sf.reshape(sf.shape[0], -1)
+    #sf = sf.reshape(sf.shape[0], -1)
     #losses, accs = test_rf(sf, time_classes)
-    losses, accs = test_mlp(sf, time_classes)
+    #losses, accs = test_mlp(sf, time_classes)
 
     ###here add code to eval on test data
     # perform feature extraction
