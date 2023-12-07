@@ -11,8 +11,7 @@ import numpy as np
 
 import jax.random as jr
 import jax.numpy as jnp
-from jax.lax import scan
-from jax import jit, vmap
+from jax import dlpack
 from .models import cleanIVAE
 
 def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
@@ -59,8 +58,8 @@ def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
             u_it = u_epoch[it*batch_size:(it+1)*batch_size]
 
             # transfer to torch tensfor from jax
-            x_it = torch.from_numpy(np.asarray(x_it, dtype=np.float32))
-            u_it = torch.from_numpy(np.asarray(u_it, dtype=np.float32))
+            x_it = torch.from_numpy(np.from_dlpack(x_it))
+            u_it = torch.from_numpy(np.from_dlpack(u_it))
             x_it, u_it = x_it.to(device), u_it.to(device)
 
             # train model

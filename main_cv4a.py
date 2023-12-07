@@ -14,7 +14,6 @@ from cv4a_data import get_cv4a_data
 from cv4a_test import test_rf, test_mlp
 from jax.config import config
 config.update("jax_enable_x64", True)
-from jax.dlpack import to_dlpack
 from ivae import train_ivae
 from sklearn.linear_model import LinearRegression as LR
 from sklearn.decomposition import FastICA
@@ -161,7 +160,8 @@ def main():
                        jnp.tile(t, (T_t, 1))))
 
     # ivae baseline
-    ivae_s_features, ivae_loss_hist = train_ivae(x_tr, t_tr, args.N, args.L_est)
+    ivae_s_features, ivae_loss_hist = train_ivae(x_tr, jnp.float32(t_tr),
+                                                 args.N, args.L_est)
 
 
     # train
