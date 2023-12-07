@@ -53,6 +53,7 @@ def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
         x_epoch = x_all.copy()[shuffle_idx]
         u_epoch = u_all.copy()[shuffle_idx]
         for it in range(num_minibatches):
+            print(it)
             model.train()
             x_it = x_epoch[it*batch_size:(it+1)*batch_size]
             u_it = u_epoch[it*batch_size:(it+1)*batch_size]
