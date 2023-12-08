@@ -15,7 +15,7 @@ from jax import dlpack
 from .models import cleanIVAE
 
 def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
-               a=100, b=1, c=0, d=10, gamma=0):
+               a=100, b=1, c=0, d=10, gamma=0, num_samples_to_use=-1):
     st = time.time()
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -29,6 +29,9 @@ def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
     num_samples = x.shape[0]
     x_all = x.swapaxes(1, 2).reshape(-1, M)
     u_all = jnp.tile(u, (num_samples, 1))
+    # option to use only subset of data
+    x_all = x_all[:num_samples_to_use]
+    u_all = u_all[:num_samples_to_use]
 
     model = cleanIVAE(data_dim=M, latent_dim=N, aux_dim=d_aux, hidden_dim=M,
                       n_layers=num_hidden_layers+1, activation='xtanh',
@@ -53,15 +56,14 @@ def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
         x_epoch = x_all.copy()[shuffle_idx]
         u_epoch = u_all.copy()[shuffle_idx]
         for it in range(num_minibatches):
-            print(it)
+            print('iteration {}/{}'.format(it, num_minibatches))
             model.train()
             x_it = x_epoch[it*batch_size:(it+1)*batch_size]
             u_it = u_epoch[it*batch_size:(it+1)*batch_size]
 
             # transfer to torch tensfor from jax
-            x_it = torch.from_numpy(np.from_dlpack(x_it))
-            u_it = torch.from_numpy(np.from_dlpack(u_it))
-            x_it, u_it = x_it.to(device), u_it.to(device)
+            x_it = torch.from_dlpack(dlpack.to_dlpack(x_it))
+            u_it = torch.from_dlpack(dlpack.to_dlpack(u_it))
 
             # train model
             optimizer.zero_grad()
@@ -82,7 +84,7 @@ def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
     # evaluate perf on full dataset
     model.eval()
     with torch.no_grad():
-        X = torch.from_numpy(np.asarray(x_all, dtype=np.float32))
-        U = torch.from_numpy(np.asarray(u_all, dtype=np.float32))
+        X = torch.from_dlpack(dlpack.to_dlpack(x_all))
+        U = torch.from_dlpack(dlpack.to_dlpack(u_all))
         _, _, _, S_est_all, _ = model(X, U)
     return S_est_all, loss_hist

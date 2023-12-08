@@ -159,10 +159,15 @@ def main():
     t_te = jnp.hstack((jnp.repeat(dates_te, T_x*T_y)[:, None],
                        jnp.tile(t, (T_t, 1))))
 
-    # ivae baseline
-    ivae_s_features, ivae_loss_hist = train_ivae(x_tr, jnp.float32(t_tr),
-                                                 args.N, args.L_est)
 
+    # Evaluation
+    # option to use less than all data for debugging etc. -1 = use all
+    num_samples_to_use = 100
+
+    # ivae baseline
+    s_features, ivae_loss_hist = train_ivae(x_tr, jnp.float32(t_tr), args.N,
+                                            args.L_est, args.num_epochs,
+                                            num_samples_to_use=100)
 
     # train
     #elbo_hist, s_features, shuff_idx = train(x_tr, t_tr, mu_fn,
@@ -173,13 +178,13 @@ def main():
     #    ica = FastICA(n_components=args.N)
     #    s_features = ica.fit_transform(x_tr)
 
-    #s_features = s_features.reshape(num_data, args.N, T_t, T_x, T_y)
-    #sf_use = s_features
-    #sf_use = x_te_orig
-    #sf_use = jr.normal(jr.PRNGKey(args.test_seed), (num_data, args.N,
-    #                                                T_t, T_x, T_y))
-    #sf = sf_use.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
-    #time_classes = jnp.tile(jnp.arange(T_t), num_data)
+
+    # classification task to evaluate
+    #s_features = s_features.reshape(num_samples_to_use, args.N, T_t, T_x, T_y)
+    #s_features = s_features.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
+    #time_labels = jnp.tile(jnp.arange(T_t), num_samples_to_use)
+
+    pdb.set_trace()
 
     #sf = sf.reshape(sf.shape[0], -1)
     #losses, accs = test_rf(sf, time_classes)
