@@ -14,6 +14,7 @@ import jax.numpy as jnp
 from jax import dlpack
 from .models import cleanIVAE
 
+
 def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
                a=100, b=1, c=0, d=10, gamma=0, num_samples_to_use=-1):
     st = time.time()
@@ -23,15 +24,14 @@ def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
 
     factor = gamma > 0
 
+    # option to use only subset of data
+    x = x[:num_samples_to_use]
+
     # reshape data for iVAE format
     d_aux = u.shape[1]
     M = x.shape[1]
-    num_samples = x.shape[0]
     x_all = x.swapaxes(1, 2).reshape(-1, M)
-    u_all = jnp.tile(u, (num_samples, 1))
-    # option to use only subset of data
-    x_all = x_all[:num_samples_to_use]
-    u_all = u_all[:num_samples_to_use]
+    u_all = jnp.tile(u, (x.shape[0], 1))
 
     model = cleanIVAE(data_dim=M, latent_dim=N, aux_dim=d_aux, hidden_dim=M,
                       n_layers=num_hidden_layers+1, activation='xtanh',

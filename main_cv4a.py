@@ -162,32 +162,32 @@ def main():
 
     # Evaluation
     # option to use less than all data for debugging etc. -1 = use all
-    num_samples_to_use = 100
+    num_samples_to_use = 1000
 
     # ivae baseline
     s_features, ivae_loss_hist = train_ivae(x_tr, jnp.float32(t_tr), args.N,
                                             args.L_est, args.num_epochs,
+                                            args.minib_size,
                                             num_samples_to_use=100)
+    s_features = s_features.cpu()
 
     # train
-    #elbo_hist, s_features, shuff_idx = train(x_tr, t_tr, mu_fn,
-    #                                         k_fn, args, est_key)
+    #elbo_hist, s_features, shuff_idx = train(x_tr[:num_samples_to_use],
+    #                                         t_tr, mu_fn, k_fn, args, est_key)
 
 
     #if args.linear_ica:
     #    ica = FastICA(n_components=args.N)
-    #    s_features = ica.fit_transform(x_tr)
+    #    s_features = ica.fit_transform(x_tr[:num_samples_to_use])
 
 
     # classification task to evaluate
-    #s_features = s_features.reshape(num_samples_to_use, args.N, T_t, T_x, T_y)
-    #s_features = s_features.swapaxes(1, 2).reshape(-1, args.N, T_x, T_y)
-    #time_labels = jnp.tile(jnp.arange(T_t), num_samples_to_use)
-
+    s_features = s_features.reshape(num_samples_to_use, args.N, T_t, T_x, T_y)
+    s_features = s_features.swapaxes(1, 2).reshape(-1, args.N*T_x*T_y)
+    time_labels = jnp.tile(jnp.arange(T_t), num_samples_to_use)
+    losses, accs = test_rf(s_features, time_labels)
     pdb.set_trace()
 
-    #sf = sf.reshape(sf.shape[0], -1)
-    #losses, accs = test_rf(sf, time_classes)
     #losses, accs = test_mlp(sf, time_classes)
 
     ###here add code to eval on test data
