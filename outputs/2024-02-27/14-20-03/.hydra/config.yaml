@@ -1,0 +1,7 @@
+experiments:
+  model:
+    'N': 6
+    M: 12
+    T: 1024
+    npseudo: 50
+    D: 2

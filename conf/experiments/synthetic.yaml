@@ -1,0 +1,43 @@
+synthetic: True
+
+model:
+  N: 6
+  M: 12
+  T: 1024
+  D: 2
+  L_mixing: 0
+  df: 4.1
+
+data_gen:
+  num_data: 256
+  gen_repeat_dfs: False
+  gen_repeat_kernels: False
+
+training:
+  num_pseudo: 50
+  L_est: 0
+  num_s_samples: 4
+  num_tau_samples: 4
+  phi_lr: 0.28
+  theta_lr: 0.004
+  minib_size: 8
+  num_epochs: 10000
+  burnin_len: 0
+  repeat_dfs: False
+  repeat_kernels: False
+
+rng:
+  data_seed: 1
+  train_seed: 50
+
+eval:
+  ica_baseline: False
+  eval_only: False 
+
+plotting:
+  plot_freq: 100
+
+dbg:
+  force_gt_nica: False
+  force_gt_kernel: False
+  force_gt_tau: False

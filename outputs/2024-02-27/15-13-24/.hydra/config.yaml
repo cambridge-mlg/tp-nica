@@ -1,0 +1,36 @@
+experiments:
+  model:
+    'N': 6
+    M: 12
+    T: 1024
+    D: 2
+    L_mixing: 0
+    df: 4.1
+  data_gen:
+    num_data: 256
+    gen_repeat_dfs: false
+    gen_repeat_kernels: false
+  training:
+    num_pseudo: 50
+    L_est: 0
+    num_s_samples: 4
+    num_tau_samples: 4
+    phi_lr: 0.28
+    theta_lr: 0.004
+    minib_size: 8
+    num_epochs: 10000
+    burnin_len: 0
+    repeat_dfs: false
+    repeat_kernels: false
+  rng:
+    data_seed: 1
+    train_seed: 50
+  eval:
+    ica_baseline: false
+    eval_only: false
+  plotting:
+    plot_freq: 100
+  dbg:
+    force_gt_nica: false
+    force_gt_kernel: false
+    force_gt_tau: false
