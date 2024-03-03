@@ -1,4 +1,6 @@
 synthetic: False
+data_dir: 'cv4a_data/'
+experiment_id: 1
 
 model:
   N: 6
@@ -17,6 +19,13 @@ training:
   repeat_dfs: False
   repeat_kernels: False
 
+ivae:
+  include: False 
+  N: 6
+  L_est: 0
+  num_epochs: 100
+  minib_size: 64
+
 rng:
   train_seed: 50
 
@@ -24,5 +33,5 @@ eval:
   ica_baseline: False
   eval_only: False 
 
-plotting:
+plots:
   plot_freq: 100
