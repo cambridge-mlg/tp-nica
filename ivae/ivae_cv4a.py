@@ -14,6 +14,7 @@ import jax.numpy as jnp
 from jax import dlpack
 from .models import cleanIVAE
 
+import mlflow
 
 def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
                a=100, b=1, c=0, d=10, gamma=0, num_samples_to_use=-1):
@@ -41,7 +42,6 @@ def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
                                                      patience=0,
                                                      verbose=True)
 
-    loss_hist = []
     shuffle_key = jr.PRNGKey(9999)
     N_data = x_all.shape[0]
     num_full_minibatches, remainder = divmod(N_data, batch_size)
@@ -74,7 +74,10 @@ def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
             train_loss += loss.item()
 
         train_loss /= num_minibatches
-        loss_hist.append(train_loss)
+
+        # log training loss every epoch
+        mlflow.log_metric('train_loss', train_loss, step=epoch)
+
         print('==> Epoch {}/{}:\t'
               'train loss: {:.6f}'.format(epoch, epochs, train_loss))
         scheduler.step(train_loss)
@@ -87,4 +90,4 @@ def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
         X = torch.from_dlpack(dlpack.to_dlpack(x_all))
         U = torch.from_dlpack(dlpack.to_dlpack(u_all))
         _, _, _, S_est_all, _ = model(X, U)
-    return S_est_all, loss_hist
+    return S_est_all

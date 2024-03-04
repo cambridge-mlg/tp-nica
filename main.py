@@ -17,17 +17,12 @@ from cv4a_data import get_cv4a_data
 from ivae import train_ivae
 
 
-def set_up_mlflow(cfg):
+def set_up_mlflow(params_to_log, experiment_name):
     mlflow.set_tracking_uri("databricks")
-    mlflow.start_experiment(cfg.experiment_name)
-    mlflow.log_params(cfg)
-
+    mlflow.start_experiment(experiment_name)
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
-
-    set_up_mlflow(cfg)
-
     cfg = cfg.experiments
     print('Running with ', cfg)
 
@@ -37,13 +32,16 @@ def main(cfg: DictConfig) -> None:
         x_tr, x_te, t = get_cv4a_data(cfg.data_dir, cfg.experiment_name)
 
     if cfg.ivae.ivae_baseline == True:
-        s_features, ivae_loss_hist = train_ivae(X=jnp.float32(x_tr),
-                                                u=jnp.float32(t),
-                                                N=cfg.ivae.N,
-                                                num_hidden_layers=cfg.ivae.L_est,
-                                                epochs=cfg.ivae.num_epochs,
-                                                batch_size=cfg.ivae.minib_size,
-                                                lr=cfg.ivae.lr)
+        set_up_mlflow(cfg, cfg.experiment_name + "_iVAE_baseline")
+        with mlflow.start_run():
+            mlflow.log_params(cfg)
+            s_features = train_ivae(X=jnp.float32(x_tr),
+                                    u=jnp.float32(t),
+                                    N=cfg.ivae.N,
+                                    num_hidden_layers=cfg.ivae.L_est,
+                                    epochs=cfg.ivae.num_epochs,
+                                    batch_size=cfg.ivae.minib_size,
+                                    lr=cfg.ivae.lr)
 
     pdb.set_trace()
 
