@@ -1,5 +1,8 @@
-synthetic: True
+experiment_name: 'synthetic'
 
+mlflow:
+  tracking_uri: http://127.0.0.1:5000
+  
 model:
   N: 6
   M: 12

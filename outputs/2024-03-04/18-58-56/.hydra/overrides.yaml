@@ -1,0 +1,3 @@
+- experiments=cv4a
+- experiments.experiment_id=1
+- experiments.ivae.minib_size=128

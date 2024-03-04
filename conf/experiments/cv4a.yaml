@@ -1,6 +1,5 @@
-synthetic: False
 data_dir: 'cv4a_data/'
-experiment_id: 1
+experiment_name: 'cv4a_v1' # alternative cv4a_v2 see paper
 
 model:
   N: 6
@@ -20,11 +19,12 @@ training:
   repeat_kernels: False
 
 ivae:
-  include: False 
+  ivae_baseline: False 
   N: 6
   L_est: 0
   num_epochs: 100
   minib_size: 64
+  lr: 0.01
 
 rng:
   train_seed: 50

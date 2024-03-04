@@ -12,7 +12,7 @@ import pdb
 # !! This code is adapted from the challenge-winning repo of KarimAmer: !!
 # https://github.com/radiantearth/crop-type-detection-ICLR-2020/blob/master/solutions/KarimAmer/main.py
 
-def get_cv4a_data(data_path, experiment_id=1):
+def get_cv4a_data(data_path, experiment_name='cv4a_v1'):
     imgs = np.load(os.path.join(data_path, 'imgs_13_ch_rad_16_medianxy.npy'))
     areas = np.load(os.path.join(data_path, 'areas.npy'))
     gts = np.load(os.path.join(data_path, 'gts.npy'))
@@ -80,12 +80,12 @@ def get_cv4a_data(data_path, experiment_id=1):
     t = np.hstack((t_time[:, None], np.tile(t_spatial, (T_t, 1))))
 
     # two different types of experiments (see paper)
-    if experiment_id == 1:
+    if experiment_name == 'cv4a_v1':
         imgs = imgs.reshape(num_data, M, -1)
         imgs_tr = imgs[:num_data//2]
         imgs_te = imgs[num_data // 2:]
         return imgs_tr, imgs_te, t
-    elif experiment_id == 2:
+    elif experiment_name == 'cv4a_v2':
         T_len = 6
         t = t[:T_len * T_x * T_y]
         t = (t - t.mean(0)[None, :]) / t.std(0)[None, :]
