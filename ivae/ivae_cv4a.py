@@ -16,6 +16,7 @@ from .models import cleanIVAE
 
 import mlflow
 
+
 def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
                a=100, b=1, c=0, d=10, gamma=0, num_samples_to_use=-1):
     st = time.time()
@@ -86,6 +87,11 @@ def train_ivae(x, u, N, num_hidden_layers, epochs=10000, batch_size=64, lr=0.01,
 
     # evaluate perf on full dataset
     model.eval()
+
+    # save trained model to mlflow
+    mlflow.pytorch.log_model(model, "model")
+
+    # perform inference on the full training data 
     with torch.no_grad():
         X = torch.from_dlpack(dlpack.to_dlpack(x_all))
         U = torch.from_dlpack(dlpack.to_dlpack(u_all))

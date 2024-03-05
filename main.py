@@ -19,23 +19,26 @@ from ivae import train_ivae
 
 def set_up_mlflow(params_to_log, experiment_name):
     mlflow.set_tracking_uri("databricks")
-    mlflow.start_experiment(experiment_name)
+    mlflow.set_experiment(experiment_name)
+
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
     cfg = cfg.experiments
     print('Running with ', cfg)
 
+    # synthetic or real data experiment to run
     if cfg.experiment_name == 'synthetic':
         data = generate_synthetic()
     else:
         x_tr, x_te, t = get_cv4a_data(cfg.data_dir, cfg.experiment_name)
 
+    # option to evaluate with iVAE as a baseline 
     if cfg.ivae.ivae_baseline == True:
-        set_up_mlflow(cfg, cfg.experiment_name + "_iVAE_baseline")
+        set_up_mlflow(cfg, "/"+cfg.experiment_name+"_iVAE_baseline")
         with mlflow.start_run():
             mlflow.log_params(cfg)
-            s_features = train_ivae(X=jnp.float32(x_tr),
+            s_features = train_ivae(x=jnp.float32(x_tr),
                                     u=jnp.float32(t),
                                     N=cfg.ivae.N,
                                     num_hidden_layers=cfg.ivae.L_est,
