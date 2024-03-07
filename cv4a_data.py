@@ -80,15 +80,11 @@ def get_cv4a_data(data_path, experiment_name='cv4a_v1'):
     t = np.hstack((t_time[:, None], np.tile(t_spatial, (T_t, 1))))
 
     # two different types of experiments (see paper)
-    if experiment_name == 'cv4a_v1':
-        imgs = imgs.reshape(num_data, M, -1)
-        imgs_tr = imgs[:num_data//2]
-        imgs_te = imgs[num_data // 2:]
-        return imgs_tr, imgs_te, t
-    elif experiment_name == 'cv4a_v2':
+    if experiment_name == 'cv4a_v2':
         T_len = 6
         t = t[:T_len * T_x * T_y]
         t = (t - t.mean(0)[None, :]) / t.std(0)[None, :]
         imgs_tr = imgs[:, :, :T_len].reshape(num_data, M, -1)
         imgs_te = imgs[:, :, T_len:2 * T_len].reshape(num_data, M, -1)
+        pdb.set_trace()
         return imgs_tr, imgs_te, t

@@ -39,19 +39,15 @@ def main(cfg: DictConfig) -> None:
         with mlflow.start_run():
             # log config
             mlflow.log_params(cfg)
-            ivae_model = train_ivae(x_tr=jnp.float32(x_tr),
-                                    x_val=jnp.float32(x_te),
-                                    u=jnp.float32(t),
-                                    N=cfg.ivae.N,
-                                    num_hidden_layers=cfg.ivae.L_est,
-                                    epochs=cfg.ivae.num_epochs,
-                                    batch_size=cfg.ivae.minib_size,
-                                    lr=cfg.ivae.lr)
-            # make posterior infrence on the validation set
-
-
-
-
+            # train iVAE and perform inference on validation set
+            s_val_est = train_ivae(x_tr=jnp.float32(x_tr),
+                                   x_val=jnp.float32(x_te),
+                                   u=jnp.float32(t),
+                                   N=cfg.ivae.N,
+                                   num_hidden_layers=cfg.ivae.L_est,
+                                   epochs=cfg.ivae.num_epochs,
+                                   batch_size=cfg.ivae.minib_size,
+                                   lr=cfg.ivae.lr)
 
 
     #train(data, cfg)

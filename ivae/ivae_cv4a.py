@@ -27,6 +27,8 @@ def train_ivae(x_tr, x_val, u, N, num_hidden_layers, epochs=10000, batch_size=64
     factor = gamma > 0
 
     # reshape data for iVAE format
+    pdb.set_trace()
+    num_samples = x_tr.shape[0]
     d_aux = u.shape[1]
     M = x_tr.shape[1]
     x_tr = x_tr.swapaxes(1, 2).reshape(-1, M)
@@ -64,7 +66,7 @@ def train_ivae(x_tr, x_val, u, N, num_hidden_layers, epochs=10000, batch_size=64
         x_epoch = X.clone()[shuffle_idx]
         u_epoch = U.clone()[shuffle_idx]
         for it in range(num_minibatches):
-            #print('Epoch {} - iteration {}/{}'.format(epoch, it, num_minibatches))
+            print('Epoch {} - iteration {}/{}'.format(epoch, it, num_minibatches))
             model.train()
             x_it = x_epoch[it*batch_size:(it+1)*batch_size]
             u_it = u_epoch[it*batch_size:(it+1)*batch_size]
@@ -107,7 +109,10 @@ def train_ivae(x_tr, x_val, u, N, num_hidden_layers, epochs=10000, batch_size=64
 
     print('\ntotal runtime: {}'.format(time.time() - st))
 
-    # perform inference on validation set
+    # perform inference on validation set ###!!!! TEMPORARLY EXPLORING WITH TRAINING DATA!!!!!
     model.eval()
-    _, _, _, s_est_val, _ = model(X_val, U_val)
-    return s_est_val
+    _, _, _, s_est_val, _ = model(X, U)
+    s_est_val = s_est_val.detach().cpu().numpy()
+    #s_est_val = s_est_val.reshape(num_samples, N, -1)
+    pdb.set_trace()
+    return 
