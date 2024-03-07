@@ -37,6 +37,7 @@ def main(cfg: DictConfig) -> None:
     if cfg.ivae.ivae_baseline == True:
         set_up_mlflow(cfg, "/"+cfg.experiment_name+"_iVAE_baseline")
         with mlflow.start_run():
+            # log config
             mlflow.log_params(cfg)
             ivae_model = train_ivae(x_tr=jnp.float32(x_tr),
                                     x_val=jnp.float32(x_te),
@@ -46,6 +47,12 @@ def main(cfg: DictConfig) -> None:
                                     epochs=cfg.ivae.num_epochs,
                                     batch_size=cfg.ivae.minib_size,
                                     lr=cfg.ivae.lr)
+            # make posterior infrence on the validation set
+
+
+
+
+
 
     #train(data, cfg)
 

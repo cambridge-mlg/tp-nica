@@ -102,8 +102,12 @@ def train_ivae(x_tr, x_val, u, N, num_hidden_layers, epochs=10000, batch_size=64
             print('==> Epoch {}/{}:\t'
                   'train loss: {:.6f}'.format(epoch, epochs, train_loss))
 
- 
+
         scheduler.step(train_loss)
 
     print('\ntotal runtime: {}'.format(time.time() - st))
-    return model.eval()
+
+    # perform inference on validation set
+    model.eval()
+    _, _, _, s_est_val, _ = model(X_val, U_val)
+    return s_est_val
