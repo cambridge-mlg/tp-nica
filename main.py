@@ -38,15 +38,14 @@ def main(cfg: DictConfig) -> None:
         set_up_mlflow(cfg, "/"+cfg.experiment_name+"_iVAE_baseline")
         with mlflow.start_run():
             mlflow.log_params(cfg)
-            s_features = train_ivae(x=jnp.float32(x_tr),
+            ivae_model = train_ivae(x_tr=jnp.float32(x_tr),
+                                    x_val=jnp.float32(x_te),
                                     u=jnp.float32(t),
                                     N=cfg.ivae.N,
                                     num_hidden_layers=cfg.ivae.L_est,
                                     epochs=cfg.ivae.num_epochs,
                                     batch_size=cfg.ivae.minib_size,
                                     lr=cfg.ivae.lr)
-
-    pdb.set_trace()
 
     #train(data, cfg)
 

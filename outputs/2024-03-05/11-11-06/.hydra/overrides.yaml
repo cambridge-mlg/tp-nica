@@ -1,0 +1,4 @@
+- experiments=cv4a
+- experiments.experiment_name=cv4a_v2
+- experiments.ivae.ivae_baseline=True
+- experiments.ivae.num_epochs=3

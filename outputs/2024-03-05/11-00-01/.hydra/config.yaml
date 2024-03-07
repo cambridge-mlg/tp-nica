@@ -1,0 +1,32 @@
+experiments:
+  data_dir: cv4a_data/
+  experiment_name: cv4a_v2
+  model:
+    'N': 6
+    df: 4.1
+  training:
+    num_pseudo: 50
+    L_est: 0
+    num_s_samples: 4
+    num_tau_samples: 4
+    phi_lr: 0.28
+    theta_lr: 0.004
+    minib_size: 8
+    num_epochs: 10000
+    burnin_len: 0
+    repeat_dfs: false
+    repeat_kernels: false
+  ivae:
+    ivae_baseline: false
+    'N': 6
+    L_est: 0
+    num_epochs: 100
+    minib_size: 64
+    lr: 0.01
+  rng:
+    train_seed: 50
+  eval:
+    ica_baseline: false
+    eval_only: false
+  plots:
+    plot_freq: 100
