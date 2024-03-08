@@ -3,6 +3,7 @@
 #import torch.nn.functional as F
 import numpy as np
 import pandas as pd
+import mlflow
 
 #from torch.optim import Adam, SGD, lr_scheduler
 from sklearn.model_selection import StratifiedShuffleSplit
@@ -195,8 +196,11 @@ def train_epoch(model, train_loader, loss_fn, optimizer, device):
 
 
 def test_rf(data, labels):
+    n_samples, _, N = data.shape
+    n_classes = len(np.unique(labels))
+    data = data.reshape(n_samples*n_classes, -1)
     n_data = len(labels)
-    sss = StratifiedShuffleSplit(n_splits=10, test_size=0.15, random_state=0)
+    sss = StratifiedShuffleSplit(n_splits=10, test_size=0.5, random_state=0)
     fold = 0
     loss_list = []
     acc_list = []
@@ -207,7 +211,7 @@ def test_rf(data, labels):
         X_te = data[val_index]
         y_te = labels[val_index]
 
-        rf = RandomForestClassifier(n_estimators=200, n_jobs=-1)
+        rf = RandomForestClassifier(n_estimators=200, n_jobs=-1, verbose=0)
         rf.fit(X_tr, y_tr)
         preds = rf.predict_proba(X_te)
         yhat = rf.predict(X_te)
@@ -220,7 +224,13 @@ def test_rf(data, labels):
         print('X-entropy: ', xe_loss)
         print('Accuracy: ', acc)
 
-    return loss_list, acc_list
+        mlflow.log_metric('x-entropy', xe_loss, step=fold)
+        mlflow.log_metric('Accuracy', acc, step=fold)
+
+
+
+
+
 
 
 def test_mlp(data, labels, hidden_layer_sizes=(100, 100,)):
@@ -249,8 +259,8 @@ def test_mlp(data, labels, hidden_layer_sizes=(100, 100,)):
         print('X-entropy: ', xe_loss)
         print('Accuracy: ', acc)
 
-    return loss_list, acc_list
-
+        mlflow.log_metric('x-entropy', xe_loss, step=fold)
+        mlflow.log_metric('Accuracy', acc, step=fold)
 
 
 

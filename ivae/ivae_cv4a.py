@@ -27,12 +27,11 @@ def train_ivae(x_tr, x_val, u, N, num_hidden_layers, epochs=10000, batch_size=64
     factor = gamma > 0
 
     # reshape data for iVAE format
-    pdb.set_trace()
     num_samples = x_tr.shape[0]
     d_aux = u.shape[1]
-    M = x_tr.shape[1]
-    x_tr = x_tr.swapaxes(1, 2).reshape(-1, M)
-    x_val = x_val.swapaxes(1, 2).reshape(-1, M)
+    M = x_tr.shape[-1]
+    x_tr = x_tr.reshape(-1, M)
+    x_val = x_val.reshape(-1, M)
     u_tr = jnp.tile(u, (x_tr.shape[0] // u.shape[0], 1))
     u_val = jnp.tile(u, (x_val.shape[0] // u.shape[0], 1))
     X = torch.from_dlpack(dlpack.to_dlpack(x_tr))
@@ -62,7 +61,7 @@ def train_ivae(x_tr, x_val, u, N, num_hidden_layers, epochs=10000, batch_size=64
             val_loss = 0
 
         shuffle_key, shuffkey = jr.split(shuffle_key)
-        shuffle_idx = jr.permutation(shuffkey, jnp.arange(X.shape[0])).tolist()
+        shuffle_idx = jr.permutation(shuffkey, jnp.arange(N_data)).tolist()
         x_epoch = X.clone()[shuffle_idx]
         u_epoch = U.clone()[shuffle_idx]
         for it in range(num_minibatches):
@@ -109,10 +108,9 @@ def train_ivae(x_tr, x_val, u, N, num_hidden_layers, epochs=10000, batch_size=64
 
     print('\ntotal runtime: {}'.format(time.time() - st))
 
-    # perform inference on validation set ###!!!! TEMPORARLY EXPLORING WITH TRAINING DATA!!!!!
+    # perform inference on validation set ###!!!! TEMPORARILY EXPLORING WITH TRAINING DATA!!!!!
     model.eval()
     _, _, _, s_est_val, _ = model(X, U)
     s_est_val = s_est_val.detach().cpu().numpy()
-    #s_est_val = s_est_val.reshape(num_samples, N, -1)
-    pdb.set_trace()
-    return 
+    s_est_val = s_est_val.reshape(num_samples, -1, N)
+    return s_est_val

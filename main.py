@@ -14,6 +14,7 @@ import pdb
 from omegaconf import DictConfig
 
 from cv4a_data import get_cv4a_data
+from cv4a_test import test_rf
 from ivae import train_ivae
 
 
@@ -31,7 +32,7 @@ def main(cfg: DictConfig) -> None:
     if cfg.experiment_name == 'synthetic':
         data = generate_synthetic()
     else:
-        x_tr, x_te, t = get_cv4a_data(cfg.data_dir, cfg.experiment_name)
+        x_tr, x_te, t, y = get_cv4a_data(cfg.data_dir, cfg.experiment_name)
 
     # option to evaluate with iVAE as a baseline 
     if cfg.ivae.ivae_baseline == True:
@@ -48,6 +49,9 @@ def main(cfg: DictConfig) -> None:
                                    epochs=cfg.ivae.num_epochs,
                                    batch_size=cfg.ivae.minib_size,
                                    lr=cfg.ivae.lr)
+            
+            # evaluate the features
+            test_rf(s_val_est, y)
 
 
     #train(data, cfg)

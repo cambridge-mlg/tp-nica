@@ -70,8 +70,8 @@ def get_cv4a_data(data_path, experiment_name='cv4a_v1'):
 
 
     # reshape data and split into train and test
-    imgs = imgs.swapaxes(1, 2)
-    num_data, M, T_t, T_x, T_y = imgs.shape
+    imgs = imgs.swapaxes(2, -1)
+    num_data, T_t, T_x, T_y, M = imgs.shape
     t_spatial = gen_2d_locations(T_x*T_y)
     t_spatial = (t_spatial - t_spatial.mean()) / t_spatial.std()
     t_time = np.array([(d-dates[0]).days for d in dates])
@@ -84,7 +84,7 @@ def get_cv4a_data(data_path, experiment_name='cv4a_v1'):
         T_len = 6
         t = t[:T_len * T_x * T_y]
         t = (t - t.mean(0)[None, :]) / t.std(0)[None, :]
-        imgs_tr = imgs[:, :, :T_len].reshape(num_data, M, -1)
-        imgs_te = imgs[:, :, T_len:2 * T_len].reshape(num_data, M, -1)
-        pdb.set_trace()
-        return imgs_tr, imgs_te, t
+        imgs_tr = imgs[:, :T_len].reshape(num_data, -1, M)
+        imgs_te = imgs[:, T_len:2 * T_len].reshape(num_data, -1, M)
+        time_labels = np.tile(np.arange(T_len), num_data)
+        return imgs_tr, imgs_te, t, time_labels
